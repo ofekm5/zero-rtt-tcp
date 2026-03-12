@@ -220,6 +220,16 @@ def recalculate_checksums(packet):
 
     # Scapy will auto-recalculate when packet is sent
     return packet
+
+# How checksum recalculation works:
+# Scapy fields have three states: set, deleted, and auto.
+# When you del pkt[TCP].chksum, the field reverts to auto-compute mode.
+# On the next send(), Scapy serializes the full packet bytes (including
+# the modified SEQ/ACK), then computes:
+#   - IP checksum: over the IP header only
+#   - TCP checksum: over the TCP pseudo-header (src IP, dst IP, protocol,
+#     TCP length) + TCP header + payload
+# This produces a valid checksum for the modified packet.
 ```
 
 ### 7. Main Entry Point

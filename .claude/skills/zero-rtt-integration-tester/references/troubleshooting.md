@@ -10,6 +10,8 @@ Consolidated lessons from integration testing sessions (Jan-Feb 2026).
 - [SSM git pull Fails](#ssm-git-pull-fails)
 - [AWS Security Groups](#aws-security-groups)
 - [VPC Routing](#vpc-routing)
+- [Packet Re-capture Loop (ServerNIC)](#packet-re-capture-loop-servernic)
+- [Swapped SEQ/ACK Rewrite Fields](#swapped-seqack-rewrite-fields)
 - [Baseline Results](#baseline-results)
 
 ---
@@ -190,11 +192,81 @@ sudo ip route add 10.1.2.0/24 via <servernic-eth0-ip> dev eth1
 
 ---
 
+## Packet Re-capture Loop (ServerNIC)
+
+**Problem** (2026-03-12): Client connections fail (0/3). Server responds with RST to every rewritten ACK. `server_side.pcap` on ClientNIC shows 125 SYN-ACK retransmissions for 3 flows. ServerNIC log shows packets bouncing between interfaces indefinitely.
+
+**Root cause**: Scapy's `sniff()` on `AF_PACKET` captures both incoming **and outgoing** frames on an interface. When ServerNIC calls `send()` to forward a packet out eth1, the outgoing frame appears on eth1, gets re-sniffed, and is forwarded back to eth0 — creating an infinite loop. Same applies in both directions.
+
+**Evidence** — massive SYN-ACK count on eth1:
+```
+eth1 SYN-ACKs: 125   (expected: 3-4 per flow)
+```
+
+**Fix** (commit `d6cf344`) — collect own interface MACs at startup and skip self-sent packets:
+```python
+from scapy.layers.l2 import Ether, get_if_hwaddr
+
+class PacketForwarder:
+    def __init__(self, client_iface="eth0", server_iface="eth1"):
+        self._our_macs = set()
+        for iface in (client_iface, server_iface):
+            self._our_macs.add(get_if_hwaddr(iface).lower())
+
+    def handle(self, packet):
+        if packet.haslayer(Ether) and packet[Ether].src.lower() in self._our_macs:
+            return  # skip self-sent
+        # ... forward as normal
+```
+
+**Note**: This only became visible after iptables FORWARD DROP was added. Previously, the kernel forwarded packets before Scapy could loop them, masking the bug.
+
+---
+
+## Swapped SEQ/ACK Rewrite Fields
+
+**Problem** (2026-03-12): After fixing the re-capture loop, connections still fail (0/3). ServerNIC log shows the server RST-ing every ACK and data packet:
+```
+ClientNIC -> Server  10.1.0.190:45552 -> 10.1.2.195:8080 [ACK]
+Server -> ClientNIC  10.1.2.195:8080 -> 10.1.0.190:45552 [RST]
+```
+
+**Root cause**: `clientnic/rewriter.py` was modifying the **wrong TCP fields**:
+- `rewrite_client_to_server` modified SEQ (should modify ACK)
+- `rewrite_server_to_client` modified ACK (should modify SEQ)
+
+The logic:
+- `delta = spoofed_ISN - real_ISN`
+- Client→Server: client's **ACK** references spoofed ISN → subtract delta to get real ISN
+- Server→Client: server's **SEQ** references real ISN → add delta to get spoofed ISN
+- Client's SEQ and server's ACK are unaffected by the spoofing and must NOT be rewritten
+
+**Concrete example** (delta=200, client_ISN=100, spoofed=500, real=300):
+```
+Client sends:      SEQ=101, ACK=501
+Buggy rewrite:     SEQ=301, ACK=501  ← server expects SEQ=101, ACK=301 → RST
+Correct rewrite:   SEQ=101, ACK=301  ← matches server expectations ✓
+```
+
+**Fix** (commit `23cb04a`):
+```python
+def rewrite_client_to_server(self, packet, delta, iface):
+    pkt[TCP].ack = (pkt[TCP].ack - delta) & 0xFFFFFFFF  # was: pkt[TCP].seq += delta
+
+def rewrite_server_to_client(self, packet, delta, iface):
+    pkt[TCP].seq = (pkt[TCP].seq + delta) & 0xFFFFFFFF  # was: pkt[TCP].ack -= delta
+```
+
+**Note**: This bug was invisible in earlier tests because kernel forwarding completed the handshake with the real ISN, making the Scapy rewrites irrelevant.
+
+---
+
 ## Baseline Results
 
-After all fixes applied (2026-01-28), 5/5 connections successful:
-- Kernel forwarding TTFB: ~2.6 ms
-- ClientNIC 0-RTT TTFB: ~1.7 ms
-- Spoofed SYN-ACK confirmed sent before real SYN-ACK arrives
+After all fixes applied (2026-03-12), 3/3 connections successful with true 0-RTT:
+- Spoofed SYN-ACK arrives 82–175 ms before real SYN-ACK (iptables blocks kernel forwarding)
+- Sequence number translation verified: non-zero deltas applied correctly
+- All checksums valid (eth0: 18/18, eth1: 27/27)
+- Server received and responded to all 3 connections through the full rewrite pipeline
 
-**Still to test**: sequence number translation under load, concurrent connections, FIN/RST teardown.
+**Key prerequisite**: iptables FORWARD DROP for port 8080 on both NIC VMs. Without it, kernel forwarding races Scapy and wins in intra-VPC conditions.

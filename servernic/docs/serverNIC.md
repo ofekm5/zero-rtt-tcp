@@ -211,7 +211,7 @@ if __name__ == "__main__":
 
 1. **Stateless Operation**: Unlike ClientNIC, ServerNIC maintains no connection state. It simply forwards packets based on which interface they arrive on.
 
-2. **No Packet Modification**: Packets are forwarded as-is without any sequence number rewriting or checksum recalculation.
+2. **No Packet Modification**: Packets are forwarded as-is without any sequence number rewriting or checksum recalculation. This means no checksum handling is needed here. By contrast, ClientNIC must recalculate checksums after every SEQ/ACK rewrite — it does so by deleting the checksum fields (`del pkt[IP].chksum` / `del pkt[TCP].chksum`), which reverts them to Scapy's auto-compute mode. On the next `send()`, Scapy serializes the full packet bytes (including the modified SEQ/ACK), then computes fresh IP and TCP checksums automatically.
 
 3. **Transparent Forwarding**: From the server's perspective, packets appear to come directly from the client (after ClientNIC's rewriting).
 
