@@ -8,7 +8,7 @@
 #   - python3 in PATH
 #
 # Usage:
-#   ./integration-test/scripts/run_all.sh
+#   ./zero-rtt-clientnic-translate/experiment/scripts/run_all.sh
 #
 # Exit code: 0 = all checks passed, non-zero = number of failures
 
@@ -178,7 +178,7 @@ ssm_bg "$SERVERNIC_ID" \
 ssm_bg "$SERVERNIC_ID" \
     "iptables -F FORWARD 2>/dev/null; iptables -A FORWARD -p tcp --dport 8080 -j DROP; iptables -A FORWARD -p tcp --sport 8080 -j DROP"
 ssm_bg "$SERVERNIC_ID" \
-    "cd $REPO_PATH && echo '=== '$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/servernic.log && setsid python3 -u -m servernic.main < /dev/null >> /tmp/servernic.log 2>&1 &"
+    "cd $REPO_PATH/zero-rtt-clientnic-translate && echo '=== '$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/servernic.log && setsid python3 -u -m servernic.main < /dev/null >> /tmp/servernic.log 2>&1 &"
 sleep 2
 
 FWRD=$(ssm_stdout "$SERVERNIC_ID" "cat /proc/sys/net/ipv4/ip_forward" 30)
@@ -209,7 +209,7 @@ ssm_bg "$CLIENTNIC_ID" \
 sleep 1
 
 ssm_bg "$CLIENTNIC_ID" \
-    "cd $REPO_PATH && echo '=== '$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/clientnic.log && setsid python3 -u -m clientnic.main < /dev/null >> /tmp/clientnic.log 2>&1 &"
+    "cd $REPO_PATH/zero-rtt-clientnic-translate && echo '=== '$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/clientnic.log && setsid python3 -u -m clientnic.app.main < /dev/null >> /tmp/clientnic.log 2>&1 &"
 sleep 2
 
 FWRD=$(ssm_stdout "$CLIENTNIC_ID" "cat /proc/sys/net/ipv4/ip_forward" 30)
@@ -287,7 +287,7 @@ PCAP_SIZES=$(ssm_stdout "$CLIENTNIC_ID" \
 echo "pcap files: $PCAP_SIZES"
 
 ANALYSIS_RESULT=$(ssm_run "$CLIENTNIC_ID" \
-    "python3 $REPO_PATH/integration-test/scripts/analyze_capture.py \
+    "python3 $REPO_PATH/zero-rtt-clientnic-translate/clientnic/validate_0rtt_capture.py \
         --client-pcap /tmp/client_side.pcap \
         --server-pcap /tmp/server_side.pcap" \
     45)

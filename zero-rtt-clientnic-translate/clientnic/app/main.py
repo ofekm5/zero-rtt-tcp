@@ -5,11 +5,11 @@ import threading
 from scapy.layers.l2 import get_if_hwaddr
 from scapy.sendrecv import sniff
 
-from .logger import setup_logging
-from .flow_table import FlowTable
-from .spoofer import SynAckSpoofer
-from .rewriter import PacketRewriter
-from .handlers import PacketBuffer, ClientPacketHandler, ServerPacketHandler
+from .src.logger import setup_logging
+from .src.flow_table import FlowTable
+from .src.spoofer import SynAckSpoofer
+from .src.rewriter import PacketRewriter
+from .src.handlers import PacketBuffer, ClientPacketHandler, ServerPacketHandler
 
 CLIENT_IFACE = "eth0"
 SERVER_IFACE = "eth1"

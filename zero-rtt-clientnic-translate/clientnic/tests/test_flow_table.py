@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock
 import threading
 
-from clientnic.flow_table import FlowKey, FlowEntry, FlowTable
+from clientnic.app.src.flow_table import FlowKey, FlowEntry, FlowTable
 
 
 class TestFlowKey:

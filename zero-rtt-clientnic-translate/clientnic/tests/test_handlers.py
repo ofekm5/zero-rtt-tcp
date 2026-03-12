@@ -7,8 +7,8 @@ import threading
 from scapy.layers.l2 import Ether
 from scapy.layers.inet import IP, TCP
 
-from clientnic.handlers import PacketBuffer, ClientPacketHandler
-from clientnic.flow_table import FlowKey, FlowTable
+from clientnic.app.src.handlers import PacketBuffer, ClientPacketHandler
+from clientnic.app.src.flow_table import FlowKey, FlowTable
 
 
 class TestPacketBuffer:

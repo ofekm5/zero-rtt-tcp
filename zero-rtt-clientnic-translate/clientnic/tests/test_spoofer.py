@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from scapy.layers.l2 import Ether
 from scapy.layers.inet import IP, TCP
 
-from clientnic.spoofer import SynAckSpoofer
+from clientnic.app.src.spoofer import SynAckSpoofer
 
 
 class TestSynAckSpoofer:
@@ -89,7 +89,7 @@ class TestSynAckSpoofer:
         # All values should not be the same (highly unlikely with random)
         assert len(set(isns)) > 1
 
-    @patch('clientnic.spoofer.random.randint')
+    @patch('clientnic.app.src.spoofer.random.randint')
     def test_generate_random_isn_uses_full_range(self, mock_randint):
         """Test ISN generation uses correct range."""
         mock_randint.return_value = 12345
