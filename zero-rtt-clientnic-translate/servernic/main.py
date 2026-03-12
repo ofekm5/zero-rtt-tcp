@@ -5,8 +5,8 @@ import logging
 
 from scapy.sendrecv import sniff
 
-from .logger import setup_logging
-from .forwarder import PacketForwarder
+from .src.logger import setup_logging
+from .src.forwarder import PacketForwarder
 
 
 def main():

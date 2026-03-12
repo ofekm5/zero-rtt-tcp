@@ -6,7 +6,7 @@ import pytest
 from scapy.layers.inet import IP, TCP
 from scapy.layers.l2 import Ether
 
-from servernic.forwarder import PacketForwarder
+from servernic.src.forwarder import PacketForwarder
 
 
 def _make_packet(sniffed_on: str, has_tcp: bool = True):
@@ -17,7 +17,7 @@ def _make_packet(sniffed_on: str, has_tcp: bool = True):
     return pkt
 
 
-@patch("servernic.forwarder.send")
+@patch("servernic.src.forwarder.send")
 def test_handle_forwards_from_client_to_server(mock_send):
     fwd = PacketForwarder(client_iface="eth1", server_iface="eth2")
     pkt = _make_packet(sniffed_on="eth1")
@@ -27,7 +27,7 @@ def test_handle_forwards_from_client_to_server(mock_send):
     assert kwargs["iface"] == "eth2"
 
 
-@patch("servernic.forwarder.send")
+@patch("servernic.src.forwarder.send")
 def test_handle_forwards_from_server_to_client(mock_send):
     fwd = PacketForwarder(client_iface="eth1", server_iface="eth2")
     pkt = _make_packet(sniffed_on="eth2")
@@ -37,7 +37,7 @@ def test_handle_forwards_from_server_to_client(mock_send):
     assert kwargs["iface"] == "eth1"
 
 
-@patch("servernic.forwarder.send")
+@patch("servernic.src.forwarder.send")
 def test_handle_ignores_non_tcp(mock_send):
     fwd = PacketForwarder()
     pkt = _make_packet(sniffed_on="eth1", has_tcp=False)
@@ -45,7 +45,7 @@ def test_handle_ignores_non_tcp(mock_send):
     mock_send.assert_not_called()
 
 
-@patch("servernic.forwarder.send")
+@patch("servernic.src.forwarder.send")
 def test_handle_unknown_interface(mock_send):
     fwd = PacketForwarder(client_iface="eth1", server_iface="eth2")
     pkt = _make_packet(sniffed_on="eth0")
@@ -53,7 +53,7 @@ def test_handle_unknown_interface(mock_send):
     mock_send.assert_not_called()
 
 
-@patch("servernic.forwarder.send")
+@patch("servernic.src.forwarder.send")
 def test_custom_interface_names(mock_send):
     fwd = PacketForwarder(client_iface="ens5", server_iface="ens6")
     pkt = _make_packet(sniffed_on="ens5")
