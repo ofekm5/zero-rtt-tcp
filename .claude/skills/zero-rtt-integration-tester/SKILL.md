@@ -62,7 +62,7 @@ cd /home/ec2-user/zero-rtt-demo && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
 cd /home/ec2-user/zero-rtt-demo && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/servernic.log && setsid python3 -m servernic.main < /dev/null >> /tmp/servernic.log 2>&1 &
 
 # 3. ClientNIC VM
-cd /home/ec2-user/zero-rtt-demo && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/clientnic.log && setsid python3 -m clientnic.main < /dev/null >> /tmp/clientnic.log 2>&1 &
+cd /home/ec2-user/zero-rtt-demo/zero-rtt-clientnic-translate && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/clientnic.log && setsid python3 -m clientnic.app.main < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client VM
 cd /home/ec2-user/zero-rtt-demo && python3 client-app/client.py

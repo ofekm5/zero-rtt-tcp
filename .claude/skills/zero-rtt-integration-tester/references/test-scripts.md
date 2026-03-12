@@ -25,7 +25,7 @@ Exit code = number of failed checks (0 = all passed).
 | - | Kill leftover processes + delete old logs/pcaps | (cleanup) |
 | 1 | Start Server (`setsid python3 server.py`) | `ss -tlnp` shows `:8080` |
 | 2 | Enable IP forwarding, add route on ServerNIC, start servernic.main | `ip_forward == 1` |
-| 3 | Enable IP forwarding, add route on ClientNIC, start tcpdump on eth0+eth1, start clientnic.main | `ip_forward == 1` |
+| 3 | Enable IP forwarding, add route on ClientNIC, start tcpdump on eth0+eth1, start clientnic.app.main | `ip_forward == 1` |
 | 4 | Run client (`--mode repeated --count 3 --verbose`) | `Success: 3/3` or `100%` in output |
 | 5 | Stop tcpdump | (always passes) |
 | 6 | Read `/tmp/server.log` | Contains `Received` or `bytes` |
