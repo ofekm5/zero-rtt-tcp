@@ -2,9 +2,10 @@
 
 import logging
 import threading
-from typing import Dict, List
+from typing import Dict, List, Set
 
 from scapy.packet import Packet
+from scapy.layers.l2 import Ether, get_if_hwaddr
 from scapy.layers.inet import IP, TCP
 
 from .flow_table import FlowKey, FlowTable
@@ -46,6 +47,7 @@ class ClientPacketHandler:
         buffer: PacketBuffer,
         client_iface: str = "eth0",
         server_iface: str = "eth1",
+        our_macs: Set[str] = None,
     ):
         self._flow_table = flow_table
         self._spoofer = spoofer
@@ -53,10 +55,15 @@ class ClientPacketHandler:
         self._buffer = buffer
         self._client_iface = client_iface
         self._server_iface = server_iface
+        self._our_macs = our_macs or set()
 
     def handle(self, packet: Packet) -> None:
         """Process a packet from the client."""
         if not packet.haslayer(TCP):
+            return
+
+        # Skip packets we sent ourselves (outgoing frames re-captured by sniff)
+        if packet.haslayer(Ether) and packet[Ether].src.lower() in self._our_macs:
             return
 
         tcp = packet[TCP]
@@ -117,16 +124,22 @@ class ServerPacketHandler:
         buffer: PacketBuffer,
         client_iface: str = "eth0",
         server_iface: str = "eth1",
+        our_macs: Set[str] = None,
     ):
         self._flow_table = flow_table
         self._rewriter = rewriter
         self._buffer = buffer
         self._client_iface = client_iface
         self._server_iface = server_iface
+        self._our_macs = our_macs or set()
 
     def handle(self, packet: Packet) -> None:
         """Process a packet from the server."""
         if not packet.haslayer(TCP):
+            return
+
+        # Skip packets we sent ourselves (outgoing frames re-captured by sniff)
+        if packet.haslayer(Ether) and packet[Ether].src.lower() in self._our_macs:
             return
 
         # eth1 sniffs all TCP on the interface, including packets ClientNIC itself
