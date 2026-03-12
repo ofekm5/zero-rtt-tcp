@@ -15,17 +15,27 @@ class PacketRewriter:
         send(packet[IP], iface=iface, verbose=False)
 
     def rewrite_client_to_server(self, packet: Packet, delta: int, iface: str) -> None:
-        """Rewrite client→server packet: add delta to SEQ, recalculate checksums, forward."""
+        """Rewrite client→server packet: subtract delta from ACK, recalculate checksums, forward.
+
+        The client ACKs relative to spoofed_server_ISN.  The real server
+        expects ACKs relative to real_server_ISN.
+        delta = spoofed_ISN - real_ISN  →  real_ack = client_ack - delta
+        """
         pkt = packet[IP].copy()
-        pkt[TCP].seq = (pkt[TCP].seq + delta) & 0xFFFFFFFF
+        pkt[TCP].ack = (pkt[TCP].ack - delta) & 0xFFFFFFFF
         del pkt[IP].chksum
         del pkt[TCP].chksum
         send(pkt, iface=iface, verbose=False)
 
     def rewrite_server_to_client(self, packet: Packet, delta: int, iface: str) -> None:
-        """Rewrite server→client packet: subtract delta from ACK, recalculate checksums, forward."""
+        """Rewrite server→client packet: add delta to SEQ, recalculate checksums, forward.
+
+        The server sends SEQ relative to real_server_ISN.  The client
+        expects SEQ relative to spoofed_server_ISN.
+        delta = spoofed_ISN - real_ISN  →  client_seq = server_seq + delta
+        """
         pkt = packet[IP].copy()
-        pkt[TCP].ack = (pkt[TCP].ack - delta) & 0xFFFFFFFF
+        pkt[TCP].seq = (pkt[TCP].seq + delta) & 0xFFFFFFFF
         del pkt[IP].chksum
         del pkt[TCP].chksum
         send(pkt, iface=iface, verbose=False)

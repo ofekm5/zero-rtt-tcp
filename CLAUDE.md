@@ -33,8 +33,8 @@ The ClientNIC maintains a **flow table** tracking each connection's sequence num
 - When SYN arrives from client → immediately send spoofed SYN-ACK with random ISN (spoofed_server_isn)
 - Forward original SYN to server → receive real SYN-ACK → record real ISN (real_server_isn)
 - Calculate delta: `seq_delta = spoofed_server_isn - real_server_isn`
-- All client→server packets: rewrite SEQ by adding delta
-- All server→client packets: rewrite ACK by subtracting delta
+- All client→server packets: rewrite ACK by subtracting delta
+- All server→client packets: rewrite SEQ by adding delta
 
 #### Flow Processing Pipeline
 
