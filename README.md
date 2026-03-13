@@ -15,8 +15,9 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 | Component | Role |
 |-----------|------|
 | `client-app/` | Standard unmodified TCP client |
-| `zero-rtt-clientnic-translate/clientnic/` | Core 0-RTT logic — intercepts SYN, sends spoofed SYN-ACK, rewrites sequence numbers |
-| `zero-rtt-clientnic-translate/servernic/` | Stateless transparent packet forwarder |
+| `clientnic/` | Core 0-RTT logic — intercepts SYN, sends spoofed SYN-ACK, rewrites sequence numbers |
+| `servernic/` | Stateless transparent packet forwarder |
+| `expermients/` | Experiment scripts and test reports |
 | `server-app/` | Standard unmodified TCP server |
 | `infra/` | AWS CDK stack that provisions the 4-VM topology |
 
@@ -81,7 +82,7 @@ cd infra
 ## Running the Tests
 
 ```bash
-./zero-rtt-clientnic-translate/experiment/scripts/run_all.sh
+./expermients/zero-rtt-clientnic-translate/run_experiment.sh
 ```
 
 Discovers all 4 VMs via AWS SSM, pulls latest code, starts services in the correct order, runs 3 client connections, captures packets, and validates 0-RTT behavior. Exit code = number of failures.
@@ -98,12 +99,12 @@ cd /home/ec2-user/zero-rtt-demo
 setsid python3 server-app/server.py --host 0.0.0.0 --port 8080 --verbose < /dev/null >> /tmp/server.log 2>&1 &
 
 # 2. ServerNIC VM
-cd /home/ec2-user/zero-rtt-demo/zero-rtt-clientnic-translate
-setsid python3 -m servernic.main < /dev/null >> /tmp/servernic.log 2>&1 &
+cd /home/ec2-user/zero-rtt-demo
+setsid python3 -m servernic.app-without-translate.main < /dev/null >> /tmp/servernic.log 2>&1 &
 
 # 3. ClientNIC VM
-cd /home/ec2-user/zero-rtt-demo/zero-rtt-clientnic-translate
-setsid python3 -m clientnic.app.main < /dev/null >> /tmp/clientnic.log 2>&1 &
+cd /home/ec2-user/zero-rtt-demo
+setsid python3 -m clientnic.app-with-translate.main < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client VM
 cd /home/ec2-user/zero-rtt-demo
