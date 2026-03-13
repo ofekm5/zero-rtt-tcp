@@ -83,7 +83,16 @@ Scapy provides:
 - **`servernic/README.md`**: ServerNIC forwarding implementation
 
 ### Reference
-- **`.claude/skills/scapy/SKILL.md`**: Scapy usage reference (packet construction, sniffing, sending)
+- **`.claude/skills/scapy/SKILL.md`**: Scapy skill routing index — points to modular reference files:
+  - `references/parse-decide-modify.md`: Core architectural pattern (always read alongside others)
+  - `references/sending.md`: `sendp()` vs `send()`, cross-subnet forwarding
+  - `references/kernel-integration.md`: AF_PACKET, RST suppression, re-capture loop
+  - `references/seq-rewriting-and-checksums.md`: Delta math, checksums, 32-bit wraparound
+  - `references/packet-construction.md`: Packet building, field access, flags
+  - `references/sniffing.md`: `sniff()` params, BPF filters, multi-interface threading
+  - `references/forging-and-spoofing.md`: Spoofed SYN-ACK, ISN generation
+  - `references/pcap-analysis.md`: rdpcap/wrpcap, manual checksum verification
+  - `references/unit-testing.md`: Real packets in tests, mock patterns
 - **`.claude/skills/zero-rtt-integration-tester/SKILL.md`**: Integration tester skill (run tests, diagnose failures)
 - **`.claude/skills/zero-rtt-integration-tester/references/troubleshooting.md`**: Known issues and debugging tips
 - **`.claude/skills/zero-rtt-integration-tester/references/test-scripts.md`**: run_all.sh and analyze_capture.py reference
