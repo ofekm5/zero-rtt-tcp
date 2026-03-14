@@ -28,7 +28,8 @@ class SmartNicsStack(Stack):
             "yum update -y",
             "yum install -y python3-pip git",
             "pip3 install scapy",
-            "git clone https://github.com/ofekm5/zero-rtt-demo.git /home/ec2-user/zero-rtt-demo",
+            "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token --with-decryption --query Parameter.Value --output text --region eu-central-1)",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" /home/ec2-user/zero-rtt-demo',
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
         )
 
@@ -38,7 +39,8 @@ class SmartNicsStack(Stack):
             "yum update -y",
             "yum install -y python3-pip git",
             "pip3 install scapy",
-            "git clone https://github.com/ofekm5/zero-rtt-demo.git /home/ec2-user/zero-rtt-demo",
+            "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token --with-decryption --query Parameter.Value --output text --region eu-central-1)",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" /home/ec2-user/zero-rtt-demo',
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
             # Enable IP forwarding
             "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf",
@@ -56,6 +58,10 @@ class SmartNicsStack(Stack):
                 )
             ],
         )
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["ssm:GetParameter"],
+            resources=["arn:aws:ssm:eu-central-1:*:parameter/zero-rtt/*"],
+        ))
 
         # Create security groups
         client_sg = ec2.SecurityGroup(
