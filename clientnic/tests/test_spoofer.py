@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from scapy.layers.l2 import Ether
 from scapy.layers.inet import IP, TCP
 
-from clientnic.app.src.spoofer import SynAckSpoofer
+from src.pipeline.spoofer import SynAckSpoofer
 
 
 class TestSynAckSpoofer:
@@ -68,9 +68,8 @@ class TestSynAckSpoofer:
 
         syn_ack = spoofer.create_syn_ack(syn, spoofed_isn=100)
 
-        # ack should be 0xFFFFFFFF + 1 = 0 (wraparound)
-        # Note: Scapy may handle this automatically or not
-        assert syn_ack[TCP].ack == 0x100000000  # Scapy doesn't auto-wrap
+        # ack should be (0xFFFFFFFF + 1) & 0xFFFFFFFF = 0
+        assert syn_ack[TCP].ack == 0
 
     def test_generate_random_isn_range(self):
         """Test ISN generation is within 32-bit range."""
@@ -89,7 +88,7 @@ class TestSynAckSpoofer:
         # All values should not be the same (highly unlikely with random)
         assert len(set(isns)) > 1
 
-    @patch('clientnic.app.src.spoofer.random.randint')
+    @patch('src.pipeline.spoofer.random.randint')
     def test_generate_random_isn_uses_full_range(self, mock_randint):
         """Test ISN generation uses correct range."""
         mock_randint.return_value = 12345

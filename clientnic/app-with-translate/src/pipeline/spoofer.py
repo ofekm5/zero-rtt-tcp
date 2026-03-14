@@ -19,7 +19,7 @@ class SynAckSpoofer:
                 sport=syn_packet[TCP].dport,
                 dport=syn_packet[TCP].sport,
                 seq=spoofed_isn,
-                ack=syn_packet[TCP].seq + 1,
+                ack=(syn_packet[TCP].seq + 1) & 0xFFFFFFFF,
                 flags="SA",
             )
         )
