@@ -52,22 +52,33 @@ def test_forward_from_client():
 
 ## `get_if_hwaddr` Patching
 
-`get_if_hwaddr()` queries real network interfaces — fails in CI/test environments. Patch it:
+`get_if_hwaddr()` queries real network interfaces — fails in CI/test environments. Always patch at the **module where it is imported** (not where it is defined):
 
 ```python
-@patch('clientnic.app.main.get_if_hwaddr')
-def test_startup(mock_hwaddr):
-    mock_hwaddr.return_value = "aa:bb:cc:dd:ee:ff"
-    # ... test initialization code
+# Dispatcher lives in src.pipeline.dispatcher and imports get_if_hwaddr there
+with patch("src.pipeline.dispatcher.get_if_hwaddr", return_value="aa:bb:cc:dd:ee:ff"):
+    dispatcher = Dispatcher(syn_handler, syn_ack_handler, translator,
+                            flow_table, "eth0", "eth1")
 ```
 
-Or patch at the module where it's imported:
+Use a `with patch(...)` context manager when constructing the object (the MAC collection happens in `__init__`), not as a decorator on the test method.
+
+## `tx` Module Patching
+
+Pipeline classes import `tx` as a module (`from src.utils import tx`) and call `tx.send_spoofed(...)` etc. Patch the **whole module** on the pipeline module that uses it:
+
 ```python
-@patch('mymodule.get_if_hwaddr', return_value="00:11:22:33:44:55")
-def test_mac_collection(mock_hwaddr):
-    handler = PacketHandler()
-    assert "00:11:22:33:44:55" in handler._our_macs
+with patch("src.pipeline.syn_handler.tx") as mock_tx:
+    stage.process(syn_packet)
+    mock_tx.send_spoofed.assert_called_once_with(ANY, "eth0")
+    mock_tx.forward.assert_called_once_with(ANY, "eth1")
+
+with patch("src.pipeline.translator.tx") as mock_tx:
+    translator.translate_c2s(data_packet)
+    mock_tx.forward_rewritten.assert_called_once()
 ```
+
+This is cleaner than patching individual functions and makes it obvious which send path is being exercised.
 
 ## Testing Sequence Number Wraparound
 
@@ -110,5 +121,7 @@ def test_rewrite_adds_delta(mock_send):
 This project's test files:
 - `clientnic/tests/test_spoofer.py` — SYN-ACK creation, ISN generation
 - `clientnic/tests/test_flow_table.py` — flow table CRUD, delta calculation
-- `clientnic/tests/test_handlers.py` — packet handler logic
-- `servernic/tests/test_forwarder.py` — stateless forwarding
+- `clientnic/tests/test_pipeline.py` — Dispatcher, SynHandler, SynAckHandler, Translator, PacketBuffer
+- `servernic/tests/test_dispatcher.py` — stateless forwarding
+
+A `conftest.py` in each `tests/` directory adds the app directory to `sys.path` so tests can do `from src.pipeline.dispatcher import Dispatcher` etc.

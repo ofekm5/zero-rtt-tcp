@@ -60,8 +60,10 @@ Clean separation now = straightforward offload later.
 
 ## Real-World Example (from this project)
 
-The ClientNIC handlers follow this pattern. In `handlers.py`:
+The ClientNIC pipeline follows this pattern. In `src/pipeline/dispatcher.py`:
 
-- **Parse**: `packet.haslayer(TCP)`, `packet[Ether].src`, `FlowTable.extract_key(packet)` — all header reads upfront
-- **Decide**: check if SYN vs data, look up flow table, determine if delta is known or buffering needed
-- **Modify**: `rewriter.rewrite_client_to_server()` modifies ACK, deletes checksums, sends
+- **Parse**: `packet.haslayer(TCP)`, `packet[Ether].src`, `packet.sniffed_on`, `packet[TCP].flags` — all header reads upfront in `Dispatcher.dispatch()`
+- **Decide**: classify SYN / SYN-ACK / data, check ingress interface, apply self-sent and re-capture guards
+- **Modify**: delegate to `SynHandler`, `SynAckHandler`, or `Translator` — each owns its own complete workflow (copy, rewrite ACK/SEQ, delete checksums, send via `tx.*`)
+
+See `references/oop-pipeline-structure.md` for how the handlers and Dispatcher are structured.

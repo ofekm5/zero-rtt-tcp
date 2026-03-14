@@ -38,4 +38,5 @@ from scapy.all import rdpcap, wrpcap, raw, Raw
 | `references/sniffing.md` | `sniff()` params, BPF, multi-interface, async | Capturing packets, filter setup, threading |
 | `references/forging-and-spoofing.md` | Src/dst swap, ISN generation, spoofed replies | Forging responses, SYN-ACK spoofing |
 | `references/pcap-analysis.md` | rdpcap/wrpcap, timestamps, manual checksums | Analyzing captures, offline validation |
-| `references/unit-testing.md` | Real packets in tests, mock patterns | Writing or fixing Scapy tests |
+| `references/unit-testing.md` | Real packets in tests, mock patterns, tx/get_if_hwaddr patching | Writing or fixing Scapy tests |
+| `references/oop-pipeline-structure.md` | Dispatcher, Handler-per-packet-type, tx.py, multi-iface sniff, self-sent/re-capture guards | Structuring a middlebox as OOP classes |
