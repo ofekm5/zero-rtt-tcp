@@ -10,12 +10,12 @@ description: End-to-end integration testing for the 0-RTT TCP demo across all 4 
 ### Step 1 — Run the automated script
 
 ```bash
-./integration-test/scripts/run_all.sh
+./experiments/zero-rtt-clientnic-translate/run_experiment.sh
 ```
 
 Exit code = number of failures. The script handles VM discovery, git pull, service startup, packet capture, client test, log checks, and pcap analysis automatically.
 
-See `references/test-scripts.md` for the full step-by-step breakdown and expected output of both scripts (`run_all.sh` and `analyze_capture.py`).
+See `references/test-scripts.md` for the full step-by-step breakdown and expected output of both scripts (`run_experiment.sh` and `validate_0rtt_capture.py`).
 
 ### Step 2 — Investigate any failures
 
@@ -59,10 +59,10 @@ Always start in this order: **Server -> ServerNIC -> ClientNIC -> Client**
 cd /home/ec2-user/zero-rtt-demo && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/server.log && setsid python3 server-app/server.py --host 0.0.0.0 --port 8080 < /dev/null >> /tmp/server.log 2>&1 &
 
 # 2. ServerNIC VM
-cd /home/ec2-user/zero-rtt-demo && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/servernic.log && setsid python3 -m servernic.main < /dev/null >> /tmp/servernic.log 2>&1 &
+cd /home/ec2-user/zero-rtt-demo/servernic/app-without-translate && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/servernic.log && setsid python3 main.py < /dev/null >> /tmp/servernic.log 2>&1 &
 
 # 3. ClientNIC VM
-cd /home/ec2-user/zero-rtt-demo/zero-rtt-clientnic-translate && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/clientnic.log && setsid python3 -m clientnic.app.main < /dev/null >> /tmp/clientnic.log 2>&1 &
+cd /home/ec2-user/zero-rtt-demo/clientnic/app-with-translate && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/clientnic.log && setsid python3 main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client VM
 cd /home/ec2-user/zero-rtt-demo && python3 client-app/client.py

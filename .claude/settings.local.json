@@ -4,7 +4,8 @@
       "Bash(python client.py:*)",
       "Bash(aws ssm get-command-invocation:*)",
       "Bash(aws ssm send-command:*)",
-      "Bash(chmod +x:*)"
+      "Bash(chmod +x:*)",
+      "Bash(cd:*)"
     ]
   }
 }
