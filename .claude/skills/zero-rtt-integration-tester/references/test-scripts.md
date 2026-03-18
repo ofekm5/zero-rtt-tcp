@@ -1,17 +1,17 @@
 # Integration Test Scripts
 
-Located in `integration-test/scripts/` in the repo root.
+Located in `experiments/zero-rtt-clientnic-translate/` (orchestrator) and `clientnic/` (pcap analysis).
 
 ---
 
-## run_all.sh
+## run_experiment.sh
 
 Full end-to-end orchestrator. Runs locally, drives all 4 VMs via AWS SSM.
 
 **Prerequisites**: `aws` CLI configured with SSM access, `python3` in PATH, `eu-central-1` region.
 
 ```bash
-./integration-test/scripts/run_all.sh
+./experiments/zero-rtt-clientnic-translate/run_experiment.sh
 ```
 
 Exit code = number of failed checks (0 = all passed).
@@ -24,8 +24,8 @@ Exit code = number of failed checks (0 = all passed).
 | - | `git pull origin main` on all 4 VMs via SSM | (best-effort) |
 | - | Kill leftover processes + delete old logs/pcaps | (cleanup) |
 | 1 | Start Server (`setsid python3 server.py`) | `ss -tlnp` shows `:8080` |
-| 2 | Enable IP forwarding, add route on ServerNIC, start servernic.main | `ip_forward == 1` |
-| 3 | Enable IP forwarding, add route on ClientNIC, start tcpdump on eth0+eth1, start clientnic.app.main | `ip_forward == 1` |
+| 2 | Enable IP forwarding, add route on ServerNIC, start `servernic/app-without-translate/main.py` | `ip_forward == 1` |
+| 3 | Enable IP forwarding, add route on ClientNIC, start tcpdump on eth0+eth1, start `clientnic/app-with-translate/main.py` | `ip_forward == 1` |
 | 4 | Run client (`--mode repeated --count 3 --verbose`) | `Success: 3/3` or `100%` in output |
 | 5 | Stop tcpdump | (always passes) |
 | 6 | Read `/tmp/server.log` | Contains `Received` or `bytes` |
@@ -43,13 +43,13 @@ Exit code = number of failed checks (0 = all passed).
 
 ---
 
-## analyze_capture.py
+## validate_0rtt_capture.py
 
 Validates 0-RTT behavior from pcap files captured on ClientNIC.
 Runs **on the ClientNIC VM** (where the pcap files reside).
 
 ```bash
-python3 integration-test/scripts/analyze_capture.py \
+python3 /home/ec2-user/zero-rtt-demo/clientnic/validate_0rtt_capture.py \
     --client-pcap /tmp/client_side.pcap \
     --server-pcap /tmp/server_side.pcap
 ```
