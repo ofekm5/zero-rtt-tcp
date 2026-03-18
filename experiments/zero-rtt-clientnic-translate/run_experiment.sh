@@ -178,7 +178,7 @@ ssm_bg "$SERVERNIC_ID" \
 ssm_bg "$SERVERNIC_ID" \
     "iptables -F FORWARD 2>/dev/null; iptables -A FORWARD -p tcp --dport 8080 -j DROP; iptables -A FORWARD -p tcp --sport 8080 -j DROP"
 ssm_bg "$SERVERNIC_ID" \
-    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/servernic.log && setsid python3 -u $REPO_PATH/servernic/app-without-translate/main.py < /dev/null >> /tmp/servernic.log 2>&1 &"
+    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/servernic.log && setsid python3 -u $REPO_PATH/servernic/app-without-translate/main.py --client-iface eth0 --server-iface eth1 < /dev/null >> /tmp/servernic.log 2>&1 &"
 sleep 2
 
 FWRD=$(ssm_stdout "$SERVERNIC_ID" "cat /proc/sys/net/ipv4/ip_forward" 30)
