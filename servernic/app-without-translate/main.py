@@ -5,7 +5,7 @@ import logging
 from scapy.sendrecv import sniff
 
 from src.utils.logger import setup_logging
-from src.pipeline.dispatcher import Dispatcher
+from src.pipeline import Pipeline
 
 
 def main():
@@ -20,13 +20,13 @@ def main():
     logger.info("Starting ServerNIC...")
     logger.info("Forwarding between %s (ClientNIC) <-> %s (Server)", args.client_iface, args.server_iface)
 
-    dispatcher = Dispatcher(client_iface=args.client_iface, server_iface=args.server_iface)
+    pipeline = Pipeline(client_iface=args.client_iface, server_iface=args.server_iface)
 
     bpf = f"tcp port {args.port} and not host 169.254.169.254"
     logger.info("Sniffing on [%s, %s] with filter: %s", args.client_iface, args.server_iface, bpf)
     sniff(
         iface=[args.client_iface, args.server_iface],
-        prn=dispatcher.dispatch,
+        prn=pipeline.feed,
         filter=bpf,
         store=False,
     )
