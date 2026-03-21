@@ -2,7 +2,7 @@
 
 import threading
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from scapy.packet import Packet
 from scapy.layers.inet import IP, TCP
@@ -31,6 +31,7 @@ class FlowTable:
 
     def __init__(self):
         self._flows: Dict[FlowKey, FlowEntry] = {}
+        self._buffer: Dict[FlowKey, List[Packet]] = {}
         self._lock = threading.Lock()
 
     def create_flow(self, key: FlowKey, client_isn: int, spoofed_isn: int) -> FlowEntry:
@@ -58,6 +59,16 @@ class FlowTable:
             entry.seq_delta = (entry.spoofed_server_isn - real_server_isn) & 0xFFFFFFFF
             entry.state = "ESTABLISHED"
             return entry.seq_delta
+
+    def buffer_packet(self, key: FlowKey, packet: Packet) -> None:
+        """Buffer a packet for the given flow (awaiting delta)."""
+        with self._lock:
+            self._buffer.setdefault(key, []).append(packet)
+
+    def flush_buffer(self, key: FlowKey) -> List[Packet]:
+        """Remove and return all buffered packets for the given flow."""
+        with self._lock:
+            return self._buffer.pop(key, [])
 
     @staticmethod
     def extract_key(packet: Packet) -> FlowKey:

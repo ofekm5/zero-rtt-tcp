@@ -3,17 +3,16 @@
 import logging
 
 from scapy.layers.inet import IP, TCP
+from scapy.sendrecv import send
 
-from src.utils import tx
 from src.utils.flow_table import FlowKey, FlowTable
 
 logger = logging.getLogger("clientnic")
 
 
 class Translator:
-    def __init__(self, flow_table, buffer, client_iface: str, server_iface: str):
+    def __init__(self, flow_table: FlowTable, client_iface: str, server_iface: str):
         self._flow_table = flow_table
-        self._buffer = buffer
         self._client_iface = client_iface
         self._server_iface = server_iface
 
@@ -26,9 +25,9 @@ class Translator:
             pkt[TCP].ack = (pkt[TCP].ack - entry.seq_delta) & 0xFFFFFFFF
             del pkt[IP].chksum
             del pkt[TCP].chksum
-            tx.forward_rewritten(pkt, self._server_iface)
+            send(pkt, iface=self._server_iface, verbose=False)
         else:
-            self._buffer.add(key, packet)
+            self._flow_table.buffer_packet(key, packet)
 
     def translate_s2c(self, packet) -> None:
         """Server→client: add delta to SEQ."""
@@ -46,4 +45,4 @@ class Translator:
         pkt[TCP].seq = (pkt[TCP].seq + entry.seq_delta) & 0xFFFFFFFF
         del pkt[IP].chksum
         del pkt[TCP].chksum
-        tx.forward_rewritten(pkt, self._client_iface)
+        send(pkt, iface=self._client_iface, verbose=False)
