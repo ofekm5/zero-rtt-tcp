@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Response Conciseness Guidelines
 
-**Core Principle**: Keep non-code responses concise and focused on actionable information.
+**Core Principle**: Keep non-code responses concise and focused on actionable information, push changes directly to main branch.
 
 **Response Length Rules**:
 - Maximum 3-4 paragraphs for non-code responses
@@ -105,7 +105,7 @@ Scapy provides:
 - **`servernic/README.md`**: ServerNIC forwarding implementation
 
 ### Reference
-- **`.claude/skills/scapy/SKILL.md`**: Scapy skill routing index — points to modular reference files:
+- **`.claude/skills/scapy-development/SKILL.md`**: Scapy skill routing index — points to modular reference files:
   - `references/parse-decide-modify.md`: Core architectural pattern (always read alongside others)
   - `references/sending.md`: `sendp()` vs `send()`, cross-subnet forwarding
   - `references/kernel-integration.md`: AF_PACKET, RST suppression, re-capture loop
