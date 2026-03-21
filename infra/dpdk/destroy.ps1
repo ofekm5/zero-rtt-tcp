@@ -1,4 +1,4 @@
-# destroy.ps1 - Tear down the SmartNICs CDK stacks
+# destroy.ps1 - Tear down the SmartNICs CDK stacks (DPDK variant)
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
@@ -11,7 +11,7 @@ Push-Location $ScriptDir
 
 try {
     # Use the shared repo-root venv
-    $VenvDir = Join-Path $ScriptDir "..\venv"
+    $VenvDir = Join-Path $ScriptDir "..\..\venv"
     if (-not (Test-Path $VenvDir)) {
         Write-Host "[*] Creating virtual environment..."
         python -m venv $VenvDir
