@@ -17,7 +17,44 @@ Exit code = number of failures. The script handles VM discovery, git pull, servi
 
 See `references/test-scripts.md` for the full step-by-step breakdown and expected output of both scripts (`run_experiment.sh` and `validate_0rtt_capture.py`).
 
-### Step 2 — Investigate any failures
+### Step 2 — Report results to the user in chat
+
+**Always surface the full experiment output to the user.** Most operations happen silently on remote VMs — the user cannot see them. After the script completes, post a structured summary like the following:
+
+---
+**Experiment Run — `<timestamp>`**
+
+**Overall: ✅ ALL PASSED** / **❌ N FAILURE(S)**
+
+| Step | Check | Result |
+|------|-------|--------|
+| 1 | Server listening on :8080 | ✅ PASS |
+| 2 | ServerNIC IP forwarding enabled | ✅ PASS |
+| 3 | ClientNIC IP forwarding enabled | ✅ PASS |
+| 4 | All 3 client connections succeeded | ✅ PASS |
+| 6 | Server received data | ✅ PASS |
+| 7 | ClientNIC flow table activity | ✅ PASS |
+| 8 | Packet capture analysis | ✅ PASS |
+
+**Client output** (Step 4 — did the client's 3 TCP connections get through?):
+```
+<client stdout here>
+```
+
+**ClientNIC log excerpt** (Step 7 — did 0-RTT logic fire? Look for SYN intercept, spoofed SYN-ACK, and delta calculation):
+```
+<relevant clientnic.log lines>
+```
+
+**Packet analysis** (Step 8 — did the pcap confirm spoofed SYN-ACK arrived first and seq numbers were translated correctly?):
+```
+<analysis stdout here>
+```
+---
+
+For each [FAIL], quote the exact log line or output that caused the failure. This context is essential — the user cannot see the raw script output.
+
+### Step 3 — Investigate any failures
 
 The script reports pass/fail but cannot diagnose *why* something failed. When any check fails:
 
