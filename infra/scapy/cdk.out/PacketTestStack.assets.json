@@ -1,0 +1,36 @@
+{
+  "version": "52.0.0",
+  "files": {
+    "7fa1e366ee8a9ded01fc355f704cff92bfd179574e6f9cfee800a3541df1b200": {
+      "displayName": "PacketTestStack/Custom::VpcRestrictDefaultSGCustomResourceProvider Code",
+      "source": {
+        "path": "asset.7fa1e366ee8a9ded01fc355f704cff92bfd179574e6f9cfee800a3541df1b200",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "191106064063-eu-central-1-84672df5": {
+          "bucketName": "cdk-hnb659fds-assets-191106064063-eu-central-1",
+          "objectKey": "7fa1e366ee8a9ded01fc355f704cff92bfd179574e6f9cfee800a3541df1b200.zip",
+          "region": "eu-central-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::191106064063:role/cdk-hnb659fds-file-publishing-role-191106064063-eu-central-1"
+        }
+      }
+    },
+    "4b72793e2a3b257cc3ae5fc8e17e1a3d8a0e6ee922d965ff7903135cf0a8d301": {
+      "displayName": "PacketTestStack Template",
+      "source": {
+        "path": "PacketTestStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "191106064063-eu-central-1-9fefec1e": {
+          "bucketName": "cdk-hnb659fds-assets-191106064063-eu-central-1",
+          "objectKey": "4b72793e2a3b257cc3ae5fc8e17e1a3d8a0e6ee922d965ff7903135cf0a8d301.json",
+          "region": "eu-central-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::191106064063:role/cdk-hnb659fds-file-publishing-role-191106064063-eu-central-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}
