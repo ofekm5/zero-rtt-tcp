@@ -134,7 +134,7 @@ Specialist agent prompts under `.claude/context/agents-system-prompts/`:
 
 ## Development Status
 
-- [x] ServerNIC stateless forwarder (`servernic/app-without-translate/main.py`)
+- [x] ServerNIC stateless forwarder (`servernic/scapy/main.py`)
 - [x] Client TCP application (`client-app/client.py`)
 - [x] Server TCP application (`server-app/server.py`)
 - [x] ClientNIC 0-RTT logic (`clientnic/`)
@@ -197,7 +197,7 @@ client-app/
 clientnic/
 ├── validate_0rtt_capture.py  # pcap analysis: spoofed SYN-ACK, ISN delta, checksums
 ├── README.md
-├── app-with-translate/
+├── scapy/                    # Scapy-based implementation (complete)
 │   ├── main.py               # Entry point, sniffers on eth0/eth1
 │   └── src/
 │       ├── handlers.py       # SYN interception, 0-RTT logic
@@ -205,20 +205,18 @@ clientnic/
 │       ├── rewriter.py       # Seq/ack modification, checksum recalc
 │       ├── spoofer.py        # Spoofed SYN-ACK generation
 │       └── logger.py         # Packet logging
-└── tests/
-    ├── test_flow_table.py
-    ├── test_handlers.py
-    └── test_spoofer.py
+└── dpdk/                     # DPDK-based implementation (WIP)
+    └── README.md
 
 servernic/
 ├── README.md
-├── app-without-translate/
-│   ├── main.py             # Simple packet forwarder
+├── scapy/                    # Scapy-based implementation (complete)
+│   ├── main.py               # Simple packet forwarder
 │   └── src/
-│       ├── forwarder.py    # Forwarding logic
-│       └── logger.py       # Packet logging
-└── tests/
-    └── test_forwarder.py
+│       ├── forwarder.py      # Forwarding logic
+│       └── logger.py         # Packet logging
+└── dpdk/                     # DPDK-based implementation (WIP)
+    └── README.md
 
 expermients/
 ├── zero-rtt-clientnic-translate/

@@ -174,8 +174,8 @@ sleep 8   # give git pulls time to complete before starting anything
 # Also flush iptables FORWARD rules to avoid stale DROP rules from a prior run.
 log "Cleaning up previous runs..."
 ssm_bg "$SERVER_ID"    "pkill -f 'python3.*server.py' 2>/dev/null; rm -f /tmp/server.log"
-ssm_bg "$SERVERNIC_ID" "pkill -f 'servernic/app-without-translate' 2>/dev/null; rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null"
-ssm_bg "$CLIENTNIC_ID" "pkill -f 'clientnic/app-with-translate' 2>/dev/null; pkill tcpdump 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/server_side.pcap; iptables -F FORWARD 2>/dev/null"
+ssm_bg "$SERVERNIC_ID" "pkill -f 'servernic/scapy' 2>/dev/null; rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null"
+ssm_bg "$CLIENTNIC_ID" "pkill -f 'clientnic/scapy' 2>/dev/null; pkill tcpdump 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/server_side.pcap; iptables -F FORWARD 2>/dev/null"
 sleep 3
 
 
@@ -222,7 +222,7 @@ ssm_bg "$SERVERNIC_ID" \
 ssm_bg "$SERVERNIC_ID" \
     "iptables -F FORWARD 2>/dev/null; iptables -A FORWARD -p tcp --dport 8080 -j DROP; iptables -A FORWARD -p tcp --sport 8080 -j DROP"
 ssm_bg "$SERVERNIC_ID" \
-    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/servernic.log && setsid python3 -u $REPO_PATH/servernic/app-without-translate/main.py --client-iface eth0 --server-iface eth1 < /dev/null >> /tmp/servernic.log 2>&1 &"
+    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/servernic.log && setsid python3 -u $REPO_PATH/servernic/scapy/main.py --client-iface eth0 --server-iface eth1 < /dev/null >> /tmp/servernic.log 2>&1 &"
 sleep 2
 
 # IP forwarding must be enabled at the OS level so the kernel doesn't drop
@@ -268,7 +268,7 @@ ssm_bg "$CLIENTNIC_ID" \
 sleep 1
 
 ssm_bg "$CLIENTNIC_ID" \
-    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/clientnic.log && setsid python3 -u $REPO_PATH/clientnic/app-with-translate/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &"
+    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/clientnic.log && setsid python3 -u $REPO_PATH/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &"
 sleep 2
 
 FWRD=$(ssm_stdout "$CLIENTNIC_ID" "cat /proc/sys/net/ipv4/ip_forward" 30)

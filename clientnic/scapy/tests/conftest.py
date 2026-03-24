@@ -1,4 +1,4 @@
-"""pytest configuration: add app-with-translate to sys.path so tests can import src.*"""
+"""pytest configuration: add scapy/ to sys.path so tests can import src.*"""
 
 import sys
 import os

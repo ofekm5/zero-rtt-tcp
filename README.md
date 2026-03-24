@@ -100,11 +100,11 @@ setsid python3 server-app/server.py --host 0.0.0.0 --port 8080 --verbose < /dev/
 
 # 2. ServerNIC VM
 cd /home/ec2-user/zero-rtt-demo
-setsid python3 -m servernic.app-without-translate.main < /dev/null >> /tmp/servernic.log 2>&1 &
+setsid python3 servernic/scapy/main.py < /dev/null >> /tmp/servernic.log 2>&1 &
 
 # 3. ClientNIC VM
 cd /home/ec2-user/zero-rtt-demo
-setsid python3 -m clientnic.app-with-translate.main < /dev/null >> /tmp/clientnic.log 2>&1 &
+setsid python3 clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client VM
 cd /home/ec2-user/zero-rtt-demo

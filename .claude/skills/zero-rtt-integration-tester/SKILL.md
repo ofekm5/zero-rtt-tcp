@@ -96,10 +96,10 @@ Always start in this order: **Server -> ServerNIC -> ClientNIC -> Client**
 cd /home/ec2-user/zero-rtt-demo && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/server.log && setsid python3 server-app/server.py --host 0.0.0.0 --port 8080 < /dev/null >> /tmp/server.log 2>&1 &
 
 # 2. ServerNIC VM
-cd /home/ec2-user/zero-rtt-demo/servernic/app-without-translate && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/servernic.log && setsid python3 main.py < /dev/null >> /tmp/servernic.log 2>&1 &
+cd /home/ec2-user/zero-rtt-demo/servernic/scapy && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/servernic.log && setsid python3 main.py < /dev/null >> /tmp/servernic.log 2>&1 &
 
 # 3. ClientNIC VM
-cd /home/ec2-user/zero-rtt-demo/clientnic/app-with-translate && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/clientnic.log && setsid python3 main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
+cd /home/ec2-user/zero-rtt-demo/clientnic/scapy && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/clientnic.log && setsid python3 main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client VM
 cd /home/ec2-user/zero-rtt-demo && python3 client-app/client.py
