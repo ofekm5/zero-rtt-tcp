@@ -5,7 +5,8 @@
       "Bash(aws ssm get-command-invocation:*)",
       "Bash(aws ssm send-command:*)",
       "Bash(chmod +x:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(openspec status:*)"
     ]
   }
 }
