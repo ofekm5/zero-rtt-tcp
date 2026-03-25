@@ -9,6 +9,7 @@
 #include <rte_ip.h>
 #include <rte_tcp.h>
 #include <rte_mbuf.h>
+#include <rte_ethdev.h>
 
 void proc_init(struct packet_processor *proc, struct flow_table *ft,
                struct eth0_io *eth0, struct eth1_io *eth1)
