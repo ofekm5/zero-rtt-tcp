@@ -12,6 +12,7 @@ sources = files(
     'checksum.c',
     'io.c',
     'log.c',
+    'capture.c',
     'packet_processor.c',
     'translator.c',
     'pipeline.c',

@@ -88,7 +88,7 @@ class SmartNicsStack(Stack):
             "swapon /swapfile",
             "echo '/swapfile swap swap defaults 0 0' >> /etc/fstab",
             # Build tools — pip3 versions required (yum packages too old or broken)
-            "pip3 install meson ninja pyelftools",
+            "pip3 install meson ninja pyelftools scapy",
             # Build DPDK 23.11 with -j1 to stay within memory budget
             "cd /opt",
             "curl -LO https://fast.dpdk.org/rel/dpdk-23.11.tar.xz",

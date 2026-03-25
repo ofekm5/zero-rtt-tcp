@@ -9,6 +9,7 @@
 #include <rte_mbuf.h>
 
 #include "pipeline.h"
+#include "capture.h"
 #include "log.h"
 
 #define MBUF_POOL_SIZE  8191
@@ -71,17 +72,19 @@ int main(int argc, char *argv[])
     int      gw_mac_set = 0;
     const char *client_iface = "eth0";
     const char *server_iface = "eth1";
+    const char *server_pcap_path = NULL;
 
     static struct option long_opts[] = {
         {"port",           required_argument, NULL, 'p'},
         {"gw-mac",         required_argument, NULL, 'g'},
         {"client-iface",   required_argument, NULL, 'c'},
         {"server-iface",   required_argument, NULL, 's'},
+        {"server-pcap",    required_argument, NULL, 'w'},
         {NULL, 0, NULL, 0}
     };
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "p:g:c:s:", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "p:g:c:s:w:", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'p':
             app_port = (uint16_t)atoi(optarg);
@@ -99,9 +102,13 @@ int main(int argc, char *argv[])
         case 's':
             server_iface = optarg;
             break;
+        case 'w':
+            server_pcap_path = optarg;
+            break;
         default:
-            fprintf(stderr, "Usage: %s [EAL opts] -- --port=PORT --gw-mac=MAC\n",
-                    argv[0]);
+            fprintf(stderr,
+                    "Usage: %s [EAL opts] -- --port=PORT --gw-mac=MAC"
+                    " [--server-pcap=FILE]\n", argv[0]);
             return 1;
         }
     }
@@ -151,6 +158,14 @@ int main(int argc, char *argv[])
     trans_init(&trans, &ft, &eth0, &eth1);
     pipeline_init(&pipeline, &proc, &trans, &eth0, &eth1, app_port);
 
+    /* Optional eth1 packet capture */
+    struct pcap_writer *capture = NULL;
+    if (server_pcap_path) {
+        if (pcap_writer_open(&capture, server_pcap_path) < 0)
+            LOG_ERR("capture: failed to open %s — continuing without capture",
+                    server_pcap_path);
+    }
+
     /* ── iptables rules ──────────────────────────────────────────────────── */
     install_iptables(app_port);
 
@@ -173,12 +188,15 @@ int main(int argc, char *argv[])
         /* Poll eth1 (DPDK rx_burst) */
         uint16_t nb_rx = rte_eth_rx_burst(eth1.port_id, 0, rx_bufs, RX_BURST_SIZE);
         for (uint16_t i = 0; i < nb_rx; i++) {
+            if (capture)
+                pcap_writer_write_mbuf(capture, rx_bufs[i]);
             pipeline_feed_eth1(&pipeline, rx_bufs[i]);
             rte_pktmbuf_free(rx_bufs[i]);
         }
     }
 
     LOG_INFO("Shutting down...");
+    pcap_writer_close(capture);
     rte_eth_dev_stop(eth1.port_id);
     rte_eth_dev_close(eth1.port_id);
     rte_eal_cleanup();
