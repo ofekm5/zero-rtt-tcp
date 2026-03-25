@@ -5,24 +5,93 @@ description: End-to-end integration testing for the 0-RTT TCP demo across all 4 
 
 # 0-RTT Integration Tester
 
-## How to run integration tests
+## Step 0 — Choose ClientNIC implementation
 
-### Step 1 — Run the automated script
+**Always ask the user** which ClientNIC data plane they want to test before doing anything:
+
+> "Which ClientNIC implementation should I run the experiment with?
+> 1. **Scapy** — Python/Scapy, AF_PACKET (`experiments/zero-rtt-clientnic-translate/run_experiment.sh`)
+> 2. **DPDK** — C/DPDK 23.11 ENA PMD (`experiments/zero-rtt-dpdk/run_experiment.sh`)"
+
+Set variables based on the answer:
+
+| Variable | Scapy | DPDK |
+|----------|-------|------|
+| `EXPERIMENT_SCRIPT` | `experiments/zero-rtt-clientnic-translate/run_experiment.sh` | `experiments/zero-rtt-dpdk/run_experiment.sh` |
+| `REPORT_DIR` | `experiments/zero-rtt-clientnic-translate/reports/` | `experiments/zero-rtt-dpdk/reports/` |
+| `IMPL_NAME` | `scapy` | `dpdk` |
+
+## Step 1 — Run the automated script
 
 ```bash
-./experiments/zero-rtt-clientnic-translate/run_experiment.sh
+./<EXPERIMENT_SCRIPT>
 ```
 
 Exit code = number of failures. The script handles VM discovery, git pull, service startup, packet capture, client test, log checks, and pcap analysis automatically.
 
-See `references/test-scripts.md` for the full step-by-step breakdown and expected output of both scripts (`run_experiment.sh` and `validate_0rtt_capture.py`).
+See `references/test-scripts.md` for the full step-by-step breakdown and expected output of both scripts.
 
-### Step 2 — Report results to the user in chat
+**DPDK note**: The CDK user data builds `clientnic-dpdk` at provision time (~15-20 min after deploy). The DPDK script checks whether the binary exists and rebuilds from source if needed. If the binary is missing, wait for the user data to finish before running.
 
-**Always surface the full experiment output to the user.** Most operations happen silently on remote VMs — the user cannot see them. After the script completes, post a structured summary like the following:
+## Step 2 — Save the report
+
+**Always save a report to the experiment's `reports/` subfolder** after every run, regardless of pass/fail outcome. Never skip this step.
+
+Report filename: `integration-test-report-YYYY-MM-DD.md` (today's date).
+Report path: `<REPORT_DIR>/integration-test-report-YYYY-MM-DD.md`
+
+Report template:
+
+```markdown
+# Integration Test Report — <YYYY-MM-DD>
+
+**Implementation**: <Scapy | DPDK>
+**Experiment script**: `<EXPERIMENT_SCRIPT>`
+**Overall result**: <ALL PASSED ✅ | N FAILURE(S) ❌>
+
+## Check Results
+
+| Step | Check | Result |
+|------|-------|--------|
+| 10.1 / Build | Binary compiles cleanly | ✅ / ❌ |   ← DPDK only
+| 10.2 / Smoke | Binary starts without error | ✅ / ❌ |  ← DPDK only
+| 1 | Server listening on :8080 | ✅ / ❌ |
+| 2 | ServerNIC IP forwarding enabled | ✅ / ❌ |
+| 3 | ClientNIC process running | ✅ / ❌ |
+| 4 | Client connections succeeded | ✅ / ❌ |
+| 6 | Server received data | ✅ / ❌ |
+| 7 | ClientNIC 0-RTT flow table activity | ✅ / ❌ |
+| 8 | Packet capture analysis — all checks passed | ✅ / ❌ |
+
+## Client Output
+
+```
+<client stdout — connection count and TTFB statistics>
+```
+
+## ClientNIC Log (0-RTT activity)
+
+```
+<relevant lines: SYN intercepted, spoofed SYN-ACK sent, delta calculated, buffered packets flushed>
+```
+
+## Packet Capture Analysis
+
+```
+<full validate_0rtt_capture.py output>
+```
+
+## Failures / Notes
+
+<Describe any failures with exact log lines. "None" if all passed.>
+```
+
+## Step 3 — Report results to the user in chat
+
+After saving the report, post a concise summary in chat:
 
 ---
-**Experiment Run — `<timestamp>`**
+**Experiment Run — `<timestamp>`** (`<IMPL_NAME>`)
 
 **Overall: ✅ ALL PASSED** / **❌ N FAILURE(S)**
 
@@ -30,40 +99,41 @@ See `references/test-scripts.md` for the full step-by-step breakdown and expecte
 |------|-------|--------|
 | 1 | Server listening on :8080 | ✅ PASS |
 | 2 | ServerNIC IP forwarding enabled | ✅ PASS |
-| 3 | ClientNIC IP forwarding enabled | ✅ PASS |
-| 4 | All 3 client connections succeeded | ✅ PASS |
+| 3 | ClientNIC process running | ✅ PASS |
+| 4 | Client connections succeeded | ✅ PASS |
 | 6 | Server received data | ✅ PASS |
-| 7 | ClientNIC flow table activity | ✅ PASS |
+| 7 | ClientNIC 0-RTT flow table activity | ✅ PASS |
 | 8 | Packet capture analysis | ✅ PASS |
 
-**Client output** (Step 4 — did the client's 3 TCP connections get through?):
+**Client output** (Step 4):
 ```
-<client stdout here>
+<client stdout>
 ```
 
-**ClientNIC log excerpt** (Step 7 — did 0-RTT logic fire? Look for SYN intercept, spoofed SYN-ACK, and delta calculation):
+**ClientNIC log excerpt** (Step 7 — SYN intercept, spoofed SYN-ACK, delta):
 ```
 <relevant clientnic.log lines>
 ```
 
-**Packet analysis** (Step 8 — did the pcap confirm spoofed SYN-ACK arrived first and seq numbers were translated correctly?):
+**Packet analysis** (Step 8):
 ```
-<analysis stdout here>
+<validate_0rtt_capture.py output>
 ```
+
+**Report saved**: `<REPORT_DIR>/integration-test-report-YYYY-MM-DD.md`
+
 ---
 
-For each [FAIL], quote the exact log line or output that caused the failure. This context is essential — the user cannot see the raw script output.
+For each [FAIL], quote the exact log line or output that caused the failure.
 
-### Step 3 — Investigate any failures
-
-The script reports pass/fail but cannot diagnose *why* something failed. When any check fails:
+## Step 4 — Investigate any failures
 
 1. **Read the logs** — the script prints them inline; look for the first anomaly
 2. **SSM into the relevant VM** and run the manual diagnostic commands below
 3. **Cross-correlate**: clientnic log + pcap + server log together tell the full story
 4. **Report observed vs expected** for each failed check with exact log lines or packet timestamps
 
-Common failure patterns and their fixes are in `references/troubleshooting.md`.
+Common failure patterns and their fixes: `references/troubleshooting.md`.
 
 ---
 
@@ -71,7 +141,7 @@ Common failure patterns and their fixes are in `references/troubleshooting.md`.
 
 Use the steps below when the script fails partway, or to run individual checks in isolation.
 
-## VM Access
+### VM Access
 
 Discover instance IDs and IPs:
 ```bash
@@ -87,90 +157,84 @@ aws ssm start-session --target <instance-id> --region eu-central-1
 
 **Note**: VM IPs change on instance restart. Always query fresh IPs before testing.
 
-## Startup Order
+### Startup Order
 
-Always start in this order: **Server -> ServerNIC -> ClientNIC -> Client**
+Always: **Server → ServerNIC → ClientNIC → Client**
 
 ```bash
 # 1. Server VM
-cd /home/ec2-user/zero-rtt-demo && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/server.log && setsid python3 server-app/server.py --host 0.0.0.0 --port 8080 < /dev/null >> /tmp/server.log 2>&1 &
+setsid python3 server-app/server.py --host 0.0.0.0 --port 8080 --verbose \
+    < /dev/null >> /tmp/server.log 2>&1 &
 
 # 2. ServerNIC VM
-cd /home/ec2-user/zero-rtt-demo/servernic/scapy && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/servernic.log && setsid python3 main.py < /dev/null >> /tmp/servernic.log 2>&1 &
+setsid python3 servernic/scapy/main.py --client-iface eth0 --server-iface eth1 \
+    < /dev/null >> /tmp/servernic.log 2>&1 &
 
-# 3. ClientNIC VM
-cd /home/ec2-user/zero-rtt-demo/clientnic/scapy && echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> /tmp/clientnic.log && setsid python3 main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
+# 3a. ClientNIC VM — Scapy
+setsid python3 clientnic/scapy/main.py \
+    < /dev/null >> /tmp/clientnic.log 2>&1 &
+
+# 3b. ClientNIC VM — DPDK
+#     GW_MAC = ServerNIC's eth0 MAC: cat /sys/class/net/eth0/address (on ServerNIC)
+setsid ./clientnic/dpdk/builddir/clientnic-dpdk -l 0 -- \
+    --port=8080 --gw-mac=<GW_MAC> --server-pcap=/tmp/server_side.pcap \
+    < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client VM
-cd /home/ec2-user/zero-rtt-demo && python3 client-app/client.py
+python3 client-app/client.py --host <server-ip> --port 8080 --mode repeated --count 3 --verbose
 ```
 
-Verify server is listening before proceeding:
-```bash
-ss -tlnp | grep 8080
-```
+### Pre-flight Checks
 
-## Pre-flight Checks
-
-Run on NIC VMs before starting:
+**Both implementations:**
 ```bash
-# IP forwarding must be 1
+# IP forwarding must be 1 on NIC VMs
 cat /proc/sys/net/ipv4/ip_forward
 
-# Check interface names (may not be eth0/eth1 on all AMIs)
-ip link show
-
-# Enable IP forwarding if needed (CDK sets this persistently; only needed if CDK wasn't run)
-echo 1 > /proc/sys/net/ipv4/ip_forward
+# Block kernel forwarding so Scapy/DPDK wins the race
+iptables -A FORWARD -p tcp --dport 8080 -j DROP
+iptables -A FORWARD -p tcp --sport 8080 -j DROP
 ```
 
-## Verification Checklist
-
-### 1. Basic Connectivity
-- Client sends data, server receives it correctly
-- Check server log: `tail -f /tmp/server.log`
-
-### 2. 0-RTT Behavior
-Spoofed SYN-ACK must arrive at client **before** the real SYN-ACK:
+**DPDK only (ClientNIC VM):**
 ```bash
-# Capture on ClientNIC eth0 (client-facing)
-tcpdump -i eth0 -nn -tttt 'tcp port 8080' -w /tmp/client_side.pcap
+# eth1 must be bound to vfio-pci (done by CDK at boot)
+dpdk-devbind.py --status | grep -E "(vfio|eth1)"
 
-# Capture on ClientNIC eth1 (server-facing)
-tcpdump -i eth1 -nn -tttt 'tcp port 8080' -w /tmp/server_side.pcap
-```
-Compare SYN-ACK timestamps: spoofed (eth0) must precede real (eth1 inbound -> eth0 forwarded).
+# Hugepages must be configured
+grep HugePages_Total /proc/meminfo   # expect 512
 
-### 3. Sequence Number Translation
-- Spoofed ISN must differ from real ISN
-- Delta must be applied correctly on all subsequent packets
-- Check ClientNIC logs: `tail -f /tmp/clientnic.log` for "delta calculated" entries
+# Binary must be built
+ls -lh /home/ec2-user/zero-rtt-demo/clientnic/dpdk/builddir/clientnic-dpdk
 
-### 4. Checksum Integrity
-Must return empty (no bad checksums):
-```bash
-tshark -r /tmp/capture.pcap -Y "tcp.checksum_bad==1"
+# Rebuild if needed
+export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig
+cd /home/ec2-user/zero-rtt-demo/clientnic/dpdk
+meson setup builddir && ninja -C builddir
 ```
 
-### 5. Flow Table State
-Logs must show delta calculated per connection:
+### Packet Capture
+
+**Scapy** — tcpdump works on both interfaces:
 ```bash
-grep -E "delta|flow|SYN" /tmp/clientnic.log
+tcpdump -i eth0 -nn -tttt 'tcp port 8080' -w /tmp/client_side.pcap &
+tcpdump -i eth1 -nn -tttt 'tcp port 8080' -w /tmp/server_side.pcap &
 ```
 
-## Packet Capture Diagnostics
-
-Always capture on both sides of each hop to isolate where packets are lost:
+**DPDK** — eth1 is DPDK-controlled, tcpdump cannot capture it. Use `--server-pcap`:
 ```bash
-# Live view (quick check)
-tcpdump -i any -nn 'tcp port 8080' -c 20
+tcpdump -i eth0 -nn -tttt 'tcp port 8080' -w /tmp/client_side.pcap &
+# eth1 captured via --server-pcap flag on the binary (see startup above)
 ```
 
-## Updating Code on VMs
+### Running the Validator
 
-Run git pull as ec2-user (SSM runs as root without $HOME):
 ```bash
-sudo -u ec2-user git -C /home/ec2-user/zero-rtt-demo pull origin main
+# Copy to /tmp first — running from clientnic/ causes clientnic/scapy/ to shadow the scapy package
+cp /home/ec2-user/zero-rtt-demo/clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py
+python3 /tmp/validate_0rtt.py \
+    --client-pcap /tmp/client_side.pcap \
+    --server-pcap /tmp/server_side.pcap
 ```
 
 ## Known Issues
@@ -178,10 +242,8 @@ sudo -u ec2-user git -C /home/ec2-user/zero-rtt-demo pull origin main
 See `references/troubleshooting.md` for documented bugs and fixes:
 - SSM daemon detachment (use `setsid`, not `nohup ... &`)
 - Scapy `sendp()` vs `send()` for cross-subnet forwarding
-- Spoofed SYN-ACK arriving late (sniff filter too broad — excludes `169.254.169.254`)
-- ServerNIC interface name mismatch
-- Security group rules needed for port 8080 and ICMP
-
-## Reporting
-
-For each check, report **observed vs expected** explicitly. Flag any deviation. Never modify application code — only observe and report.
+- Spoofed SYN-ACK arriving late (sniff filter too broad)
+- Kernel forwarding races Scapy (fix: iptables FORWARD DROP)
+- Packet re-capture loop on ServerNIC (fix: MAC filter)
+- Swapped SEQ/ACK rewrite fields
+- `scapy/` directory shadowing when running validator from `clientnic/` (fix: copy to `/tmp/`)

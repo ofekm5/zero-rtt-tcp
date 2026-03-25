@@ -1,90 +1,124 @@
 # Integration Test Scripts
 
-Located in `experiments/zero-rtt-clientnic-translate/` (orchestrator) and `clientnic/` (pcap analysis).
+Two experiment orchestrators and one pcap validator. Choose the orchestrator based on the ClientNIC implementation being tested.
 
 ---
 
-## run_experiment.sh
+## experiments/zero-rtt-clientnic-translate/run_experiment.sh
 
-Full end-to-end orchestrator. Runs locally, drives all 4 VMs via AWS SSM.
+**Scapy stack** — ClientNIC uses Python/Scapy on both eth0 and eth1.
 
-**Prerequisites**: `aws` CLI configured with SSM access, `python3` in PATH, `eu-central-1` region.
+**Prerequisites**: `aws` CLI with SSM access, `python3` in PATH, `eu-central-1` region.
 
 ```bash
 ./experiments/zero-rtt-clientnic-translate/run_experiment.sh
 ```
 
-Exit code = number of failed checks (0 = all passed).
+Exit code = number of failed checks (0 = all passed). Reports go in `experiments/zero-rtt-clientnic-translate/reports/`.
 
-### What it does (in order)
+### Steps
 
 | Step | Action | Pass condition |
 |------|--------|----------------|
 | 0 | Discover EC2 instances by tag (`smartnics-*`) | All 4 IDs resolved |
-| - | `git pull origin main` on all 4 VMs via SSM | (best-effort) |
-| - | Kill leftover processes + delete old logs/pcaps | (cleanup) |
+| — | `git pull origin main` on all 4 VMs | (best-effort) |
+| — | Kill leftover processes, delete old logs/pcaps | (cleanup) |
 | 1 | Start Server (`setsid python3 server.py`) | `ss -tlnp` shows `:8080` |
-| 2 | Enable IP forwarding, add route on ServerNIC, start `servernic/scapy/main.py` | `ip_forward == 1` |
-| 3 | Enable IP forwarding, add route on ClientNIC, start tcpdump on eth0+eth1, start `clientnic/scapy/main.py` | `ip_forward == 1` |
-| 4 | Run client (`--mode repeated --count 3 --verbose`) | `Success: 3/3` or `100%` in output |
-| 5 | Stop tcpdump | (always passes) |
+| 2 | Start ServerNIC (Scapy forwarder) | `ip_forward == 1` |
+| 3 | Start tcpdump on eth0+eth1, start `clientnic/scapy/main.py` | `ip_forward == 1` |
+| 4 | Run client (`--mode repeated --count 3 --verbose`) | `Success: 3/3` or `100%` |
+| 5 | Stop tcpdump | (always) |
 | 6 | Read `/tmp/server.log` | Contains `Received` or `bytes` |
 | 7 | Read `/tmp/clientnic.log` | Contains `delta`, `flow created`, `SYN received`, or `spoofed` |
-| 8 | Run `analyze_capture.py` on ClientNIC | `All checks passed` in output |
+| 8 | Run `validate_0rtt_capture.py` on ClientNIC | `All checks passed` |
 
 ### Key implementation details
 
-- Uses `setsid ... < /dev/null >> /tmp/*.log 2>&1 &` to daemonize — SSM requires full detachment (append `>>` so logs survive restarts; prepend a `=== timestamp ===` separator line before each run)
-- Do NOT use `sudo` inside SSM `AWS-RunShellScript` — SSM already runs as root and `sudo` will hang waiting for a tty
-- `ssm_bg` fires a command and returns immediately (fire-and-forget)
-- `ssm_run` waits for completion via `aws ssm wait command-executed`
-- Git pull uses `sudo -u ec2-user git ...` to avoid SSM's missing `$HOME`
-- Routes added: `10.1.2.0/24 via 10.1.1.253 dev eth1` on ClientNIC, `10.1.0.0/24 via 10.1.1.24 dev eth0` on ServerNIC
+- Uses `setsid ... < /dev/null >> /tmp/*.log 2>&1 &` — SSM requires full detachment
+- Do NOT use `sudo` inside SSM `AWS-RunShellScript` — runs as root already, `sudo` hangs on missing tty
+- `ssm_bg` fires and returns immediately; `ssm_run` waits via `aws ssm wait command-executed`
+- Git pull uses `sudo -u ec2-user git ...` (SSM runs without `$HOME`)
 
 ---
 
-## validate_0rtt_capture.py
+## experiments/zero-rtt-dpdk/run_experiment.sh
 
-Validates 0-RTT behavior from pcap files captured on ClientNIC.
-Runs **on the ClientNIC VM** (where the pcap files reside).
+**DPDK stack** — ClientNIC uses C/DPDK 23.11 ENA PMD on eth1, AF_PACKET on eth0.
 
 ```bash
-python3 /home/ec2-user/zero-rtt-demo/clientnic/validate_0rtt_capture.py \
+./experiments/zero-rtt-dpdk/run_experiment.sh
+```
+
+Exit code = number of failed checks. Reports go in `experiments/zero-rtt-dpdk/reports/`.
+
+### Steps
+
+| Step | Action | Pass condition |
+|------|--------|----------------|
+| 0 | Discover EC2 instances by tag | All 4 IDs resolved |
+| — | `git pull`, cleanup | (best-effort / cleanup) |
+| 10.1 | Rebuild `clientnic-dpdk` via meson+ninja | `BUILD_SUCCESS` in output |
+| 10.2 | Smoke test: start binary for 5 s, kill, check log | `Entering busy-poll loop` in log |
+| 1 | Start Server | `ss -tlnp` shows `:8080` |
+| 2 | Start ServerNIC (Scapy forwarder) | `ip_forward == 1` |
+| 10.3 | Start tcpdump on eth0, start `clientnic-dpdk --server-pcap=/tmp/server_side.pcap` | binary process running |
+| 4 | Run client (`--count 1`) | `Success: 1/1` or `100%` |
+| 5 | Stop tcpdump, SIGTERM binary | (always) |
+| 6 | Read `/tmp/server.log` | Contains `Received` or `bytes` |
+| 7 | Read `/tmp/clientnic.log` | Contains `SYN: flow created` and `SYN-ACK: delta=` |
+| 10.4 | Run `validate_0rtt_capture.py` (copied to `/tmp/`) | `All checks passed` |
+
+### DPDK-specific details
+
+- **Gateway MAC** (`--gw-mac`): ServerNIC's eth0 MAC — get with `cat /sys/class/net/eth0/address` on ServerNIC. Needed so the DPDK port sets correct L2 destination on eth1 TX.
+- **eth1 capture**: eth1 is bound to `vfio-pci` — tcpdump cannot see it. The binary writes eth1 RX packets directly to a pcap file via the built-in `capture.c` writer when `--server-pcap` is provided.
+- **Scapy shadowing**: `validate_0rtt_capture.py` is copied to `/tmp/` before running. If run from `clientnic/`, Python adds that directory to `sys.path` and `clientnic/scapy/` shadows the real `scapy` package, causing `ImportError`.
+- **Build time**: DPDK 23.11 is built from source at VM provision time (~15-20 min). The script rebuilds the `clientnic-dpdk` binary after each `git pull` to pick up code changes.
+
+---
+
+## clientnic/validate_0rtt_capture.py
+
+Validates 0-RTT behavior from pcap files captured on ClientNIC. Runs **on the ClientNIC VM**.
+
+```bash
+# Always copy to /tmp first to avoid clientnic/scapy/ shadowing the scapy package
+cp /home/ec2-user/zero-rtt-demo/clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py
+python3 /tmp/validate_0rtt.py \
     --client-pcap /tmp/client_side.pcap \
     --server-pcap /tmp/server_side.pcap
 ```
 
-Exit code: 0 = all checks passed, 1 = one or more failures.
+Exit code: 0 = all passed, 1 = one or more failures.
 
 ### Checks
 
 **A. Spoofed SYN-ACK Detection**
-- Loads all SYN-ACKs from eth0 (client-side) and eth1 (server-side)
-- Real ISNs = `{pkt[TCP].seq for pkt in eth1_syn_acks}`
-- Spoofed = eth0 SYN-ACKs whose ISN is **not** in the real ISN set
-- PASS: at least one spoofed SYN-ACK found on eth0
+- Loads SYN-ACKs from eth0 (client-side) and eth1 (server-side pcap)
+- Real ISNs = ISNs seen on eth1
+- Spoofed = eth0 SYN-ACKs whose ISN is NOT in the real set
+- PASS: ≥1 spoofed SYN-ACK on eth0 and ≥1 real SYN-ACK on eth1
 
 **B. ISN Delta**
 - Matches spoofed and real SYN-ACKs by client dport
 - `delta = (spoofed_ISN - real_ISN) & 0xFFFFFFFF`
-- PASS: all matched flows have delta != 0
+- PASS: all matched flows have delta ≠ 0
 
-**C. 0-RTT Timing** (informational — does not count as failure)
-- Compares timestamps: `t_spoofed < t_real` per flow
-- Reports result but does not increment failure count (intra-VPC RTT may be faster than Python/Scapy processing)
+**C. 0-RTT Timing** *(informational — does not count as failure)*
+- `t_spoofed < t_real` per flow
+- Intra-VPC RTT can be sub-ms so this may not always hold; reported but not a failure condition
 
 **D. Checksum Validation**
-- Computes expected IP (RFC 791) and TCP (RFC 793 pseudo-header) checksums
-- Compares against on-wire values
-- PASS: zero bad checksums on both eth0 and eth1
+- Recomputes expected IP (RFC 791) and TCP (RFC 793 pseudo-header) checksums
+- PASS: zero bad checksums on eth0 AND eth1
 
-### Output format
+### Expected output (all passing)
 
 ```
-[PASS] Real SYN-ACK(s) found on eth1  (2 SYN-ACK(s))
-[PASS] Spoofed SYN-ACK(s) found on eth0 (distinct ISN)  (2 spoofed, 0 forwarded-real)
-[PASS] All deltas are non-zero  (2 matched flow(s))
-[PASS] Spoofed SYN-ACK arrives before real (informational)  (2/2 flows ...)
+[PASS] Real SYN-ACK(s) found on eth1  (1 SYN-ACK(s))
+[PASS] Spoofed SYN-ACK(s) found on eth0 (distinct ISN)  (1 spoofed, 0 forwarded-real)
+[PASS] All deltas are non-zero  (1 matched flow(s))
+[PASS] Spoofed SYN-ACK arrives before real (informational)  (1/1 flows -- ...)
 [PASS] No bad checksums on eth0 (client side)  (all N packets valid)
 [PASS] No bad checksums on eth1 (server side)  (all N packets valid)
 All checks passed.
