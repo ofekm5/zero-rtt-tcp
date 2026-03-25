@@ -7,7 +7,8 @@
       "Bash(chmod +x:*)",
       "Bash(cd:*)",
       "Bash(openspec list:*)",
-      "Bash(openspec status:*)"
+      "Bash(openspec status:*)",
+      "Bash(openspec instructions:*)"
     ]
   }
 }
