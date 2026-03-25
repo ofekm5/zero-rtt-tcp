@@ -32,40 +32,79 @@ class SmartNicsStack(Stack):
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
         )
 
-        # User data for NIC VMs: DPDK 23.11 + hugepages + vfio-pci binding
+        # User data for ServerNIC VM: Scapy + IP forwarding only (no DPDK)
         nic_user_data = ec2.UserData.for_linux()
         nic_user_data.add_commands(
-            # System packages + DPDK build deps
             "yum update -y",
-            "yum install -y git gcc make meson ninja-build python3-pyelftools "
-            "numactl-devel kernel-devel libpcap-devel pciutils",
+            "yum install -y git python3 python3-pip",
+            "pip3 install scapy",
             # Clone repo
             "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token "
             "--with-decryption --query Parameter.Value --output text --region eu-central-1)",
             'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" '
             "/home/ec2-user/zero-rtt-demo",
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
-            # Hugepages (512 x 2MB = 1 GiB)
+            # Enable IP forwarding
+            "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf",
+            "sysctl -p",
+        )
+
+        # User data for ClientNIC VM: DPDK 23.11 + hugepages + vfio-pci + clientnic-dpdk build
+        #
+        # Key fixes vs naive approach:
+        #   - pip3 meson/ninja/pyelftools: yum ninja-build is 1.7.2, DPDK needs >=1.8.2;
+        #     yum python3-pyelftools doesn't populate the Python module path correctly.
+        #   - 4 GB swap added before build: DPDK 23.11 has 685 targets; without swap the
+        #     OOM killer terminates the compiler mid-build on a 4.9 GB instance.
+        #   - ninja -j1: limits peak RSS; parallel jobs push resident set over the limit.
+        #   - ldconfig.conf written before ldconfig: so the runtime linker finds librte_*.
+        #   - PKG_CONFIG_PATH persisted to /etc/profile.d: meson needs to find libdpdk.pc
+        #     at /usr/local/lib64/pkgconfig when building clientnic-dpdk.
+        #   - -Dplatform=generic: avoids CPU-feature probing that fails inside cloud VMs.
+        clientnic_user_data = ec2.UserData.for_linux()
+        clientnic_user_data.add_commands(
+            # System packages
+            "yum update -y",
+            "yum install -y git gcc make numactl-devel kernel-devel libpcap-devel pciutils python3-pip",
+            # Clone repo
+            "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token "
+            "--with-decryption --query Parameter.Value --output text --region eu-central-1)",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" '
+            "/home/ec2-user/zero-rtt-demo",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
+            # Enable IP forwarding
+            "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf",
+            "sysctl -p",
+            # Hugepages (512 x 2 MB = 1 GiB)
             "echo 'vm.nr_hugepages=512' >> /etc/sysctl.conf",
             "sysctl -p",
             "mkdir -p /dev/hugepages",
             "mount -t hugetlbfs nodev /dev/hugepages",
             "echo 'nodev /dev/hugepages hugetlbfs defaults 0 0' >> /etc/fstab",
-            # Build DPDK 23.11 (includes ENA PMD)
+            # Swap (4 GB) — must be created before ninja to avoid OOM on c5n.large
+            "fallocate -l 4G /swapfile",
+            "chmod 600 /swapfile",
+            "mkswap /swapfile",
+            "swapon /swapfile",
+            "echo '/swapfile swap swap defaults 0 0' >> /etc/fstab",
+            # Build tools — pip3 versions required (yum packages too old or broken)
+            "pip3 install meson ninja pyelftools",
+            # Build DPDK 23.11 with -j1 to stay within memory budget
             "cd /opt",
             "curl -LO https://fast.dpdk.org/rel/dpdk-23.11.tar.xz",
             "tar xf dpdk-23.11.tar.xz",
             "cd dpdk-23.11",
-            "meson setup build",
-            "cd build && ninja && ninja install",
-            "ldconfig",
+            "/usr/local/bin/meson setup build -Dplatform=generic",
+            "cd build && /usr/local/bin/ninja -j1 && /usr/local/bin/ninja install",
+            # Linker and pkg-config paths (order matters: conf file before ldconfig)
             "echo '/usr/local/lib64' > /etc/ld.so.conf.d/dpdk.conf",
             "ldconfig",
-            # vfio-pci driver (no-IOMMU mode for Nitro)
+            "echo 'export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}' > /etc/profile.d/dpdk.sh",
+            # vfio-pci driver (no-IOMMU mode for AWS Nitro — no IOMMU exposed to guest)
             "modprobe vfio-pci",
             "echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode",
             "echo 'vfio-pci' > /etc/modules-load.d/vfio.conf",
-            # Bind secondary ENI (eth1) to DPDK
+            # Bind secondary ENI (eth1) to vfio-pci / DPDK
             "for i in $(seq 1 30); do",
             "    SECONDARY_PCI=$(basename $(readlink /sys/class/net/eth1/device) 2>/dev/null || true)",
             "    [ -n \"$SECONDARY_PCI\" ] && break",
@@ -75,6 +114,12 @@ class SmartNicsStack(Stack):
             "    ip link set eth1 down",
             "    dpdk-devbind.py --bind=vfio-pci $SECONDARY_PCI",
             "fi",
+            # Build clientnic-dpdk application
+            "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
+            "cd /home/ec2-user/zero-rtt-demo/clientnic/dpdk",
+            "/usr/local/bin/meson setup builddir",
+            "cd builddir && /usr/local/bin/ninja",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo/clientnic/dpdk/builddir",
         )
 
         # Create IAM role for SSM access
@@ -212,7 +257,7 @@ class SmartNicsStack(Stack):
             vpc_subnets=client_subnet_selection,
             security_group=clientnic_sg,
             role=role,
-            user_data=nic_user_data,
+            user_data=clientnic_user_data,
             source_dest_check=False,  # Required for routing
             block_devices=[
                 ec2.BlockDevice(
