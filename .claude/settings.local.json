@@ -6,6 +6,7 @@
       "Bash(aws ssm send-command:*)",
       "Bash(chmod +x:*)",
       "Bash(cd:*)",
+      "Bash(openspec list:*)",
       "Bash(openspec status:*)"
     ]
   }
