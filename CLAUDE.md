@@ -84,10 +84,11 @@ del packet[TCP].chksum
 
 ## Technology Stack
 
-- **Python 3.8+**: All components written in Python
+- **Python 3.8+**: Scapy implementation and all supporting tools
+- **C11 + DPDK 23.11**: DPDK implementation (`clientnic/dpdk/`)
 - **Scapy**: Packet manipulation library (wraps AF_PACKET raw sockets)
-- **Linux**: Required for raw socket support and virtual networking
-- **Network setup**: VMs connected via virtual networks (bridge/veth)
+- **Linux**: Required for raw socket support and DPDK vfio-pci
+- **Network setup**: VMs connected via AWS ENIs in a 3-subnet VPC
 
 ### Scapy Essentials
 
@@ -120,9 +121,10 @@ Scapy provides:
 - **`.claude/skills/zero-rtt-integration-tester/references/test-scripts.md`**: run_all.sh and analyze_capture.py reference
 
 ### Integration Testing
-- **`expermients/zero-rtt-clientnic-translate/run_experiment.sh`**: Full automated end-to-end test orchestrator (runs locally, drives all 4 VMs via SSM)
-- **`clientnic/validate_0rtt_capture.py`**: pcap analysis — validates spoofed SYN-ACK, ISN delta, timing, checksums (runs on ClientNIC VM)
-- **`expermients/zero-rtt-clientnic-translate/reports/`**: Test run reports
+- **`experiments/zero-rtt-clientnic-translate/run_experiment.sh`**: End-to-end orchestrator for the Scapy stack (local → 4 VMs via SSM)
+- **`experiments/zero-rtt-dpdk/run_experiment.sh`**: End-to-end orchestrator for the DPDK stack — builds binary, passes `--server-pcap` so the validator has a real eth1 capture
+- **`clientnic/validate_0rtt_capture.py`**: pcap analysis — validates spoofed SYN-ACK, ISN delta, timing, checksums (runs on ClientNIC VM); copy to `/tmp/` before running to avoid `clientnic/scapy/` shadowing the `scapy` package
+- **`experiments/zero-rtt-clientnic-translate/reports/`**: Test run reports
 
 Startup order: **Server → ServerNIC → ClientNIC → Client**
 
@@ -137,16 +139,18 @@ Specialist agent prompts under `.claude/context/agents-system-prompts/`:
 - [x] ServerNIC stateless forwarder (`servernic/scapy/main.py`)
 - [x] Client TCP application (`client-app/client.py`)
 - [x] Server TCP application (`server-app/server.py`)
-- [x] ClientNIC 0-RTT logic (`clientnic/`)
-- [x] Integration test suite (`expermients/`)
+- [x] ClientNIC Scapy implementation (`clientnic/scapy/`)
+- [x] ClientNIC DPDK implementation (`clientnic/dpdk/`) — C11, DPDK 23.11 ENA PMD, all checks pass
+- [x] Integration test suites (`experiments/`)
 
 ## Development Workflow
 
-All components are implemented. Current focus is integration testing and bug fixes:
+All components are implemented and tested. To run experiments:
 
-1. Run `./expermients/zero-rtt-clientnic-translate/run_experiment.sh` to execute the full test suite
-2. Investigate failures using the manual steps in `.claude/skills/zero-rtt-integration-tester/SKILL.md`
-3. File findings in `expermients/zero-rtt-clientnic-translate/reports/`
+1. **Scapy stack**: `./experiments/zero-rtt-clientnic-translate/run_experiment.sh`
+2. **DPDK stack**: `./experiments/zero-rtt-dpdk/run_experiment.sh`
+3. Investigate failures using the manual steps in `.claude/skills/zero-rtt-integration-tester/SKILL.md`
+4. File findings in `experiments/zero-rtt-clientnic-translate/reports/`
 
 ## Testing Approach
 
@@ -205,7 +209,17 @@ clientnic/
 │       ├── rewriter.py       # Seq/ack modification, checksum recalc
 │       ├── spoofer.py        # Spoofed SYN-ACK generation
 │       └── logger.py         # Packet logging
-└── dpdk/                     # DPDK-based implementation (WIP)
+└── dpdk/                     # DPDK-based implementation (complete)
+    ├── main.c                # EAL init, CLI, busy-poll loop
+    ├── flow_table.c/h        # Connection state, ISN delta, packet buffer
+    ├── io.c/h                # eth0 AF_PACKET + eth1 DPDK ENA port
+    ├── packet_processor.c/h  # SYN spoof+forward, SYN-ACK delta+flush
+    ├── translator.c/h        # Per-packet seq/ack rewriting
+    ├── pipeline.c/h          # Parse Ethernet/IP/TCP, classify, dispatch
+    ├── checksum.c/h          # IP + TCP checksum recalc via DPDK helpers
+    ├── capture.c/h           # --server-pcap pcap writer for eth1 RX
+    ├── log.c/h               # RTE_LOG wrappers
+    ├── meson.build           # Build definition
     └── README.md
 
 servernic/
@@ -218,12 +232,12 @@ servernic/
 └── dpdk/                     # DPDK-based implementation (WIP)
     └── README.md
 
-expermients/
+experiments/
 ├── zero-rtt-clientnic-translate/
-│   ├── run_experiment.sh       # Full end-to-end test orchestrator (local → 4 VMs via SSM)
+│   ├── run_experiment.sh       # Scapy stack end-to-end orchestrator (local → 4 VMs via SSM)
 │   └── reports/                # Test run reports (e.g. integration-test-report-YYYY-MM-DD.md)
-└── zero-rtt-servernic-translate/
-    └── run_experiment.sh       # ServerNIC experiment orchestrator
+└── zero-rtt-dpdk/
+    └── run_experiment.sh       # DPDK stack end-to-end orchestrator
 
 server-app/
 ├── server.py           # Standard TCP server
@@ -231,17 +245,17 @@ server-app/
 └── tests/
     └── test_server.py  # Server unit tests
 
-infra/                  # AWS CDK infrastructure (deploy the 4-VM topology)
-├── app.py              # CDK entry point
-├── cdk.json            # CDK app config
-├── cdk.context.json    # Cached AZ lookups (eu-central-1)
-├── requirements.txt    # CDK Python dependencies
-├── deploy.ps1          # Deploy script (uses repo-root venv/)
-├── destroy.ps1         # Destroy script (uses repo-root venv/)
-├── ARCHITECTURE.md     # Infra architecture notes
-└── cdk/
-    ├── packet_test_stack.py   # VPC with Client/Middle/Server subnets
-    └── smartnics_stack.py     # EC2 instances, ENIs, route tables
+infra/
+├── scapy/              # CDK stack: Scapy data plane (Python on ClientNIC)
+│   ├── deploy.ps1 / destroy.ps1
+│   └── cdk/
+│       ├── packet_test_stack.py   # VPC with Client/Middle/Server subnets
+│       └── smartnics_stack.py     # EC2 instances, ENIs, route tables
+└── dpdk/               # CDK stack: DPDK data plane (C/DPDK on ClientNIC)
+    ├── deploy.ps1 / destroy.ps1
+    └── cdk/
+        ├── packet_test_stack.py   # VPC (same topology)
+        └── smartnics_stack.py     # ClientNIC gets DPDK 23.11 + vfio-pci + binary build
 
 venv/                   # Shared Python venv for local dev (all components)
 ```
@@ -249,15 +263,10 @@ venv/                   # Shared Python venv for local dev (all components)
 ### Deploying Infrastructure
 
 ```powershell
-cd infra
+cd infra/dpdk         # or infra/scapy
 .\deploy.ps1          # Creates/activates repo-root venv, installs deps, deploys
 .\deploy.ps1 -Bootstrap  # First-time CDK bootstrap + deploy
 .\destroy.ps1         # Tear down all stacks
 ```
 
-Retrieve the SSH private key after deploy:
-```bash
-aws ssm get-parameter --name <KeyPairParameterName> --with-decryption \
-  --query Parameter.Value --output text > smartnics-key.pem
-chmod 400 smartnics-key.pem
-```
+Note: the DPDK stack's ClientNIC user data builds DPDK 23.11 from source (~15-20 min after deploy before the binary is ready).
