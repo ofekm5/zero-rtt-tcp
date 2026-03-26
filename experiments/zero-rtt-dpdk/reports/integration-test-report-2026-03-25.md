@@ -3,7 +3,7 @@
 **Implementation**: DPDK (C/DPDK 23.11 ENA PMD)
 **Experiment script**: `experiments/zero-rtt-dpdk/run_experiment.sh`
 **CDK stack**: `infra/dpdk/` — deployed to eu-central-1
-**Overall result**: ALL PASSED ✅
+**Overall result**: ALL PASSED ✅ (Run 1) / 1 scripting failure ❌ (Run 2 — smoke test SSM timeout bug, all functional checks passed)
 
 ## Instance IDs
 
@@ -145,6 +145,68 @@ All checks passed.
 - **eth1 capture via DPDK**: `server_side.pcap` written by `capture.c` (`--server-pcap` flag). tcpdump cannot access DPDK-controlled eth1; the built-in pcap writer is the correct approach.
 - **Checksums**: all 19 total packets (13 eth0 + 6 eth1) pass checksum validation after seq/ack rewriting and DPDK recalc.
 
-## Failures / Notes
+## Failures / Notes (Run 1)
 
 None. All checks passed on first run after deploying the updated CDK stack (with `scapy` added to pip3 install in ClientNIC user data and `capture.c` committed).
+
+---
+
+## Run 2 — 2026-03-25T19:27 UTC
+
+### Check Results (Run 2)
+
+| Step | Check | Result |
+|------|-------|--------|
+| 10.1 / Build | Binary compiles cleanly | ✅ |
+| 10.2 / Smoke | Binary starts without error | ❌ (SSM timeout bug — see notes) |
+| 1 | Server listening on :8080 | ✅ |
+| 2 | ServerNIC IP forwarding enabled | ✅ |
+| 3 | ClientNIC process running | ✅ |
+| 4 | Client connections succeeded | ✅ |
+| 6 | Server received data | ✅ |
+| 7 | ClientNIC 0-RTT flow table activity | ✅ |
+| 8 | Packet capture analysis — all checks passed | ✅ |
+
+### Client Output (Run 2)
+
+```
+=== Repeated Connection Test (1 connections) ===
+Server: 10.1.2.225:8080
+
+  Connection 1: 274.56 ms
+
+Results:
+  Success: 1/1 (100%)
+  TTFB Statistics:
+    Min:     274.56 ms  Max: 274.56 ms  Average: 274.56 ms  Median: 274.56 ms
+```
+
+### ClientNIC Log (Run 2)
+
+```
+CLIENTNIC: SYN: flow created, spoofed SYN-ACK sent, SYN forwarded
+CLIENTNIC: SYN-ACK: delta=3904483891, flushed 2 buffered pkts
+```
+
+### Packet Capture Analysis (Run 2)
+
+```
+  eth0 SYN-ACKs: 1  t=1774459760.616674  ISN=1669658588
+  eth1 SYN-ACKs: 1  t=1774459760.729645  ISN=2060141993
+[PASS] Spoofed SYN-ACK(s) found on eth0 (distinct ISN)
+[PASS] All deltas are non-zero  delta=3904483891
+[PASS] Spoofed SYN-ACK arrives before real  delta=0.113s
+[PASS] No bad checksums on eth0 (13 packets valid)
+[PASS] No bad checksums on eth1 (6 packets valid)
+All checks passed.
+```
+
+### Failure / Notes (Run 2)
+
+**Task 10.2 (Smoke test) — SSM scripting bug, not a functional failure.**
+The smoke test `send-command` used `--timeout-seconds 15` (below AWS minimum of 30), so the command ID came back empty and the log was never retrieved:
+```
+Parameter validation failed:
+Invalid value for parameter TimeoutSeconds, value: 15, valid min value: 30
+```
+The binary started correctly — Step 10.3 and subsequent steps all confirmed it. Fix: change `--timeout-seconds 15` to `--timeout-seconds 30` in the smoke test SSM call in `run_experiment.sh`.

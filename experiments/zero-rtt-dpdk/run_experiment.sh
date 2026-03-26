@@ -225,7 +225,7 @@ else
          setsid $BINARY -l 0 -- --port=$SERVER_PORT --gw-mac=$GW_MAC \
              < /dev/null > /tmp/clientnic_smoke.log 2>&1 & \
          BPID=\$!; sleep 3; kill \$BPID 2>/dev/null; wait \$BPID 2>/dev/null; true" \
-        15 > /dev/null
+        30 > /dev/null
 
     SMOKE_LOG=$(ssm_stdout "$CLIENTNIC_ID" "cat /tmp/clientnic_smoke.log 2>/dev/null || echo MISSING" 30)
 
