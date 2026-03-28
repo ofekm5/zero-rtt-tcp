@@ -16,23 +16,28 @@ All tests use **virtual PMDs** (`net_null`, `net_ring`) — no hardware or AWS d
 
 ## Usage
 
+**Recommended: run via SSM on the ClientNIC VM** (handles build + test in one step):
+
+```bash
+./experiments/zero-rtt-clientnic-translate/run_dpdk_tests_ssm.sh
+```
+
+This discovers the running `smartnics-clientnic` EC2 instance, builds the binary with meson/ninja, and runs the tests — no SSH key required. See the script for prerequisites (aws CLI, python3, ClientNIC VM running).
+
+**Manual: run directly on the ClientNIC VM** (after SSH or SSM session):
+
 ```bash
 # Build the binary first
-cd clientnic/dpdk
-meson setup builddir
-ninja -C builddir
+export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig
+cd ~/zero-rtt-demo/clientnic/dpdk
+meson setup builddir && ninja -C builddir
 
-# Run tests (requires root for EAL, or --no-huge fallback)
+# Run tests (requires root for EAL)
 sudo ./tests/run_dpdk_tests.sh builddir/clientnic-dpdk
 ```
 
 ## Prerequisites
 
-- DPDK 23.11+ installed (`dpdk-dev`, `libdpdk-dev`)
-- Linux (DPDK doesn't run on Windows)
-- Root or hugepages configured (`echo 256 > /proc/sys/vm/nr_hugepages`)
+- ClientNIC VM running with DPDK 23.11 installed (provisioned by CDK)
+- aws CLI configured with SSM access (for the SSM runner)
 - Falls back to `--no-huge` if hugepages unavailable
-
-## CI Integration
-
-These tests map to wire-app's GitLab CI stages. To add to a GitLab pipeline, see the test jobs in `wire-app/.gitlab-ci.yml` (`dpdk:virtual_pmd_test`, `dpdk:ring_pmd_test`, `dpdk:integration_test`).
