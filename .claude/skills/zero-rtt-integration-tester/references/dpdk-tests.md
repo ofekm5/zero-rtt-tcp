@@ -23,7 +23,7 @@ All 5 tests use `net_null` / `net_ring` virtual PMDs and run on the ClientNIC VM
 ## How to run
 
 ```bash
-./experiments/zero-rtt-clientnic-translate/run_dpdk_tests_ssm.sh
+./experiments/zero-rtt-dpdk/run_dpdk_tests_ssm.sh
 ```
 
 The script:

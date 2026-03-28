@@ -19,7 +19,7 @@ All tests use **virtual PMDs** (`net_null`, `net_ring`) — no hardware or AWS d
 **Recommended: run via SSM on the ClientNIC VM** (handles build + test in one step):
 
 ```bash
-./experiments/zero-rtt-clientnic-translate/run_dpdk_tests_ssm.sh
+./experiments/zero-rtt-dpdk/run_dpdk_tests_ssm.sh
 ```
 
 This discovers the running `smartnics-clientnic` EC2 instance, builds the binary with meson/ninja, and runs the tests — no SSH key required. See the script for prerequisites (aws CLI, python3, ClientNIC VM running).

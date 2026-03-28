@@ -33,7 +33,7 @@ See `references/test-scripts.md` for the full step-by-step breakdown and expecte
 
 For DPDK-only unit tests (no full 4-VM chain needed), see `references/dpdk-tests.md` and run:
 ```bash
-./experiments/zero-rtt-clientnic-translate/run_dpdk_tests_ssm.sh
+./experiments/zero-rtt-dpdk/run_dpdk_tests_ssm.sh
 ```
 
 **DPDK note**: The CDK user data builds `clientnic-dpdk` at provision time (~15-20 min after deploy). The DPDK script checks whether the binary exists and rebuilds from source if needed. If the binary is missing, wait for the user data to finish before running.

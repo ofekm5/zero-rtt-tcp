@@ -13,7 +13,7 @@
 #   - ~/zero-rtt-demo on the VM is up to date
 #
 # Usage:
-#   ./experiments/zero-rtt-clientnic-translate/run_dpdk_tests_ssm.sh
+#   ./experiments/zero-rtt-dpdk/run_dpdk_tests_ssm.sh
 #
 # Exit code: 0 = build + tests passed, non-zero = build or test failure
 
