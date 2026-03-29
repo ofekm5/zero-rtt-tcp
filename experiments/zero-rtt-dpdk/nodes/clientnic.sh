@@ -44,6 +44,7 @@ if [ "${SKIP_BUILD:-0}" = "1" ]; then
     log "Using existing binary: $BINARY"
 else
     log "Building clientnic-dpdk (set SKIP_BUILD=1 to skip)..."
+    export PATH=/usr/local/bin:$PATH
     export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig
     cd "$REPO_PATH/clientnic/dpdk"
     rm -rf builddir
