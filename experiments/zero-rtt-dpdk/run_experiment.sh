@@ -153,7 +153,7 @@ done
 # ─── Pull latest code ─────────────────────────────────────────────────────────
 log "Pulling latest code on all VMs..."
 for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
-    ssm_bg "$iid" "sudo -u ec2-user git -C $REPO_PATH pull origin main 2>&1 || true"
+    ssm_bg "$iid" "git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; sudo -u ec2-user git -C $REPO_PATH pull origin main 2>&1 || true"
 done
 sleep 8
 
@@ -245,9 +245,9 @@ fi
 
 
 # ─── Step 1: Start Server ─────────────────────────────────────────────────────
-log "Step 1: Starting Server..."
+log "Step 1: Starting Server via node script..."
 ssm_bg "$SERVER_ID" \
-    "cd $REPO_PATH && echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/server.log && setsid python3 -u server-app/server.py --host 0.0.0.0 --port $SERVER_PORT --verbose < /dev/null >> /tmp/server.log 2>&1 &"
+    "setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
 sleep 3
 
 LISTEN_CHECK=$(ssm_stdout "$SERVER_ID" "ss -tlnp | grep $SERVER_PORT && echo LISTENING || echo NOT_LISTENING" 30)
@@ -260,14 +260,11 @@ fi
 
 
 # ─── Step 2: Start ServerNIC ──────────────────────────────────────────────────
-log "Step 2: Starting ServerNIC (Scapy)..."
+# nodes/servernic.sh handles: route, iptables DROP for port 8080, ip_forward check, forwarder
+log "Step 2: Starting ServerNIC via node script..."
 ssm_bg "$SERVERNIC_ID" \
-    "ip route replace 10.1.0.0/24 via 10.1.1.1 dev eth0 2>/dev/null || true"
-ssm_bg "$SERVERNIC_ID" \
-    "iptables -F FORWARD 2>/dev/null; iptables -A FORWARD -p tcp --dport $SERVER_PORT -j DROP; iptables -A FORWARD -p tcp --sport $SERVER_PORT -j DROP"
-ssm_bg "$SERVERNIC_ID" \
-    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/servernic.log && setsid python3 -u $REPO_PATH/servernic/scapy/main.py --client-iface eth0 --server-iface eth1 < /dev/null >> /tmp/servernic.log 2>&1 &"
-sleep 2
+    "setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
+sleep 3
 
 FWRD=$(ssm_stdout "$SERVERNIC_ID" "cat /proc/sys/net/ipv4/ip_forward" 30)
 if [[ "$FWRD" == "1" ]]; then
@@ -287,31 +284,18 @@ fi
 # Route for return traffic: server-side packets arrive on eth1 (DPDK) and
 # need to be forwarded to eth0 (client-facing). The kernel route to the client
 # subnet via eth0 ensures correct routing of rewritten packets.
-log "Task 10.3: Starting ClientNIC (DPDK) + packet captures..."
+log "Task 10.3: Starting ClientNIC (DPDK) via node script..."
 
-# Iptables: DPDK binary manages its own rules via install_iptables(), but we
-# flush first to avoid stale DROP rules from previous runs.
+# Flush any stale iptables DROP rules from the smoke test before the node script runs.
 ssm_bg "$CLIENTNIC_ID" "iptables -F FORWARD 2>/dev/null; iptables -F OUTPUT 2>/dev/null || true"
 sleep 1
 
-# tcpdump on eth0 to capture spoofed SYN-ACK and client-side traffic
+# nodes/clientnic.sh handles: cleanup, build (skipped via SKIP_BUILD=1), GW MAC (passed
+# as $1 — bypasses EC2 API call from VM), tcpdump on eth0, exec binary with --server-pcap.
+# SKIP_BUILD=1 because meson+ninja already ran in Task 10.1.
 ssm_bg "$CLIENTNIC_ID" \
-    "setsid tcpdump -i eth0 -nn -tttt 'tcp port $SERVER_PORT' -w /tmp/client_side.pcap < /dev/null > /tmp/tcpdump_eth0.log 2>&1 &"
-# Note: eth1 is DPDK-controlled — tcpdump cannot capture on it (unbound from kernel).
-# The server_side capture is not available for DPDK mode; validate_0rtt_capture.py
-# is invoked with --server-pcap /dev/null (or skipped) in this mode.
-sleep 1
-
-# Start the DPDK binary with --server-pcap so eth1 RX packets are captured
-# to a real pcap file that validate_0rtt_capture.py can analyse.
-ssm_bg "$CLIENTNIC_ID" \
-    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/clientnic.log && \
-     setsid $BINARY -l 0 -- \
-         --port=$SERVER_PORT \
-         --gw-mac=$GW_MAC \
-         --server-pcap=/tmp/server_side.pcap \
-         < /dev/null >> /tmp/clientnic.log 2>&1 &"
-sleep 4  # DPDK EAL + ENA PMD init takes ~2-3 s on first start
+    "SKIP_BUILD=1 setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/clientnic.sh $GW_MAC < /dev/null >> /tmp/clientnic.log 2>&1 &"
+sleep 5  # node script: cleanup + checks + tcpdump start + DPDK EAL + ENA PMD init (~3-4 s)
 
 FWRD=$(ssm_stdout "$CLIENTNIC_ID" "cat /proc/sys/net/ipv4/ip_forward" 30)
 if [[ "$FWRD" == "1" ]]; then
@@ -377,8 +361,14 @@ else
 fi
 
 
-# ─── Step 7: Check ClientNIC DPDK log ────────────────────────────────────────
-log "Step 7: Checking ClientNIC DPDK log for 0-RTT activity..."
+# ─── Step 7: Collect and check per-VM logs ───────────────────────────────────
+log "Step 7: Collecting per-VM logs..."
+
+SERVERNIC_LOG=$(ssm_stdout "$SERVERNIC_ID" "cat /tmp/servernic.log 2>/dev/null || echo '(no log)'" 30)
+echo "--- ServerNIC log ---"
+echo "$SERVERNIC_LOG"
+echo "---------------------"
+
 CLIENTNIC_LOG=$(ssm_stdout "$CLIENTNIC_ID" "cat /tmp/clientnic.log" 30)
 echo "--- ClientNIC DPDK log ---"
 echo "$CLIENTNIC_LOG"
@@ -437,5 +427,58 @@ else
     echo -e "${RED}  $FAILURES CHECK(S) FAILED${NC}"
 fi
 echo "════════════════════════════════════════"
+
+
+# ─── Write report ─────────────────────────────────────────────────────────────
+REPORT_DIR="$(dirname "$0")/reports"
+mkdir -p "$REPORT_DIR"
+REPORT_FILE="$REPORT_DIR/integration-test-report-$(date +%Y-%m-%d).md"
+
+if [[ $FAILURES -eq 0 ]]; then
+    OVERALL_RESULT="ALL PASSED ✅"
+else
+    OVERALL_RESULT="$FAILURES FAILURE(S) ❌"
+fi
+
+{
+    echo "# Integration Test Report — $(date +%Y-%m-%d)"
+    echo ""
+    echo "**Implementation**: DPDK"
+    echo "**Experiment script**: \`experiments/zero-rtt-dpdk/run_experiment.sh\`"
+    echo "**Node scripts**: \`experiments/zero-rtt-dpdk/nodes/\`"
+    echo "**Overall result**: $OVERALL_RESULT"
+    echo ""
+    echo "## Client Output"
+    echo ""
+    echo '```'
+    echo "$CLIENT_STDOUT"
+    echo '```'
+    echo ""
+    echo "## ClientNIC Log (0-RTT activity)"
+    echo ""
+    echo '```'
+    echo "$CLIENTNIC_LOG" | tail -50
+    echo '```'
+    echo ""
+    echo "## ServerNIC Log"
+    echo ""
+    echo '```'
+    echo "$SERVERNIC_LOG" | tail -30
+    echo '```'
+    echo ""
+    echo "## Server Log"
+    echo ""
+    echo '```'
+    echo "$SERVER_LOG" | tail -20
+    echo '```'
+    echo ""
+    echo "## Packet Analysis"
+    echo ""
+    echo '```'
+    echo "$ANALYSIS_STDOUT"
+    echo '```'
+} > "$REPORT_FILE"
+
+log "Report saved to $REPORT_FILE"
 
 exit "$FAILURES"

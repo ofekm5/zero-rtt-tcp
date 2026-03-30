@@ -27,7 +27,7 @@ Set variables based on the answer:
 ./<EXPERIMENT_SCRIPT>
 ```
 
-Exit code = number of failures. The script handles VM discovery, git pull, service startup, packet capture, client test, log checks, and pcap analysis automatically.
+Exit code = number of failures. The script handles VM discovery, git pull, service startup, packet capture, client test, log checks, pcap analysis, and report writing automatically.
 
 See `references/test-scripts.md` for the full step-by-step breakdown and expected output of both scripts.
 
@@ -36,7 +36,22 @@ For DPDK-only unit tests (no full 4-VM chain needed), see `references/dpdk-tests
 ./experiments/zero-rtt-dpdk/run_dpdk_tests_ssm.sh
 ```
 
-**DPDK note**: The CDK user data builds `clientnic-dpdk` at provision time (~15-20 min after deploy). The DPDK script checks whether the binary exists and rebuilds from source if needed. If the binary is missing, wait for the user data to finish before running.
+**DPDK node-script flow**: `run_experiment.sh` delegates per-VM startup to the individual node scripts under `experiments/zero-rtt-dpdk/nodes/` via SSM `send-command`:
+
+| VM | Node script | SSM invocation |
+|----|-------------|----------------|
+| Server | `nodes/server.sh` | `setsid bash nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &` |
+| ServerNIC | `nodes/servernic.sh` | `setsid bash nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &` |
+| ClientNIC | `nodes/clientnic.sh <GW_MAC>` | `SKIP_BUILD=1 setsid bash nodes/clientnic.sh $GW_MAC < /dev/null >> /tmp/clientnic.log 2>&1 &` |
+| Client | (not via node script) | `python3 client.py --mode repeated --count 1 --verbose` |
+
+Key details:
+- `clientnic.sh` requires the gateway MAC as `$1` — the orchestrator reads it from `ServerNIC:/sys/class/net/eth0/address` via SSM (avoids EC2 API IAM issues from the VM)
+- `SKIP_BUILD=1` skips the meson+ninja build since `run_experiment.sh` runs the build explicitly as Task 10.1
+- `client.sh` has an interactive `read` loop — client runs via `client.py --mode repeated --count 1` directly
+- The report is written automatically to `experiments/zero-rtt-dpdk/reports/integration-test-report-YYYY-MM-DD.md`
+
+**DPDK note**: The CDK user data builds `clientnic-dpdk` at provision time (~15-20 min after deploy). The DPDK script rebuilds from source (Task 10.1) before running the node scripts. If the build fails, wait for user data to finish or check meson/ninja output.
 
 ## Step 2 — Save the report
 

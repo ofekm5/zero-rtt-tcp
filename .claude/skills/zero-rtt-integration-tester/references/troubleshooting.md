@@ -151,6 +151,61 @@ sudo -u ec2-user git -C /home/ec2-user/zero-rtt-demo pull origin main
 
 ---
 
+## Git Ownership Error (safe.directory)
+
+**Problem**: When SSM runs as root and the repo is owned by `ec2-user`, git refuses to operate:
+```
+fatal: detected dubious ownership in repository at '/home/ec2-user/zero-rtt-demo'
+```
+
+**Fix** — add before any git command:
+```bash
+git config --global --add safe.directory /home/ec2-user/zero-rtt-demo
+```
+
+This is done automatically in `run_experiment.sh`'s pre-pull loop. If you hit this in manual SSM commands, run it first.
+
+---
+
+## client.sh Interactive Loop Cannot Be Automated
+
+**Problem**: `nodes/client.sh` contains a `while IFS= read -r _input` loop that waits for stdin. Piping via SSM or running non-interactively hangs or sends only one connection unpredictably.
+
+**Fix** — call `client.py` directly for automation:
+```bash
+python3 /home/ec2-user/zero-rtt-demo/client-app/client.py \
+    --host <SERVER_IP> --port 8080 --mode repeated --count 1 --verbose
+```
+
+`run_experiment.sh` already uses this approach and does not invoke `client.sh`.
+
+---
+
+## GW MAC EC2 API Fails from VM
+
+**Problem**: `clientnic.sh` discovers the gateway MAC via EC2 API:
+```bash
+aws ec2 describe-instances --filters "Name=tag:Name,Values=smartnics-servernic" ...
+```
+This can fail with `AccessDenied` if the ClientNIC IAM role lacks `ec2:DescribeInstances`.
+
+**Fix** — pass the MAC as an argument (already done by `run_experiment.sh`):
+```bash
+# Orchestrator reads it from ServerNIC via SSM — no IAM needed:
+GW_MAC=$(ssm_stdout "$SERVERNIC_ID" "cat /sys/class/net/eth0/address" 30)
+
+# Then passes it to clientnic.sh:
+SKIP_BUILD=1 setsid bash nodes/clientnic.sh $GW_MAC ...
+```
+
+Fallback for manual runs — on the ServerNIC VM:
+```bash
+cat /sys/class/net/eth0/address
+```
+Then pass the result as `$1` to `clientnic.sh`.
+
+---
+
 ## AWS Security Groups
 
 Default-deny. Required rules for the 4-VM setup:
