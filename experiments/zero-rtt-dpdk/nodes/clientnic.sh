@@ -6,9 +6,31 @@
 # Startup order: server.sh → servernic.sh → clientnic.sh → client.sh
 # Run this after servernic.sh is ready. On exit, prints the validator command.
 #
-# Usage: [SKIP_BUILD=1] ./clientnic.sh [gw-mac]
-#   SKIP_BUILD=1  skip meson+ninja (use existing binary)
-#   gw-mac        ServerNIC eth0 MAC; auto-discovered from EC2 API if omitted
+# Usage (on the ClientNIC VM via SSM or SSH):
+#   cd /home/ec2-user/zero-rtt-demo/experiments/zero-rtt-dpdk/nodes
+#
+#   Full build + run (first time or after source changes):
+#     ./clientnic.sh <gw-mac>
+#
+#   Skip build, use existing binary (faster — binary already built by CDK or prior run):
+#     SKIP_BUILD=1 ./clientnic.sh <gw-mac>       ← NOTE: env var prefix, NOT 'SKIP_BUILD=1 &&'
+#
+#   gw-mac is the ServerNIC eth0 MAC. Get it from the ServerNIC VM:
+#     cat /sys/class/net/eth0/address
+#   or from the CDK deploy output: SmartNicsStack.ServerNicEth0Mac
+#
+# Log output explained:
+#   "SYN: flow created, spoofed SYN-ACK sent, SYN forwarded"
+#     → ClientNIC intercepted the client's SYN, immediately sent a spoofed SYN-ACK
+#       back to the client (0-RTT), and forwarded the real SYN to the server.
+#   "SYN-ACK: delta=<N>, flushed <M> buffered pkts"
+#     → The real server SYN-ACK arrived. Delta = spoofed_ISN - real_ISN.
+#       Buffered client packets (sent during the real handshake) are now flushed
+#       with rewritten sequence numbers. No further per-packet logs are printed —
+#       subsequent data/ACK/FIN packets are silently translated and forwarded
+#       (logging every packet in the busy-poll loop would add latency).
+#
+# The script blocks in the foreground. Press Ctrl+C to stop.
 
 set -uo pipefail
 

@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Run on the ServerNIC VM (Scapy stack).
-# Sets up iptables + route, then runs the stateless forwarder in the foreground.
+# Run on the ServerNIC VM.
+# Sets up iptables + route, then runs the stateless Scapy forwarder in the foreground.
 #
 # Startup order: server.sh → servernic.sh → clientnic.sh → client.sh
 # Run this after server.sh is ready.
+#
+# Usage (on the ServerNIC VM via SSM or SSH):
+#   cd /home/ec2-user/zero-rtt-demo/experiments/zero-rtt-dpdk/nodes
+#   ./servernic.sh
+#
+# The script blocks in the foreground. Press Ctrl+C to stop.
 
 set -uo pipefail
 

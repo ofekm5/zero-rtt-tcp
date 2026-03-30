@@ -1,13 +1,28 @@
 #!/usr/bin/env bash
-# Run on the Client VM (Scapy stack) — interactive 0-RTT client.
+# Run on the Client VM — interactive 0-RTT client.
 # Press Enter to send a new TCP connection; each press uses a different
 # OS-assigned ephemeral source port, creating a fresh 4-tuple flow.
 #
 # Startup order: server.sh → servernic.sh → clientnic.sh → client.sh
 # Run this last, after clientnic.sh is ready.
 #
-# Usage: ./client.sh [server-ip]
-#   server-ip: optional; auto-discovered from EC2 API if omitted.
+# Usage (on the Client VM via SSM or SSH):
+#   cd /home/ec2-user/zero-rtt-demo/experiments/zero-rtt-dpdk/nodes
+#   ./client.sh <server-private-ip>
+#
+# IMPORTANT: Use the Server's PRIVATE IP (e.g. 10.1.2.x), NOT the public IP.
+#   The Client VM connects over the internal VPC network — the public IP is
+#   not reachable from inside the VPC and will cause every connection to time out.
+#
+#   Get the private IP from the CDK deploy output (ServerPublicIp is the public one;
+#   use the private IP shown in `aws ec2 describe-instances` or `ip route` on the Server VM),
+#   or from the server.sh startup log: "[HH:MM:SS] Server VM IP: 10.1.2.x"
+#
+#   Example:
+#     ./client.sh 10.1.2.59     ✓ correct (private IP)
+#     ./client.sh 18.199.80.62  ✗ wrong   (public IP — will time out)
+#
+# server-ip is optional; auto-discovered from EC2 API if omitted (requires IAM permissions).
 
 set -uo pipefail
 

@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Run on the Server VM (Scapy stack).
+# Run on the Server VM.
 # Cleans up, pulls latest code, starts server.py in the foreground.
 #
 # Startup order: server.sh → servernic.sh → clientnic.sh → client.sh
-# Run this first and wait until "Listening on 0.0.0.0:8080" appears.
+# Run this first and wait until "Server listening on 0.0.0.0:8080" appears.
+#
+# Usage (on the Server VM via SSM or SSH):
+#   cd /home/ec2-user/zero-rtt-demo/experiments/zero-rtt-dpdk/nodes
+#   ./server.sh
+#
+# The script blocks in the foreground. Press Ctrl+C to stop.
 
 set -uo pipefail
 
