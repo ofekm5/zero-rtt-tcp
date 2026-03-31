@@ -50,6 +50,15 @@ try {
         --output table `
         --region eu-central-1
 
+    Write-Host ""
+    Write-Host "[+] ServerNIC eth0 MAC (gateway MAC for clientnic.sh):"
+    $serverNicMac = aws ec2 describe-instances `
+        --filters "Name=tag:Name,Values=smartnics-servernic" "Name=instance-state-name,Values=running" `
+        --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==``0``].MacAddress" `
+        --output text `
+        --region eu-central-1
+    Write-Host "  SmartNicsStack.ServerNicEth0Mac = $serverNicMac"
+
 } finally {
     Pop-Location
 }

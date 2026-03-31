@@ -20,7 +20,7 @@
 
 ## 4. Validation
 
-- [ ] 4.1 Run `experiments/zero-rtt-dpdk/run_experiment.sh` end-to-end and confirm all 4 VMs start via their node scripts
-- [ ] 4.2 Confirm per-VM logs appear in `/tmp/*.log` on each VM and are fetched by the orchestrator
-- [ ] 4.3 Confirm report is written to `experiments/zero-rtt-dpdk/reports/`
-- [ ] 4.4 Confirm `validate_0rtt_capture.py` passes (all checks: spoofed SYN-ACK, ISN delta, checksums)
+- [x] 4.1 Run `experiments/zero-rtt-dpdk/run_experiment.sh` end-to-end and confirm all 4 VMs start via their node scripts
+- [x] 4.2 Confirm per-VM logs appear in `/tmp/*.log` on each VM and are fetched by the orchestrator
+- [x] 4.3 Confirm report is written to `experiments/zero-rtt-dpdk/reports/`
+- [x] 4.4 Confirm `validate_0rtt_capture.py` passes (all checks: spoofed SYN-ACK, ISN delta, checksums)
