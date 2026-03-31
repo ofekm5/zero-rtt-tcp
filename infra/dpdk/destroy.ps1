@@ -42,6 +42,14 @@ try {
 
     Write-Host "[*] Destroying SmartNicsStack..."
     cdk destroy SmartNicsStack --force
+    # If destroy fails on ClientNicMiddleENIAttachment (NotStabilized timeout), fix manually:
+    #   1. Find the stuck ENI:
+    #      aws ec2 describe-network-interfaces --filters "Name=tag:aws:cloudformation:stack-name,Values=SmartNicsStack" --query "NetworkInterfaces[*].[NetworkInterfaceId,Attachment.AttachmentId]" --output table --region eu-central-1
+    #   2. Force-detach it:
+    #      aws ec2 detach-network-interface --attachment-id <eni-attach-xxx> --force --region eu-central-1
+    #   3. Delete it once status is "available":
+    #      aws ec2 delete-network-interface --network-interface-id <eni-xxx> --region eu-central-1
+    #   4. Retry: aws cloudformation delete-stack --stack-name SmartNicsStack --region eu-central-1
     if ($LASTEXITCODE -ne 0) { exit 1 }
 
     Write-Host "[*] Destroying PacketTestStack..."
