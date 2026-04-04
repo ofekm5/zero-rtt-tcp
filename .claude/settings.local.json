@@ -8,7 +8,9 @@
       "Bash(cd:*)",
       "Bash(openspec list:*)",
       "Bash(openspec status:*)",
-      "Bash(openspec instructions:*)"
+      "Bash(openspec instructions:*)",
+      "Bash(xargs grep:*)",
+      "Bash(openspec new:*)"
     ]
   }
 }

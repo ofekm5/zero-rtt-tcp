@@ -22,11 +22,13 @@ class SmartNicsStack(Stack):
         middle_subnets = vpc.select_subnets(subnet_group_name="Middle")
         server_subnets = vpc.select_subnets(subnet_group_name="Server")
 
-        # Base user data for Client/Server VMs (no Scapy, no DPDK — just git clone)
+        # Base user data for Client/Server VMs (no Scapy, no DPDK — just git clone + bpftrace)
         base_user_data = ec2.UserData.for_linux()
         base_user_data.add_commands(
             "yum update -y",
             "yum install -y git",
+            "amazon-linux-extras install -y BCC",
+            "yum install -y bpftrace",
             "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token --with-decryption --query Parameter.Value --output text --region eu-central-1)",
             'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" /home/ec2-user/zero-rtt-demo',
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
