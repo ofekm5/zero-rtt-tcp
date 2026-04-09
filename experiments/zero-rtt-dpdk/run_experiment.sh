@@ -49,7 +49,7 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 # Build SSM parameters JSON from a shell command string
 mk_params() { python3 -c "import json,sys; print(json.dumps({'commands':[sys.argv[1]]}))" "$1"; }
 # Extract element N from a JSON array on stdin
-json_idx()  { python3 -c "import json,sys; print(json.load(sys.stdin)[$1], end='')"; }
+json_idx()  { python3 -X utf8 -c "import json,sys; print(json.load(sys.stdin)[$1], end='')"; }
 
 
 # ─── Dependency checks ────────────────────────────────────────────────────────

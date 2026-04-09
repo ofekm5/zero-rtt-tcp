@@ -28,7 +28,7 @@
 
 ## 6. Verification
 
-- [ ] 6.1 SSM into Client VM → run `bpftrace --version` → confirm installed  *(manual)*
-- [ ] 6.2 Run `bpftrace -l 'tracepoint:sock:*'` → confirm `inet_sock_set_state` tracepoint exists  *(manual)*
-- [ ] 6.3 Run `run_trace.sh --duration 10 --port 8080 --output /tmp/test.jsonl` on Client while `client.py` connects → verify JSON lines show `TCP_CLOSE → TCP_SYN_SENT → TCP_ESTABLISHED → TCP_FIN_WAIT1 → TCP_CLOSE`  *(manual)*
-- [ ] 6.4 Run full experiment → verify eBPF trace summary appears in the generated report  *(manual)*
+- [x] 6.1 SSM into Client VM → run `bpftrace --version` → confirm installed  *(manual)*
+- [x] 6.2 Run `bpftrace -l 'tracepoint:sock:*'` → confirm `inet_sock_set_state` tracepoint exists  *(manual)*
+- [x] 6.3 Run `run_trace.sh --duration 10 --port 8080 --output /tmp/test.jsonl` on Client while `client.py` connects → verify JSON lines show `TCP_CLOSE → TCP_SYN_SENT → TCP_ESTABLISHED → TCP_FIN_WAIT1 → TCP_CLOSE`  *(manual)*
+- [x] 6.4 Run full experiment → verify eBPF trace summary appears in the generated report  *(manual)*
