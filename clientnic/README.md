@@ -89,6 +89,31 @@ clientnic/
 pytest zero-rtt-clientnic-translate/clientnic/tests/
 ```
 
+### DPDK Tests
+
+Two separate test levels exist for the DPDK implementation (`clientnic/dpdk/`):
+
+**Smoke tests** (`clientnic/dpdk/tests/run_dpdk_tests.sh`) — validate the binary using virtual PMDs, no hardware required:
+- Binary validation (ELF format + DPDK library linkage)
+- EAL init with null PMD
+- Ring PMD device creation
+- Graceful no-device handling
+- Port enumeration
+
+Run via SSM (recommended — handles build automatically):
+```bash
+./experiments/zero-rtt-dpdk/run_dpdk_tests_ssm.sh
+```
+
+Run manually on the ClientNIC VM:
+```bash
+cd ~/zero-rtt-demo/clientnic/dpdk
+meson setup builddir && ninja -C builddir
+sudo ./tests/run_dpdk_tests.sh builddir/clientnic-dpdk
+```
+
+**Integration test** (`experiments/zero-rtt-dpdk/run_experiment.sh`) — end-to-end 4-VM test validating actual 0-RTT behavior: starts Server → ServerNIC → ClientNIC → Client via SSM node scripts, then runs `validate_0rtt_capture.py` and writes a report to `experiments/zero-rtt-dpdk/reports/`.
+
 Manual verification with tcpdump:
 ```bash
 # Terminal 1: Run ClientNIC
