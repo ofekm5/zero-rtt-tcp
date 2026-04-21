@@ -26,7 +26,7 @@ class SmartNicsStack(Stack):
         base_user_data = ec2.UserData.for_linux()
         base_user_data.add_commands(
             "yum update -y",
-            "yum install -y git",
+            "yum install -y git iperf",
             "amazon-linux-extras install -y BCC",
             "yum install -y bpftrace",
             "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token --with-decryption --query Parameter.Value --output text --region eu-central-1)",

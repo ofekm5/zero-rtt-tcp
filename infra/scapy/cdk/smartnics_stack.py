@@ -26,7 +26,7 @@ class SmartNicsStack(Stack):
         base_user_data = ec2.UserData.for_linux()
         base_user_data.add_commands(
             "yum update -y",
-            "yum install -y python3-pip git",
+            "yum install -y python3-pip git iperf",
             "pip3 install scapy",
             "amazon-linux-extras install -y BCC",
             "yum install -y bpftrace",
