@@ -100,6 +100,38 @@ cd infra/dpdk      # or infra/scapy
 
 Both scripts discover all 4 VMs via AWS SSM, pull latest code, rebuild if needed, start services in the correct order, run a client connection, capture packets, and validate 0-RTT behavior with `validate_0rtt_capture.py`. Exit code = number of failures.
 
+### iperf Stress Testing
+
+An iperf (v2) alternative to `client.py` / `server.py` is available for load and stress testing. The 0-RTT translation layer is traffic-agnostic — iperf flows pass through ClientNIC unchanged.
+
+**Manual run (DPDK stack):** see `experiments/zero-rtt-dpdk/run_manual_steps_iperf.sh` for the 4-terminal reference. Node scripts:
+
+| Script | VM | What it does |
+|--------|----|--------------|
+| `experiments/zero-rtt-dpdk/nodes/server_iperf.sh` | Server | Starts persistent `iperf -s` on port 5001 |
+| `experiments/zero-rtt-dpdk/nodes/client_iperf.sh` | Client | Auto-discovers server IP, runs full suite |
+
+**Test scenarios** (`client-app/iperf_client.sh`):
+
+| # | Scenario | Key flags | Purpose |
+|---|----------|-----------|---------|
+| 01 | Baseline single flow | `-t 10` | Throughput reference |
+| 02 | Sequential connections ×5 | `-t 5` ×5 loops | Repeated SYN / flow-table churn |
+| 03 | Parallel 4 streams | `-t 10 -P 4` | Moderate multi-stream load |
+| 04 | Parallel 16 streams | `-t 10 -P 16` | High multi-stream load |
+| 05 | Bulk 100 MB | `-n 100M` | Large transfer correctness |
+| 06 | Bulk 1 GB | `-n 1G` | Sustained seq-rewrite under bulk data |
+| 07 | Burst — 100 short conns | `-n 64K` ×100 loops | Hammers SYN path; most relevant to 0-RTT |
+| 08 | Simultaneous bidir | `-t 10 -d` | Full-duplex seq/ack rewriting |
+| 09 | Sequential bidir | `-t 10 -r` | Upload then download |
+| 10 | UDP flood 1 Gbps | `-u -b 1G -t 10` | NIC interrupt / buffer stress |
+| 11 | UDP flood 100 Mbps | `-u -b 100M -t 10` | Moderate UDP baseline |
+| 12 | Stress 32 streams / 60 s | `-t 60 -P 32` | Sustained high-concurrency load |
+| 13 | Large window 256 K | `-t 10 -w 256K` | Buffering under seq-number translation |
+| 14 | Large window 1 M | `-t 10 -w 1M` | Max-window buffering stress |
+
+Results are saved as text files in `/tmp/iperf_results/` on the Client VM, with a throughput summary printed at the end.
+
 ## Quick Start (manual, on the VMs)
 
 Startup order: **Server → ServerNIC → ClientNIC → Client**
