@@ -10,7 +10,8 @@
       "Bash(openspec status:*)",
       "Bash(openspec instructions:*)",
       "Bash(xargs grep:*)",
-      "Bash(openspec new:*)"
+      "Bash(openspec new:*)",
+      "Bash(aws ec2 describe-subnets *)"
     ]
   }
 }

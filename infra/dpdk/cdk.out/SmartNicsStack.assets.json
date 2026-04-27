@@ -1,16 +1,16 @@
 {
   "version": "52.0.0",
   "files": {
-    "4ec3486115277e86fa96d7008136c7a856a4e0f9f01e3080a67f03c2027af316": {
+    "2e5a44c4ea3228139f7289b712beae08495851bf2b6accb3648dc15533428eb4": {
       "displayName": "SmartNicsStack Template",
       "source": {
         "path": "SmartNicsStack.template.json",
         "packaging": "file"
       },
       "destinations": {
-        "191106064063-eu-central-1-78bcadf2": {
+        "191106064063-eu-central-1-9b23ef08": {
           "bucketName": "cdk-hnb659fds-assets-191106064063-eu-central-1",
-          "objectKey": "4ec3486115277e86fa96d7008136c7a856a4e0f9f01e3080a67f03c2027af316.json",
+          "objectKey": "2e5a44c4ea3228139f7289b712beae08495851bf2b6accb3648dc15533428eb4.json",
           "region": "eu-central-1",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::191106064063:role/cdk-hnb659fds-file-publishing-role-191106064063-eu-central-1"
         }
