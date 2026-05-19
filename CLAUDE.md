@@ -104,6 +104,7 @@ Scapy provides:
 - **`.claude/context/architecture.md`**: Complete system architecture, requirements, protocol flow
 - **`clientnic/README.md`**: Detailed ClientNIC implementation (0-RTT core logic)
 - **`servernic/README.md`**: ServerNIC forwarding implementation
+- **`generated-isn-compression-options.md`**: Packet-level techniques for encoding the server ISN into a SYN (ISN field, TCP options, TFO payload, timestamp TSval, SrcPort split) — reference for the ClientNIC→ServerNIC ISN-passing improvement
 
 ### Reference
 - **`.claude/skills/scapy-development/SKILL.md`**: Scapy skill routing index — points to modular reference files:
