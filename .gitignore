@@ -210,3 +210,4 @@ __marimo__/
 infra/cdk.out/
 infra/.venv/
 .claude/settings.local.json
+tcp-header.png

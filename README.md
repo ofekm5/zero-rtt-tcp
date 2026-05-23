@@ -25,29 +25,7 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 
 **ClientNIC has two implementations** — Scapy (Python, `clientnic/scapy/`) and DPDK (C, `clientnic/dpdk/`) — both producing identical 0-RTT behavior.
 
-```
-Client VM          ClientNIC VM        ServerNIC VM        Server VM
-    │                    │                    │                    │
-    │ ① SYN              │                    │                    │
-    │───────────────────>│                    │                    │
-    │                    │ ② SYN (forwarded)  │                    │
-    │                    │───────────────────>│ ③ SYN (forwarded)  │
-    │                    │                    │───────────────────>│
-    │ ④ Spoofed SYN-ACK  │                    │                    │
-    │<───────────────────│                    │ ⑤ Real SYN-ACK     │
-    │                    │                    │<───────────────────│
-    │ ⑥ ACK + DATA (early│                    │    (dropped)       │
-    │───────────────────>│                    │                    │
-    │                    │ ⑦ ACK+DATA         │                    │
-    │                    │  (seq rewritten)   │                    │
-    │                    │───────────────────>│ ⑧ ACK+DATA         │
-    │                    │                    │───────────────────>│
-    │                    │                    │ ⑨ Server response  │
-    │                    │ ⑩ Response         │<───────────────────│
-    │                    │  (ack rewritten)   │                    │
-    │ ⑪ Response         │<───────────────────│                    │
-    │<───────────────────│                    │                    │
-```
+![Packet Flow](architecture-packetflow.png)
 
 **Key**: ClientNIC sends the spoofed SYN-ACK (④) before the real one (⑤) even arrives, so the client can send data (⑥) a full RTT earlier than normal TCP. The real SYN-ACK is dropped; sequence numbers are transparently rewritten (⑦, ⑩) so the server never knows.
 

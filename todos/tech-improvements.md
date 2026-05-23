@@ -1,5 +1,16 @@
 Tech Improvements
 
+## [URGENT] RUNS Lab Connectivity {#runs-lab-connectivity}
+- turn connection to runs lab more seamless — streamline VPN setup, Proxmox access, SSM commands
+- Improve lab onboarding documentation and automation
+
+## [URGENT] ServerNIC Forwarding Stability {#servernic-forwarding-stability}
+- identify stable forwarding paths for consistent packet forwarding across 3-subnet topology
+- Validate end-to-end packet flow under various network conditions
+- Ensure no packet loss in ServerNIC translation
+
+## Architecture & Implementation
+
 - ISN passing from ClientNIC to ServerNIC (piggybacked in-between or compressed into SYN)
 - Shift sequence number translation responsibility between sides
 - BlueField-3 architecture: eSwitch for translation, DPA for connection setup and ISN generation, ARM core for DPDK setup

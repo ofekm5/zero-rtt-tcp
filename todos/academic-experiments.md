@@ -1,4 +1,14 @@
-Experiments
+Academic Experiments & Research
+
+## [URGENT] RUNS3 BlueField Reboot {#runs3-bluefield-reboot}
+- Perform full reboot of RUNS3 BlueField system
+- Needed before proceeding with BF3 testbed preparation and DPDK experiments
+
+## [URGENT] Asymmetric Routing Mitigation {#asymmetric-routing}
+- Investigate whether techniques from APNIC post are applicable: https://blog.apnic.net/2026/05/01/react-reflection-attack-mitigation-for-asymmetric-routing/
+- Evaluate impact on 0-RTT design and reverse-path validation
+
+## Experiments
 
 - QUIC testbed — reference: https://chatgpt.com/share/69efb1eb-e984-83eb-bda0-a9e6df2a9d81
 - Prepare testbeds for BF3 and AWS
