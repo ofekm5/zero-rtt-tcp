@@ -1,0 +1,136 @@
+---
+- name: Install NVIDIA DOCA-all
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    doca_deb_url: "https://www.mellanox.com/downloads/DOCA/DOCA_v3.0.0/host/doca-host_3.0.0-058000-25.04-ubuntu2204_amd64.deb"
+    doca_deb_filename: "doca-host_3.0.0-058000-25.04-ubuntu2204_amd64.deb"
+    doca_deb_dest: "/tmp/{{ doca_deb_filename }}"
+    kernel_mod_path: "/lib/modules/{{ ansible_kernel }}"
+    # Regex for packages to purge (case-insensitive)
+    doca_purge_regex: '(?i)^(doca|flexio|dpa-gdbserver|dpa-stats|dpaeumgmt).*'
+
+  tasks:
+    ###########################################################################
+    # Uninstall (inline replacement for uninstall_doca.sh)
+    ###########################################################################
+    - name: Collect installed package facts
+      package_facts:
+        manager: auto
+
+    - name: Build list of DOCA/related packages to purge
+      vars:
+        _all_pkgs: "{{ ansible_facts.packages.keys() | list }}"
+      set_fact:
+        packages_to_purge: "{{ _all_pkgs | select('match', doca_purge_regex) | list }}"
+
+    - name: Show packages that will be purged (if any)
+      debug:
+        msg: "Will purge packages: {{ packages_to_purge | join(', ') }}"
+      when: packages_to_purge | length > 0
+
+    - name: Purge DOCA/related packages
+      apt:
+        name: "{{ packages_to_purge }}"
+        state: absent
+        purge: yes
+      when: packages_to_purge | length > 0
+      register: purge_result
+
+    - name: Check for OFED uninstall script
+      stat:
+        path: /usr/sbin/ofed_uninstall.sh
+      register: ofed_uninstall
+
+    - name: Run OFED uninstall script (if present)
+      command: /usr/sbin/ofed_uninstall.sh --force
+      when: ofed_uninstall.stat.exists and ofed_uninstall.stat.executable
+      register: ofed_uninstall_result
+      changed_when: "'was removed' in (ofed_uninstall_result.stdout | default('')) or ofed_uninstall_result.rc == 0"
+
+    - name: Autoremove leftover dependencies
+      apt:
+        autoremove: yes
+        state: present  # no-op for 'present', used to drive autoremove
+
+    ###########################################################################
+    # Pre-checks
+    ###########################################################################
+    - name: Check if kernel module folder exists
+      stat:
+        path: "{{ kernel_mod_path }}"
+      register: kernel_mod_dir
+
+    - name: Warn if no kernel module directory found
+      debug:
+        msg: "WARNING: No kernel modules directory found at {{ kernel_mod_path }}"
+      when: not kernel_mod_dir.stat.exists
+
+    ###########################################################################
+    # Install DOCA host + doca-all
+    ###########################################################################
+    - name: Update APT cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Download DOCA host .deb
+      get_url:
+        url: "{{ doca_deb_url }}"
+        dest: "{{ doca_deb_dest }}"
+        mode: '0644'
+
+    - name: Install DOCA host package
+      apt:
+        deb: "{{ doca_deb_dest }}"
+
+    - name: Ensure doca-all is installed (non-interactively)
+      apt:
+        name: doca-all
+        state: present
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      async: 1800        # up to 30 min
+      poll: 0            # continue immediately
+      register: doca_async
+
+    - name: Wait for doca-all install to finish
+      async_status:
+        jid: "{{ doca_async.ansible_job_id }}"
+      register: result
+      until: result.finished
+      retries: 100
+      delay: 15
+
+    ###########################################################################
+    # Post-install utilities/services
+    ###########################################################################
+    - name: Install mlnx-fw-updater
+      apt:
+        name: mlnx-fw-updater
+        state: present
+
+    # If you need rshim, uncomment:
+    # - name: Install rshim user space (optional, for BFB over rshim)
+    #   apt:
+    #     name: rshim-user-space
+    #     state: present
+
+    - name: Restart openibd service (if present)
+      service:
+        name: openibd
+        state: restarted
+      ignore_errors: yes  # openibd may not exist in some host setups
+
+    - name: Restart mst (if tool exists)
+      stat:
+        path: /usr/sbin/mst
+      register: mst_tool
+
+    - name: Restart MST service
+      command: mst restart
+      when: mst_tool.stat.exists
+      changed_when: true
+      ignore_errors: yes

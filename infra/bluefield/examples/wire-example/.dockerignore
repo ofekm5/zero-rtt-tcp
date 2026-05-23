@@ -1,0 +1,40 @@
+# Docker build context ignore file for wire-example
+
+# Compiled binaries
+wire
+*.o
+*.out
+*.exe
+
+# Build artifacts
+build/
+*.tar
+*.tar.gz
+*.tar.bz2
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation (not needed in image)
+*.md
+!README.md
+
+# Scripts (included separately if needed)
+*.sh
+!build.sh
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+.DS_Store

@@ -24,8 +24,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Combine related points into fewer paragraphs
 - Focus on "what" and "next steps" rather than lengthy "why" explanations
 
-## Important VM Setup info
-All the 4 VMs in this setup are part of AWS CDK stack, called smartnics_stack. The CDK code lives in `infra/` in this repo (mirrored from `C:\Users\shir\Documents\GitHub\private-core-cdk-stack`, excluding the gitlab runner stack).
+## Infrastructure & Platform Support
+
+This project supports **two target platforms**:
+
+1. **AWS EC2 VMs** (primary development target)
+   - 4-VM chain: Client → ClientNIC → ServerNIC → Server
+   - All VMs part of AWS CDK stack called `smartnics_stack`
+   - CDK code lives in `infra/scapy/` and `infra/dpdk/`
+   - Mirrored from `C:\Users\shir\Documents\GitHub\private-core-cdk-stack` (excluding gitlab runner)
+
+2. **NVIDIA BlueField-3 DPU** (new platform target)
+   - Hardware-accelerated SmartNIC with DOCA/DPDK
+   - Comprehensive docs in `infra/bluefield/docs/`
+   - Examples: syn-punt, react, wire-example in `infra/bluefield/examples/`
+   - Target: DOCA 2.x/3.x with DPDK 23.x
 
 ## Project Overview
 
@@ -84,11 +97,18 @@ del packet[TCP].chksum
 
 ## Technology Stack
 
+**AWS EC2 Platform:**
 - **Python 3.8+**: Scapy implementation and all supporting tools
 - **C11 + DPDK 23.11**: DPDK implementation (`clientnic/dpdk/`)
 - **Scapy**: Packet manipulation library (wraps AF_PACKET raw sockets)
 - **Linux**: Required for raw socket support and DPDK vfio-pci
-- **Network setup**: VMs connected via AWS ENIs in a 3-subnet VPC
+- **AWS**: EC2, ENIs, CDK for infrastructure
+
+**BlueField-3 DPU Platform:**
+- **NVIDIA DOCA 2.x/3.x**: Hardware acceleration framework (DOCA Flow API, DPA cores)
+- **DPDK 23.x**: Packet I/O and multi-core processing
+- **C11**: DPA and host-side programming
+- **P4**: Optional: Packet pipeline customization via DPL/P4
 
 ### Scapy Essentials
 
@@ -104,7 +124,14 @@ Scapy provides:
 - **`.claude/context/architecture.md`**: Complete system architecture, requirements, protocol flow
 - **`clientnic/README.md`**: Detailed ClientNIC implementation (0-RTT core logic)
 - **`servernic/README.md`**: ServerNIC forwarding implementation
-- **`generated-isn-compression-options.md`**: Packet-level techniques for encoding the server ISN into a SYN (ISN field, TCP options, TFO payload, timestamp TSval, SrcPort split) — reference for the ClientNIC→ServerNIC ISN-passing improvement
+- **`todos/tech-improvements.md`**: T8 ISN-passing technique (ack-num field piggybacking) — recommended for current AWS VPC topology
+
+### OpenSpec Change Tracking
+- **`openspec/changes/`**: Experimental spec-driven workflow for tracking development phases
+  - **`t8-isn-ack-num-translation-shift/`**: Active work on T8 ISN-passing for ServerNIC → Server translation
+  - **`aws-to-onprem-full-dpdk-migration/`**: Migration planning from AWS to on-prem Bluefield
+  - **`phase-1a-ebpf-observability/`** & **`phase-1b-iperf3-stress-testing/`**: Phase-1 initiatives
+  - Archived changes in `openspec/changes/archive/`
 
 ### Reference
 - **`.claude/skills/scapy-development/SKILL.md`**: Scapy skill routing index — points to modular reference files:
@@ -137,6 +164,7 @@ Specialist agent prompts under `.claude/context/agents-system-prompts/`:
 
 ## Development Status
 
+**AWS EC2 Platform:**
 - [x] ServerNIC stateless forwarder (`servernic/scapy/main.py`)
 - [x] Client TCP application (`client-app/client.py`)
 - [x] Server TCP application (`server-app/server.py`)
@@ -144,14 +172,29 @@ Specialist agent prompts under `.claude/context/agents-system-prompts/`:
 - [x] ClientNIC DPDK implementation (`clientnic/dpdk/`) — C11, DPDK 23.11 ENA PMD, all checks pass
 - [x] Integration test suites (`experiments/`)
 
+**Active Work Streams (OpenSpec):**
+- [ ] **T8 ISN-ack-num translation**: ServerNIC side translation (piggybacking ISN in SYN ack-num field)
+- [ ] **AWS-to-OnPrem migration**: Full DPDK on Bluefield-3 DPU
+- [ ] **Phase-1a**: eBPF observability and packet flow analysis
+- [ ] **Phase-1b**: iperf3 stress testing and performance validation
+
+**BlueField-3 DPU Platform:**
+- [ ] DPU-native 0-RTT implementation (DOCA Flow + DPA)
+- [ ] Comprehensive architecture & programming docs (`infra/bluefield/docs/`)
+- Examples in progress (`infra/bluefield/examples/`)
+
 ## Development Workflow
 
-All components are implemented and tested. To run experiments:
-
+**AWS EC2 Testing & Experimentation:**
 1. **Scapy stack**: `./experiments/zero-rtt-clientnic-translate/run_experiment.sh`
 2. **DPDK stack**: `./experiments/zero-rtt-dpdk/run_experiment.sh`
 3. Investigate failures using the manual steps in `.claude/skills/zero-rtt-integration-tester/SKILL.md`
 4. File findings in `experiments/zero-rtt-clientnic-translate/reports/`
+
+**Change Management (OpenSpec Workflow):**
+- Active changes tracked in `openspec/changes/` with spec-driven proposals, designs, and task lists
+- Use `/openspec-propose`, `/openspec-explore`, `/openspec-apply-change`, and `/openspec-archive-change` skills
+- Completed changes archived with full context preserved
 
 ## Testing Approach
 
@@ -247,27 +290,50 @@ server-app/
     └── test_server.py  # Server unit tests
 
 infra/
-├── scapy/              # CDK stack: Scapy data plane (Python on ClientNIC)
+├── scapy/              # AWS CDK stack: Scapy data plane (Python on ClientNIC)
 │   ├── deploy.ps1 / destroy.ps1
 │   └── cdk/
 │       ├── packet_test_stack.py   # VPC with Client/Middle/Server subnets
 │       └── smartnics_stack.py     # EC2 instances, ENIs, route tables
-└── dpdk/               # CDK stack: DPDK data plane (C/DPDK on ClientNIC)
-    ├── deploy.ps1 / destroy.ps1
-    └── cdk/
-        ├── packet_test_stack.py   # VPC (same topology)
-        └── smartnics_stack.py     # ClientNIC gets DPDK 23.11 + vfio-pci + binary build
+├── dpdk/               # AWS CDK stack: DPDK data plane (C/DPDK on ClientNIC)
+│   ├── deploy.ps1 / destroy.ps1
+│   └── cdk/
+│       ├── packet_test_stack.py   # VPC (same topology)
+│       └── smartnics_stack.py     # ClientNIC gets DPDK 23.11 + vfio-pci + binary build
+└── bluefield/          # NVIDIA BlueField-3 DPU infrastructure and examples
+    ├── docs/           # Architecture, programming, operations, development guides
+    ├── examples/       # syn-punt, react, wire-example DOCA/DPDK implementations
+    ├── deployment/     # Docker and BFB image setup
+    └── setup/          # DPU mode configuration and scripts
+
+openspec/
+├── changes/            # Experimental spec-driven change tracking
+│   ├── t8-isn-ack-num-translation-shift/    # Active: ISN passing for ServerNIC
+│   ├── aws-to-onprem-full-dpdk-migration/   # Migration planning to Bluefield
+│   ├── phase-1a-ebpf-observability/         # Phase-1 initiative
+│   ├── phase-1b-iperf3-stress-testing/      # Phase-1 initiative
+│   └── archive/        # Completed changes (DPDK port, SSM tests, node integration)
+
+todos/
+├── urgents.md          # Critical items (RUNS lab, ServerNIC stability)
+└── tech-improvements.md  # Architecture work (T8 ISN-passing, sequence translation)
 
 venv/                   # Shared Python venv for local dev (all components)
 ```
 
 ### Deploying Infrastructure
 
+**AWS EC2 Deployments:**
 ```powershell
 cd infra/dpdk         # or infra/scapy
 .\deploy.ps1          # Creates/activates repo-root venv, installs deps, deploys
 .\deploy.ps1 -Bootstrap  # First-time CDK bootstrap + deploy
 .\destroy.ps1         # Tear down all stacks
 ```
-
 Note: the DPDK stack's ClientNIC user data builds DPDK 23.11 from source (~15-20 min after deploy before the binary is ready).
+
+**BlueField-3 DPU Setup:**
+- Refer to `infra/bluefield/docs/` for architecture, DOCA Flow programming, and DPA cores
+- Check `infra/bluefield/setup/` for OS image installation and driver setup
+- Review example implementations in `infra/bluefield/examples/` (syn-punt, react patterns)
+- Use `infra/bluefield/deployment/` for Docker-based DPU application deployment

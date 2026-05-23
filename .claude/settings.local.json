@@ -11,7 +11,8 @@
       "Bash(openspec instructions:*)",
       "Bash(xargs grep:*)",
       "Bash(openspec new:*)",
-      "Bash(aws ec2 describe-subnets *)"
+      "Bash(aws ec2 describe-subnets *)",
+      "Bash(openspec validate *)"
     ]
   }
 }

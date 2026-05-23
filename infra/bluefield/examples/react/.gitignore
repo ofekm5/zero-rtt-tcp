@@ -1,0 +1,8 @@
+*.pcap
+.vscode/
+results/
+old/
+results/aut_cra_20
+*old*
+*.tar
+simple_example/

@@ -1,0 +1,124 @@
+---
+- name: Install Meson & Ninja for DOCA builds
+  hosts: dpu
+  become: yes
+  gather_facts: yes
+
+  vars:
+    meson_tar: resources/meson-1.8.4.tar.gz
+    meson_src_dir: /root/meson-1.8.4
+    meson_bin: /usr/local/bin/meson
+    ninja_tar: resources/ninja-1.11.1.tar.gz
+    ninja_src_dir: /root/ninja-1.11.1
+    ninja_bin: /usr/local/bin/ninja
+    ensure_usr_local_bin_profile: /etc/profile.d/usr-local-bin.sh
+
+  tasks:
+    - name: Ensure /usr/local/bin is in PATH for login shells
+      copy:
+        dest: "{{ ensure_usr_local_bin_profile }}"
+        mode: '0644'
+        content: 'export PATH="/usr/local/bin:$PATH"'
+      # harmless if already present
+
+    # ---------- Meson ----------
+    - name: Copy Meson source tarball
+      copy:
+        src: "{{ meson_tar }}"
+        dest: /root/meson-1.8.4.tar.gz
+        mode: '0644'
+
+    - name: Extract Meson source
+      unarchive:
+        src: /root/meson-1.8.4.tar.gz
+        dest: /root
+        remote_src: yes
+      args:
+        creates: "{{ meson_src_dir }}"
+
+    - name: Build Meson zipapp → /usr/local/bin/meson (self-contained)
+      shell: |
+        set -e
+        python3 {{ meson_src_dir }}/packaging/create_zipapp.py \
+          --outfile {{ meson_bin }} \
+          --interpreter '/usr/bin/env python3' \
+          {{ meson_src_dir }}
+        chmod 0755 {{ meson_bin }}
+      args:
+        creates: "{{ meson_bin }}"
+
+    # ---------- Ninja ----------
+    - name: Copy Ninja source tarball
+      copy:
+        src: "{{ ninja_tar }}"
+        dest: /root/ninja-1.11.1.tar.gz
+        mode: '0644'
+
+    - name: Extract Ninja source
+      unarchive:
+        src: /root/ninja-1.11.1.tar.gz
+        dest: /root
+        remote_src: yes
+      args:
+        creates: "{{ ninja_src_dir }}"
+
+    - name: Build Ninja from source (bootstrap) → /usr/local/bin/ninja
+      shell: |
+        set -e
+        cd {{ ninja_src_dir }}
+        python3 configure.py --bootstrap
+        mv ninja {{ ninja_bin }}
+        chmod 0755 {{ ninja_bin }}
+      args:
+        creates: "{{ ninja_bin }}"
+
+    # ---------- Create symlinks for immediate access ----------
+    - name: Create symlink for Meson in /usr/bin
+      file:
+        src: "{{ meson_bin }}"
+        dest: /usr/bin/meson
+        state: link
+        force: yes
+
+    - name: Create symlink for Ninja in /usr/bin
+      file:
+        src: "{{ ninja_bin }}"
+        dest: /usr/bin/ninja
+        state: link
+        force: yes
+
+    # ---------- Verify ----------
+    - name: Check Meson version
+      command: "{{ meson_bin }} --version"
+      register: meson_ver
+      changed_when: false
+
+    - name: Check Ninja version
+      command: "{{ ninja_bin }} --version"
+      register: ninja_ver
+      changed_when: false
+
+    - name: Show versions
+      debug:
+        msg: "Meson={{ meson_ver.stdout }}, Ninja={{ ninja_ver.stdout }}"
+
+    # ---------- Cleanup ----------
+    - name: Remove Meson tarball
+      file:
+        path: /root/meson-1.8.4.tar.gz
+        state: absent
+
+    - name: Remove Ninja tarball
+      file:
+        path: /root/ninja-1.11.1.tar.gz
+        state: absent
+
+    - name: Remove Meson source directory
+      file:
+        path: "{{ meson_src_dir }}"
+        state: absent
+
+    - name: Remove Ninja source directory
+      file:
+        path: "{{ ninja_src_dir }}"
+        state: absent
