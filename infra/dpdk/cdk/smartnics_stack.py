@@ -36,12 +36,17 @@ class SmartNicsStack(Stack):
             "chmod -R 755 /home/ec2-user/zero-rtt-demo",
         )
 
-        # User data for ServerNIC VM: Scapy + IP forwarding only (no DPDK)
-        nic_user_data = ec2.UserData.for_linux()
-        nic_user_data.add_commands(
+        # User data for ServerNIC VM: DPDK 23.11 + hugepages + vfio-pci + servernic-dpdk build
+        #
+        # ENI role pinning (T8 design, D6):
+        #   eth0: primary ENI (Middle subnet, kernel) — SSM management only
+        #   eth1: secondary ENI (Middle subnet, DPDK) — ClientNIC-facing data plane (vfio-pci)
+        #   eth2: tertiary ENI (Server subnet, kernel) — Server-facing AF_PACKET
+        servernic_user_data = ec2.UserData.for_linux()
+        servernic_user_data.add_commands(
+            # System packages
             "yum update -y",
-            "yum install -y git python3 python3-pip",
-            "pip3 install scapy",
+            "yum install -y git gcc make numactl-devel kernel-devel libpcap-devel pciutils python3-pip",
             # Clone repo
             "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token "
             "--with-decryption --query Parameter.Value --output text --region eu-central-1)",
@@ -52,6 +57,50 @@ class SmartNicsStack(Stack):
             # Enable IP forwarding
             "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf",
             "sysctl -p",
+            # Hugepages (512 x 2 MB = 1 GiB)
+            "echo 'vm.nr_hugepages=512' >> /etc/sysctl.conf",
+            "sysctl -p",
+            "mkdir -p /dev/hugepages",
+            "mount -t hugetlbfs nodev /dev/hugepages",
+            "echo 'nodev /dev/hugepages hugetlbfs defaults 0 0' >> /etc/fstab",
+            # Swap (4 GB) to survive DPDK build on c5n.large
+            "fallocate -l 4G /swapfile",
+            "chmod 600 /swapfile",
+            "mkswap /swapfile",
+            "swapon /swapfile",
+            "echo '/swapfile swap swap defaults 0 0' >> /etc/fstab",
+            # Build tools
+            "pip3 install meson ninja pyelftools",
+            # Build DPDK 23.11
+            "cd /opt",
+            "curl -LO https://fast.dpdk.org/rel/dpdk-23.11.tar.xz",
+            "tar xf dpdk-23.11.tar.xz",
+            "cd dpdk-23.11",
+            "/usr/local/bin/meson setup build -Dplatform=generic",
+            "cd build && /usr/local/bin/ninja -j1 && /usr/local/bin/ninja install",
+            "echo '/usr/local/lib64' > /etc/ld.so.conf.d/dpdk.conf",
+            "ldconfig",
+            "echo 'export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}' > /etc/profile.d/dpdk.sh",
+            # vfio-pci for eth1 (ClientNIC-facing secondary ENI in Middle subnet)
+            "modprobe vfio-pci",
+            "echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode",
+            "echo 'vfio-pci' > /etc/modules-load.d/vfio.conf",
+            # Wait for eth1 (secondary ENI, device_index=1) and bind to vfio-pci
+            "for i in $(seq 1 30); do",
+            "    SECONDARY_PCI=$(basename $(readlink /sys/class/net/eth1/device) 2>/dev/null || true)",
+            "    [ -n \"$SECONDARY_PCI\" ] && break",
+            "    sleep 2",
+            "done",
+            "if [ -n \"$SECONDARY_PCI\" ]; then",
+            "    ip link set eth1 down",
+            "    dpdk-devbind.py --bind=vfio-pci $SECONDARY_PCI",
+            "fi",
+            # Build servernic-dpdk application
+            "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
+            "cd /home/ec2-user/zero-rtt-demo/servernic/dpdk",
+            "/usr/local/bin/meson setup builddir",
+            "cd builddir && /usr/local/bin/ninja",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo/servernic/dpdk/builddir",
         )
 
         # User data for ClientNIC VM: DPDK 23.11 + hugepages + vfio-pci + clientnic-dpdk build
@@ -120,12 +169,20 @@ class SmartNicsStack(Stack):
             "    ip link set eth1 down",
             "    dpdk-devbind.py --bind=vfio-pci $SECONDARY_PCI",
             "fi",
-            # Build clientnic-dpdk application
+            # Build clientnic-dpdk application (full-owner, reference implementation)
             "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
             "cd /home/ec2-user/zero-rtt-demo/clientnic/dpdk",
             "/usr/local/bin/meson setup builddir",
             "cd builddir && /usr/local/bin/ninja",
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo/clientnic/dpdk/builddir",
+            # Build clientnic-dpdk-forwarder application (T8 variant: stamps V, no translation)
+            "cd /home/ec2-user/zero-rtt-demo/clientnic/dpdk-forwarder",
+            "/usr/local/bin/meson setup builddir",
+            "cd builddir && /usr/local/bin/ninja",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo/clientnic/dpdk-forwarder/builddir",
+            # Default: run the forwarder variant (T8 mode) — change to dpdk/builddir to revert
+            "ln -sf /home/ec2-user/zero-rtt-demo/clientnic/dpdk-forwarder/builddir/clientnic-dpdk-forwarder"
+            " /home/ec2-user/zero-rtt-demo/clientnic/dpdk-active",
         )
 
         # Create IAM role for SSM access
@@ -296,8 +353,11 @@ class SmartNicsStack(Stack):
             network_interface_id=clientnic_middle_eni.ref,
         )
 
-        # Create ServerNIC VM with 2 ENIs — c5n.large for DPDK performance
-        # First ENI in Middle subnet (eth0 = kernel/SSM, eth1 = DPDK data plane)
+        # Create ServerNIC VM with 3 ENIs — c5n.large for DPDK performance
+        # ENI role pinning (T8 design, D6):
+        #   eth0: primary ENI (Middle subnet, kernel) — SSM management only
+        #   eth1: secondary ENI (Middle subnet, DPDK)  — ClientNIC-facing data plane (vfio-pci)
+        #   eth2: tertiary ENI (Server subnet, kernel) — Server-facing AF_PACKET
         servernic_instance = ec2.Instance(
             self,
             "ServerNicInstance",
@@ -309,7 +369,7 @@ class SmartNicsStack(Stack):
             vpc_subnets=middle_subnet_selection,
             security_group=servernic_sg,
             role=role,
-            user_data=nic_user_data,
+            user_data=servernic_user_data,
             source_dest_check=False,  # Required for routing
             block_devices=[
                 ec2.BlockDevice(
@@ -324,7 +384,25 @@ class SmartNicsStack(Stack):
         )
         Tags.of(servernic_instance).add("Name", "smartnics-servernic")
 
-        # Second ENI for ServerNIC in Server subnet (bound to vfio-pci / DPDK)
+        # Secondary ENI for ServerNIC in Middle subnet (eth1 = ClientNIC-facing DPDK port)
+        servernic_middle_eni = ec2.CfnNetworkInterface(
+            self,
+            "ServerNicMiddleENI",
+            subnet_id=middle_subnets.subnet_ids[0],
+            group_set=[servernic_sg.security_group_id],
+            source_dest_check=False,
+        )
+
+        # Attach secondary ENI (eth1, device_index=1) to ServerNIC
+        ec2.CfnNetworkInterfaceAttachment(
+            self,
+            "ServerNicMiddleENIAttachment",
+            device_index="1",
+            instance_id=servernic_instance.instance_id,
+            network_interface_id=servernic_middle_eni.ref,
+        )
+
+        # Tertiary ENI for ServerNIC in Server subnet (eth2 = Server-facing AF_PACKET)
         servernic_server_eni = ec2.CfnNetworkInterface(
             self,
             "ServerNicServerENI",
@@ -333,11 +411,11 @@ class SmartNicsStack(Stack):
             source_dest_check=False,
         )
 
-        # Attach second ENI to ServerNIC
+        # Attach tertiary ENI (eth2, device_index=2) to ServerNIC
         ec2.CfnNetworkInterfaceAttachment(
             self,
             "ServerNicServerENIAttachment",
-            device_index="1",
+            device_index="2",
             instance_id=servernic_instance.instance_id,
             network_interface_id=servernic_server_eni.ref,
         )
@@ -396,15 +474,15 @@ class SmartNicsStack(Stack):
             destination_cidr_block="0.0.0.0/0",
             gateway_id=vpc.internet_gateway_id,
         )
-        # Forward-path: ClientNIC eth1 → ServerNIC eth0 (primary ENI, in middle subnet)
+        # Forward-path: ClientNIC eth1 → ServerNIC eth1 (secondary ENI, Middle subnet, DPDK)
         ec2.CfnRoute(
             self,
             "MiddleToServerViaNic",
             route_table_id=middle_route_table.ref,
             destination_cidr_block="10.1.2.0/24",
-            instance_id=servernic_instance.instance_id,
+            network_interface_id=servernic_middle_eni.ref,
         )
-        # Return-path: ServerNIC eth0 → ClientNIC eth1 (secondary ENI, in middle subnet)
+        # Return-path: ServerNIC eth1 → ClientNIC eth1 (secondary ENI, in middle subnet)
         ec2.CfnRoute(
             self,
             "MiddleToClientViaNic",
