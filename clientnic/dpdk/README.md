@@ -1,5 +1,8 @@
 # ClientNIC DPDK Implementation
 
+> **Full-owner reference implementation** — ClientNIC owns all seq/ack translation.
+> For the T8 variant (translation shifted to ServerNIC), see `clientnic/dpdk-forwarder/`.
+
 DPDK-based implementation of the ClientNIC 0-RTT logic. Replaces the Scapy prototype with a C/DPDK data plane for higher throughput and lower latency.
 
 ## How it works

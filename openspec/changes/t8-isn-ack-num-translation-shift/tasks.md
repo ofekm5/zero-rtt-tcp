@@ -54,15 +54,15 @@
 
 ## 9. Infra & orchestration
 
-- [ ] 9.1 Update `infra/dpdk/` ServerNIC user data to build the ServerNIC DPDK binary (DPDK 23.11) and bind the ClientNIC-facing secondary ENI to vfio-pci; pin which ENI is the DPDK port vs. the AF_PACKET kernel interface
-- [ ] 9.1b Update `infra/dpdk/` ClientNIC user data to build the `clientnic/dpdk-forwarder/` variant (and select which ClientNIC binary — full-owner `dpdk/` vs `dpdk-forwarder/` — runs)
-- [ ] 9.2 Update `experiments/zero-rtt-dpdk/run_experiment.sh` to launch the `dpdk-forwarder` ClientNIC + the ServerNIC DPDK binary (startup order Server → ServerNIC → ClientNIC → Client) with correct `--gw-mac`/iface args
-- [ ] 9.3 Update capture/validation expectations: the real SYN-ACK is now dropped at the ServerNIC (not the ClientNIC); adjust `validate_0rtt_capture.py` usage / report assertions accordingly
+- [x] 9.1 Update `infra/dpdk/` ServerNIC user data to build the ServerNIC DPDK binary (DPDK 23.11) and bind the ClientNIC-facing secondary ENI to vfio-pci; pin which ENI is the DPDK port vs. the AF_PACKET kernel interface
+- [x] 9.1b Update `infra/dpdk/` ClientNIC user data to build the `clientnic/dpdk-forwarder/` variant (and select which ClientNIC binary — full-owner `dpdk/` vs `dpdk-forwarder/` — runs)
+- [x] 9.2 Update `experiments/zero-rtt-dpdk/run_experiment.sh` to launch the `dpdk-forwarder` ClientNIC + the ServerNIC DPDK binary (startup order Server → ServerNIC → ClientNIC → Client) with correct `--gw-mac`/iface args
+- [x] 9.3 Update capture/validation expectations: the real SYN-ACK is now dropped at the ServerNIC (not the ClientNIC); adjust `validate_0rtt_capture.py` usage / report assertions accordingly
 
 ## 10. Tests & docs
 
-- [ ] 10.1 Unit tests: ServerNIC flow table (create/lookup/collision/delta/idempotent/buffer overflow), SYN handler (V extract + ack zero + checksum), translator (c2s ACK −delta, s2c SEQ +delta, 32-bit wraparound)
-- [ ] 10.2 ClientNIC `dpdk-forwarder` unit tests: SYN forwarding stamps `V` + valid checksum, retransmit re-stamps `V`, transparent forward leaves seq/ack unchanged
+- [x] 10.1 Unit tests: ServerNIC flow table (create/lookup/collision/delta/idempotent/buffer overflow), SYN handler (V extract + ack zero + checksum), translator (c2s ACK −delta, s2c SEQ +delta, 32-bit wraparound)
+- [x] 10.2 ClientNIC `dpdk-forwarder` unit tests: SYN forwarding stamps `V` + valid checksum, retransmit re-stamps `V`, transparent forward leaves seq/ack unchanged
 - [ ] 10.3 Integration test: end-to-end 0-RTT establishment, data correctness both directions, exactly one (spoofed) SYN-ACK reaches the client, c→s pre-delta buffering works
-- [ ] 10.4 Add `clientnic/dpdk-forwarder/README.md` documenting the variant and how it differs from `clientnic/dpdk/` (translation shifted to ServerNIC, ISN ack-num channel); add a pointer note at the top of `clientnic/dpdk/README.md`
-- [ ] 10.5 Update `servernic/dpdk/README.md` (no longer WIP) and `CLAUDE.md` — module structure (two coexisting ClientNIC DPDK variants), architecture (translation-shift), and key-docs references; mark `todos/tech-improvements.md` T8 done
+- [x] 10.4 Add `clientnic/dpdk-forwarder/README.md` documenting the variant and how it differs from `clientnic/dpdk/` (translation shifted to ServerNIC, ISN ack-num channel); add a pointer note at the top of `clientnic/dpdk/README.md`
+- [x] 10.5 Update `servernic/dpdk/README.md` (no longer WIP) and `CLAUDE.md` — module structure (two coexisting ClientNIC DPDK variants), architecture (translation-shift), and key-docs references; mark `todos/tech-improvements.md` T8 done

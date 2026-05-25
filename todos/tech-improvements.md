@@ -12,7 +12,7 @@ Tech Improvements
 ## Architecture & Implementation
 
 - ISN passing from ClientNIC to ServerNIC (piggybacked in-between or compressed into SYN)
-  - **T8 — SYN ack-num field** (recommended for current single-ClientNIC/single-ServerNIC AWS VPC topology)
+  - **T8 — SYN ack-num field** ✅ DONE — implemented in `clientnic/dpdk-forwarder/` + `servernic/dpdk/` (recommended for current single-ClientNIC/single-ServerNIC AWS VPC topology)
 
     **What:** ClientNIC overwrites bytes 8–11 (the ack-num field) of the forwarded SYN with `V` (the spoofed server ISN). ServerNIC reads `V` at SYN-time, optionally zeros the field before forwarding to Server.
 
