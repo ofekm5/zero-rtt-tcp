@@ -1,7 +1,7 @@
 ## 1. Probe verification gate (do first)
 
 - [ ] 1.1 On the deployed AWS VPC path, emit a SYN from the ClientNIC toward the Server with ack-num=`0xDEADBEEF` (one-off test program or a temporary `proc_handle_syn` flag)
-- [ ] 1.2 Capture ServerNIC ingress (tcpdump on the kernel interface, or a `--server-pcap`-style DPDK writer) and confirm bytes 8–11 == `0xDEADBEEF`
+- [ ] 1.2 Capture ServerNIC ingress on eth0 (kernel interface): `tcpdump -i eth0 -X 'tcp[tcpflags] & tcp-syn != 0'`; confirm the TCP ack-num (bytes 8–11) == `0xDEADBEEF` (no DPDK pcap writer needed — eth0 stays in the kernel)
 - [ ] 1.3 Record the result in `experiments/zero-rtt-dpdk/reports/`; if the field is rewritten, STOP and fall back to T3 (out of scope here)
 
 ## 2. ClientNIC variant — create folder (preserve clientnic/dpdk/)
@@ -27,10 +27,10 @@
 ## 5. ServerNIC DPDK — scaffolding & I/O
 
 - [ ] 5.1 Create `servernic/dpdk/` skeleton mirroring ClientNIC: `main.c`, `io.c/h`, `pipeline.c/h`, `flow_table.c/h`, `syn_handler.c/h`, `translator.c/h`, `checksum.c/h`, `log.c/h`, `meson.build`
-- [ ] 5.2 Implement EAL init, mempool, and one RX/one TX queue on the ClientNIC-facing DPDK port (eth1); enable promiscuous mode; error+exit if no DPDK port
-- [ ] 5.3 Implement the Server-facing AF_PACKET raw socket (eth2): non-blocking, bound, MAC read; `recv`/`send` helpers
-- [ ] 5.4 Implement the busy-poll loop alternating `rte_eth_rx_burst` (eth1) and `recvfrom` (eth2)
-- [ ] 5.5 Implement CLI parsing (`--port`, `--gw-mac` for ClientNIC-side next hop, `--client-iface`, `--server-iface`) and startup iptables RST/forward-drop rules
+- [ ] 5.2 Implement EAL init, mempool, and one RX/one TX queue on the Server-facing DPDK port (eth1, Server-subnet ENI bound to vfio-pci); enable promiscuous mode; error+exit if no DPDK port
+- [ ] 5.3 Implement the ClientNIC-facing AF_PACKET raw socket (eth0, Middle-subnet kernel ENI): non-blocking, bound, MAC read; `recv`/`send` helpers
+- [ ] 5.4 Implement the busy-poll loop alternating `rte_eth_rx_burst` (eth1, Server-facing) and `recvfrom` (eth0, ClientNIC-facing)
+- [ ] 5.5 Implement CLI parsing (`--port`, `--gw-mac` for the Server-side next hop on eth1, `--client-iface`=eth0, `--server-iface`=eth1) and startup iptables RST/forward-drop rules (kernel has ip_forward=1 — FORWARD drops prevent double-forwarding)
 
 ## 6. ServerNIC DPDK — flow table
 
@@ -54,7 +54,7 @@
 
 ## 9. Infra & orchestration
 
-- [ ] 9.1 Update `infra/dpdk/` ServerNIC user data to build the ServerNIC DPDK binary (DPDK 23.11) and bind the ClientNIC-facing secondary ENI to vfio-pci; pin which ENI is the DPDK port vs. the AF_PACKET kernel interface
+- [ ] 9.1 Replace the ServerNIC `nic_user_data` (currently Scapy + ip_forward only) with a DPDK build (mirror the ClientNIC user data: DPDK 23.11, hugepages, swap, meson/ninja) and bind the **Server-facing secondary ENI (eth1, `ServerNicServerENI`, Server subnet)** to vfio-pci; leave eth0 (Middle-subnet, ClientNIC-facing) in the kernel for AF_PACKET
 - [ ] 9.1b Update `infra/dpdk/` ClientNIC user data to build the `clientnic/dpdk-forwarder/` variant (and select which ClientNIC binary — full-owner `dpdk/` vs `dpdk-forwarder/` — runs)
 - [ ] 9.2 Update `experiments/zero-rtt-dpdk/run_experiment.sh` to launch the `dpdk-forwarder` ClientNIC + the ServerNIC DPDK binary (startup order Server → ServerNIC → ClientNIC → Client) with correct `--gw-mac`/iface args
 - [ ] 9.3 Update capture/validation expectations: the real SYN-ACK is now dropped at the ServerNIC (not the ClientNIC); adjust `validate_0rtt_capture.py` usage / report assertions accordingly

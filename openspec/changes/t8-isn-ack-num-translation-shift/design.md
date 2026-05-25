@@ -95,12 +95,25 @@ New files: `main.c`, `io.c/h` (DPDK port toward ClientNIC + AF_PACKET toward Ser
 `log.c/h`, `meson.build`. This keeps the two nodes symmetric and lets us reuse the checksum/log
 patterns and the parse→decide→modify pipeline shape verbatim.
 
-### D6 — ServerNIC interface roles
-The ServerNIC faces ClientNIC on one NIC and Server on the other. Mirroring the ClientNIC, the
-**ClientNIC-facing interface is the DPDK port** (where the forwarded SYN/data arrive and where
-translated server→client frames are sent back), and the **Server-facing interface is AF_PACKET**.
-This matches the infra note that one secondary ENI is bound to vfio-pci. Final pin of which
-physical ENI maps to which role is an infra/orchestration detail (see Open Questions).
+### D6 — ServerNIC interface roles (confirmed against `infra/dpdk/cdk/smartnics_stack.py`)
+The CDK stack pins the ServerNIC's two ENIs:
+- **eth0** — primary ENI in the **Middle subnet** (10.1.1.0/24), kernel/SSM. This is the
+  **ClientNIC-facing** interface; the forward path is `ClientNIC eth1 → ServerNIC eth0`.
+- **eth1** — secondary ENI (`ServerNicServerENI`) in the **Server subnet** (10.1.2.0/24), to be
+  bound to **vfio-pci / DPDK**. This is the **Server-facing** interface.
+
+Therefore the ServerNIC is the topological mirror of the ClientNIC: each node's **DPDK port faces
+downstream (toward the Server)** and its **AF_PACKET/kernel interface faces upstream (toward the
+client)**. Concretely on the ServerNIC: **eth0 = AF_PACKET (ClientNIC-facing)**, **eth1 = DPDK
+port (Server-facing)**. Data flow: forwarded SYN / client data arrive on eth0 (AF_PACKET) and are
+sent to the Server on eth1 (DPDK); the real SYN-ACK and server data arrive on eth1 (DPDK), are
+translated, and sent back toward the ClientNIC on eth0 (AF_PACKET).
+
+Note: the current `nic_user_data` provisions the ServerNIC as Scapy + `ip_forward` only and never
+binds the secondary ENI to vfio-pci — so the DPDK ServerNIC requires the infra change in task 9.1
+regardless. The `--gw-mac` argument names the next hop for the **DPDK egress (eth1 → Server)**;
+the AF_PACKET egress (eth0 → ClientNIC) addresses frames to the ClientNIC's Middle-subnet ENI
+(cached/learned, as the ClientNIC already does for its client-facing side).
 
 ### D7 — ServerNIC flow state machine
 `PENDING` on SYN (have `V`, awaiting `real_isn`) → `ACTIVE` on real SYN-ACK (delta known).
@@ -146,12 +159,46 @@ This is a one-time path validation; if it fails, fall back to T3 (out of scope t
    selection, not a code revert; the change is isolated to the new `clientnic/dpdk-forwarder/`
    and `servernic/dpdk/` binaries plus infra user-data.
 
-## Open Questions
+## Resolved Questions
 
-- **ENI-to-role mapping on the ServerNIC**: which secondary ENI is bound to vfio-pci (DPDK port)
-  vs. used as the AF_PACKET kernel interface, and the gateway MAC(s) for each egress. To be
-  pinned during infra work.
-- **Does the ServerNIC need RST suppression toward the Server** the same way the ClientNIC does
-  toward the client? Likely yes for the Server-facing AF_PACKET interface; confirm during bring-up.
-- **Capture mechanism for the probe gate** on the ServerNIC: reuse a `--server-pcap`-style DPDK
-  writer or rely on tcpdump on the kernel interface. Decide during ServerNIC IO implementation.
+- **ENI-to-role mapping on the ServerNIC** — *Resolved* against `infra/dpdk/cdk/smartnics_stack.py`
+  (see D6). ServerNIC **eth0** = primary ENI, Middle subnet, kernel → **AF_PACKET, ClientNIC-facing**;
+  ServerNIC **eth1** = secondary ENI (`ServerNicServerENI`), Server subnet, **vfio-pci → DPDK port,
+  Server-facing**. `--gw-mac` is the Server-side next hop for the DPDK egress; the eth0 egress
+  toward the ClientNIC uses the ClientNIC Middle-subnet ENI MAC. The current `nic_user_data` is
+  Scapy-only and does not bind DPDK, so task 9.1 must add the DPDK build + vfio-pci bind for eth1.
+
+- **Does the ServerNIC need RST/forward suppression?** — *Resolved: yes, the same iptables rules
+  the ClientNIC installs* (already captured in the `servernic-dpdk-data-plane` "iptables rules at
+  startup" requirement). Rationale: (1) the ServerNIC's `nic_user_data` sets `net.ipv4.ip_forward=1`,
+  so without `FORWARD -p tcp --dport/--sport <app_port> -j DROP` the kernel would *also* forward the
+  app-port TCP that the DPDK datapath forwards, double-delivering packets to the Server; (2) the
+  `OUTPUT --tcp-flags RST RST -j DROP` rule is defensive — it guarantees the kernel never injects a
+  RST for any app-port segment it sees on the kernel-side interface. Both are cheap and mirror the
+  proven ClientNIC behavior.
+
+- **Capture mechanism for the probe gate** — *Resolved: tcpdump on ServerNIC eth0*. Because the
+  ClientNIC-facing interface (eth0) stays in the kernel (only eth1 is bound to DPDK), the forwarded
+  SYN is visible to the kernel at ingress; a DPDK `--server-pcap`-style writer is unnecessary on the
+  ServerNIC. The probe captures with `tcpdump -i eth0 -X 'tcp[tcpflags] & tcp-syn != 0'` and checks
+  the TCP ack-num bytes (TCP header offset 8–11). See the probe gate explanation below.
+
+## The probe gate, explained
+
+The probe gate (D8 / `isn-ack-num-channel`) is a **one-time path-validation test**, run before the
+T8 channel is trusted in a given deployment. It answers a single question: *does the AWS VPC path
+between ClientNIC egress and ServerNIC ingress preserve the SYN's ack-num bytes, or does some
+element zero/rewrite them?* T8 is only safe if the field survives.
+
+Procedure:
+1. From the **ClientNIC**, emit a SYN toward the Server with the ack-num field set to a recognizable
+   sentinel, `0xDEADBEEF` (a temporary flag in `proc_handle_syn`, or a small standalone Scapy/raw
+   sender).
+2. On the **ServerNIC**, capture ingress on **eth0** (kernel interface):
+   `tcpdump -i eth0 -X 'tcp[tcpflags] & tcp-syn != 0'`.
+3. Inspect the captured SYN's TCP ack-num (bytes 8–11 of the TCP header). **Pass** if it equals
+   `0xDEADBEEF`; **fail** if it is zeroed or altered.
+4. On pass → rely on T8. On fail → a middlebox/normalizer is rewriting the field; fall back to a
+   TCP-option carrier (T3), which is out of scope to implement here.
+
+This is purely a go/no-go check; it does not exercise translation or the ServerNIC datapath.
