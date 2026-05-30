@@ -171,7 +171,7 @@ sleep 8
 log "Cleaning up previous runs..."
 ssm_bg "$SERVER_ID"    "pkill -f 'python3.*server.py' 2>/dev/null; rm -f /tmp/server.log"
 ssm_bg "$SERVERNIC_ID" "pkill -x servernic-dpdk 2>/dev/null; pkill -f 'servernic/scapy' 2>/dev/null; rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null; iptables -F OUTPUT 2>/dev/null"
-ssm_run "$CLIENTNIC_ID" "pkill -x clientnic-dpdk-forwarder 2>/dev/null; pkill -x clientnic-dpdk 2>/dev/null; pkill tcpdump 2>/dev/null; sleep 2; rm -rf /var/run/dpdk/rte/ 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/validate_0rtt.py; iptables -F FORWARD 2>/dev/null; echo CLEANUP_DONE" 30 > /dev/null
+ssm_run "$CLIENTNIC_ID" "pkill -f clientnic-dpdk-forwarder 2>/dev/null; pkill -f clientnic-dpdk 2>/dev/null; pkill tcpdump 2>/dev/null; sleep 5; pkill -9 -f clientnic-dpdk-forwarder 2>/dev/null; sleep 2; rm -rf /var/run/dpdk/rte/ 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/validate_0rtt.py; iptables -F FORWARD 2>/dev/null; echo CLEANUP_DONE" 30 > /dev/null
 ssm_bg "$CLIENT_ID"   "pkill -f 'run_trace.sh' 2>/dev/null; pkill bpftrace 2>/dev/null; rm -f /tmp/tcp_trace_client.jsonl || true"
 ssm_bg "$SERVER_ID"   "pkill -f 'run_trace.sh' 2>/dev/null; pkill bpftrace 2>/dev/null; rm -f /tmp/tcp_trace_server.jsonl || true"
 
@@ -320,7 +320,7 @@ ssm_bg "$SERVERNIC_ID" \
     "SKIP_BUILD=1 CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
 sleep 5  # DPDK EAL + vfio-pci bind + ENA PMD init (~3-4 s)
 
-SERVERNIC_RUNNING=$(ssm_stdout "$SERVERNIC_ID" "pgrep -x servernic-dpdk && echo RUNNING || echo NOT_RUNNING" 30)
+SERVERNIC_RUNNING=$(ssm_stdout "$SERVERNIC_ID" "pgrep -f servernic-dpdk && echo RUNNING || echo NOT_RUNNING" 30)
 if echo "$SERVERNIC_RUNNING" | grep -q "RUNNING"; then
     pass "ServerNIC: servernic-dpdk process is running"
 else
@@ -366,7 +366,7 @@ else
 fi
 
 # Confirm the forwarder binary is running
-DPDK_RUNNING=$(ssm_stdout "$CLIENTNIC_ID" "pgrep -x clientnic-dpdk-forwarder && echo RUNNING || echo NOT_RUNNING" 30)
+DPDK_RUNNING=$(ssm_stdout "$CLIENTNIC_ID" "pgrep -f clientnic-dpdk-forwarder && echo RUNNING || echo NOT_RUNNING" 30)
 if echo "$DPDK_RUNNING" | grep -q "RUNNING"; then
     pass "Step 3: clientnic-dpdk-forwarder process is running"
 else
@@ -404,8 +404,8 @@ sleep 3
 # ─── Step 5: Stop captures and binaries ──────────────────────────────────────
 log "Step 5: Stopping packet captures and DPDK binaries..."
 ssm_run "$CLIENTNIC_ID" "pkill tcpdump 2>/dev/null || true; sleep 1" 30 > /dev/null
-ssm_run "$CLIENTNIC_ID" "pkill -SIGTERM clientnic-dpdk-forwarder 2>/dev/null || true; sleep 2" 30 > /dev/null
-ssm_run "$SERVERNIC_ID" "pkill -SIGTERM servernic-dpdk 2>/dev/null || true; sleep 2" 30 > /dev/null
+ssm_run "$CLIENTNIC_ID" "pkill -f clientnic-dpdk-forwarder 2>/dev/null || true; sleep 2" 30 > /dev/null
+ssm_run "$SERVERNIC_ID" "pkill -f servernic-dpdk 2>/dev/null || true; sleep 2" 30 > /dev/null
 pass "Captures stopped, DPDK binaries signalled"
 
 # Stop eBPF traces early (they'd self-terminate at EBPF_TRACE_DURATION but we stop now)
