@@ -21,6 +21,26 @@ Academic Experiments & Research
 - Address the research hypothesis
 - Reference: https://github.com/RC4ML/BenchBF3
 
+## Host Reaction Time Measurement
+
+Goal: measure time from packet arrival to response departure on a single host (no cross-VM clock sync).
+
+### ClientNIC / ServerNIC (DPDK hosts)
+- In `packet_processor.c`: record `rte_rdtsc()` at SYN RX and again just before spoofed SYN-ACK TX
+- Convert TSC delta to nanoseconds using `rte_get_tsc_hz()`
+- Log per-flow reaction time; aggregate min/mean/p99 at shutdown
+- Check `RTE_MBUF_F_RX_TIMESTAMP` flag — if ENA PMD sets hardware timestamp on mbuf, use that instead of TSC for higher accuracy
+
+### Client / Server (kernel TCP hosts)
+- eBPF pair on the same host: `tracepoint:net:netif_receive_skb` (packet enters kernel) → `tracepoint:net:net_dev_start_xmit` (kernel hands packet to driver)
+- Correlate by 5-tuple; compute delta in `nsecs`
+- Add to `observability/ebpf/` as `host_reaction_trace.bt`
+
+### Baseline comparison
+- Run both normal TCP (no 0-RTT middleware) and 0-RTT mode
+- Metric: SYN→SYN-ACK reaction time at ClientNIC (spoofed, ~µs) vs Server (real kernel TCP, ~10s of µs + network RTT)
+- This directly quantifies the 0-RTT benefit in the paper
+
 Papers to read:
 - https://www.usenix.org/conference/osdi23/presentation/wei-smartnic
 - https://arxiv.org/html/2509.21656

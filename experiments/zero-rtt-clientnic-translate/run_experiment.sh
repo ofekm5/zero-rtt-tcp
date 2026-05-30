@@ -39,7 +39,6 @@ SERVER_PORT=8080
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
 FAILURES=0
-EBPF_TRACE_DURATION=300   # seconds — covers full experiment
 
 log()  { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}" >&2; }
 pass() { echo -e "${GREEN}[PASS]${NC} $*"; }
@@ -178,17 +177,7 @@ log "Cleaning up previous runs..."
 ssm_bg "$SERVER_ID"    "pkill -f 'python3.*server.py' 2>/dev/null; rm -f /tmp/server.log"
 ssm_bg "$SERVERNIC_ID" "pkill -f 'servernic/scapy' 2>/dev/null; rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null"
 ssm_bg "$CLIENTNIC_ID" "pkill -f 'clientnic/scapy' 2>/dev/null; pkill tcpdump 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/server_side.pcap; iptables -F FORWARD 2>/dev/null"
-ssm_bg "$CLIENT_ID"   "pkill -f 'run_trace.sh' 2>/dev/null; pkill bpftrace 2>/dev/null; rm -f /tmp/tcp_trace_client.jsonl || true"
-ssm_bg "$SERVER_ID"   "pkill -f 'run_trace.sh' 2>/dev/null; pkill bpftrace 2>/dev/null; rm -f /tmp/tcp_trace_server.jsonl || true"
 sleep 3
-
-
-# ─── Start eBPF traces on Client and Server VMs ───────────────────────────────
-log "eBPF: Starting TCP state traces on Client and Server..."
-TRACE_CMD="bash $REPO_PATH/observability/ebpf/run_trace.sh --duration $EBPF_TRACE_DURATION --port $SERVER_PORT"
-ssm_bg "$CLIENT_ID" "setsid $TRACE_CMD --output /tmp/tcp_trace_client.jsonl < /dev/null > /tmp/ebpf_client.log 2>&1 &"
-ssm_bg "$SERVER_ID" "setsid $TRACE_CMD --output /tmp/tcp_trace_server.jsonl < /dev/null > /tmp/ebpf_server.log 2>&1 &"
-sleep 2  # allow bpftrace to attach before the experiment starts
 
 
 # ─── Step 1: Start Server ─────────────────────────────────────────────────────
@@ -332,20 +321,6 @@ log "Step 5: Stopping packet captures..."
 ssm_run "$CLIENTNIC_ID" "pkill tcpdump 2>/dev/null || true; sleep 1" 30 > /dev/null
 pass "tcpdump stopped"
 
-# Stop eBPF traces
-ssm_bg "$CLIENT_ID" "pkill bpftrace 2>/dev/null || true"
-ssm_bg "$SERVER_ID" "pkill bpftrace 2>/dev/null || true"
-sleep 2
-
-# ─── Collect eBPF traces ──────────────────────────────────────────────────────
-log "Collecting eBPF traces from Client and Server..."
-EBPF_CLIENT_TRACE=$(ssm_stdout "$CLIENT_ID" "cat /tmp/tcp_trace_client.jsonl 2>/dev/null || echo ''" 30) || { warn "eBPF: could not collect Client trace"; EBPF_CLIENT_TRACE=""; }
-EBPF_SERVER_TRACE=$(ssm_stdout "$SERVER_ID" "cat /tmp/tcp_trace_server.jsonl 2>/dev/null || echo ''" 30) || { warn "eBPF: could not collect Server trace"; EBPF_SERVER_TRACE=""; }
-
-EBPF_CLIENT_COUNT=$(echo "$EBPF_CLIENT_TRACE" | grep -c '"ts_ns"' 2>/dev/null || echo 0)
-EBPF_SERVER_COUNT=$(echo "$EBPF_SERVER_TRACE" | grep -c '"ts_ns"' 2>/dev/null || echo 0)
-log "  eBPF events: client=$EBPF_CLIENT_COUNT server=$EBPF_SERVER_COUNT"
-
 
 # ─── Step 6: Verify server received data ──────────────────────────────────────
 # If sequence number translation was applied correctly, the server's TCP stack
@@ -484,28 +459,6 @@ fi
     echo '```'
     echo "$ANALYSIS_STDOUT"
     echo '```'
-    echo ""
-    echo "## eBPF TCP Traces"
-    echo ""
-    echo "### Client VM — TCP State Transitions"
-    echo ""
-    if [[ -n "$EBPF_CLIENT_TRACE" && "$EBPF_CLIENT_COUNT" -gt 0 ]]; then
-        echo '```json'
-        echo "$EBPF_CLIENT_TRACE"
-        echo '```'
-    else
-        echo "_No events captured (bpftrace unavailable or no matching connections)_"
-    fi
-    echo ""
-    echo "### Server VM — TCP State Transitions"
-    echo ""
-    if [[ -n "$EBPF_SERVER_TRACE" && "$EBPF_SERVER_COUNT" -gt 0 ]]; then
-        echo '```json'
-        echo "$EBPF_SERVER_TRACE"
-        echo '```'
-    else
-        echo "_No events captured (bpftrace unavailable or no matching connections)_"
-    fi
 } > "$REPORT_FILE"
 
 log "Report saved to $REPORT_FILE"
