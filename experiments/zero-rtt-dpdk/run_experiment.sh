@@ -48,8 +48,8 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 
 # Build SSM parameters JSON from a shell command string
 mk_params() { python3 -c "import json,sys; print(json.dumps({'commands':[sys.argv[1]]}))" "$1"; }
-# Extract element N from a JSON array on stdin (ascii-safe for Windows terminals)
-json_idx()  { python3 -X utf8 -c "import json,sys; v=json.load(sys.stdin)[$1]; print(v.encode('ascii','replace').decode('ascii') if isinstance(v,str) else v, end='')"; }
+# Extract element N from a JSON array on stdin (binary read avoids Windows codec issues)
+json_idx()  { python3 -c "import json,sys; raw=sys.stdin.buffer.read(); v=json.loads(raw.decode('utf-8','replace'))[$1]; print(v.encode('ascii','replace').decode('ascii') if isinstance(v,str) else v, end='')"; }
 
 
 # ─── Dependency checks ────────────────────────────────────────────────────────
