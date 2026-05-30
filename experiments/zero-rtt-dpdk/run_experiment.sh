@@ -166,13 +166,14 @@ sleep 8
 
 
 # ─── Cleanup any leftover processes ───────────────────────────────────────────
+# ClientNIC cleanup is blocking (ssm_run) so the DPDK lock is released before
+# the smoke test tries to start a new primary process.
 log "Cleaning up previous runs..."
 ssm_bg "$SERVER_ID"    "pkill -f 'python3.*server.py' 2>/dev/null; rm -f /tmp/server.log"
 ssm_bg "$SERVERNIC_ID" "pkill -x servernic-dpdk 2>/dev/null; pkill -f 'servernic/scapy' 2>/dev/null; rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null; iptables -F OUTPUT 2>/dev/null"
-ssm_bg "$CLIENTNIC_ID" "pkill -x clientnic-dpdk-forwarder 2>/dev/null; pkill -x clientnic-dpdk 2>/dev/null; pkill tcpdump 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/validate_0rtt.py; iptables -F FORWARD 2>/dev/null"
+ssm_run "$CLIENTNIC_ID" "pkill -x clientnic-dpdk-forwarder 2>/dev/null; pkill -x clientnic-dpdk 2>/dev/null; pkill tcpdump 2>/dev/null; sleep 2; rm -rf /var/run/dpdk/rte/ 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/validate_0rtt.py; iptables -F FORWARD 2>/dev/null; echo CLEANUP_DONE" 30 > /dev/null
 ssm_bg "$CLIENT_ID"   "pkill -f 'run_trace.sh' 2>/dev/null; pkill bpftrace 2>/dev/null; rm -f /tmp/tcp_trace_client.jsonl || true"
 ssm_bg "$SERVER_ID"   "pkill -f 'run_trace.sh' 2>/dev/null; pkill bpftrace 2>/dev/null; rm -f /tmp/tcp_trace_server.jsonl || true"
-sleep 3
 
 
 # ─── Start eBPF traces on Client and Server VMs ───────────────────────────────
@@ -286,8 +287,10 @@ else
 
     if echo "$SMOKE_LOG" | grep -qiE "busy-poll loop|Entering busy-poll"; then
         pass "Smoke test: clientnic-dpdk-forwarder entered busy-poll loop"
-    elif echo "$SMOKE_LOG" | grep -qiE "EAL.*init|DPDK.*start|port.*started"; then
-        pass "Smoke test: clientnic-dpdk-forwarder DPDK EAL/port initialised"
+    elif echo "$SMOKE_LOG" | grep -qiE "port.*started|DPDK.*start"; then
+        pass "Smoke test: clientnic-dpdk-forwarder DPDK port initialised"
+    elif echo "$SMOKE_LOG" | grep -qiE "EAL.*FATAL|Cannot create lock|EAL init failed"; then
+        fail "Smoke test: clientnic-dpdk-forwarder EAL init failed (stale DPDK lock?)"
     else
         fail "Smoke test: clientnic-dpdk-forwarder did not reach expected startup state"
     fi
