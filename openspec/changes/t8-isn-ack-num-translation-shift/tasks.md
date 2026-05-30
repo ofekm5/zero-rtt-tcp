@@ -1,8 +1,8 @@
 ## 1. Probe verification gate (do first)
 
 - [x] 1.1 On the deployed AWS VPC path, emit a SYN from the ClientNIC toward the Server with ack-num=`0xDEADBEEF` (one-off test program or a temporary `proc_handle_syn` flag)
-- [ ] 1.2 Capture ServerNIC ingress (tcpdump on the kernel interface, or a `--server-pcap`-style DPDK writer) and confirm bytes 8–11 == `0xDEADBEEF`
-- [ ] 1.3 Record the result in `experiments/zero-rtt-dpdk/reports/`; if the field is rewritten, STOP and fall back to T3 (out of scope here)
+- [x] 1.2 Capture ServerNIC ingress (tcpdump on the kernel interface, or a `--server-pcap`-style DPDK writer) and confirm bytes 8–11 == `0xDEADBEEF`
+- [x] 1.3 Record the result in `experiments/zero-rtt-dpdk/reports/`; if the field is rewritten, STOP and fall back to T3 (out of scope here)
 
 ## 2. ClientNIC variant — create folder (preserve clientnic/dpdk/)
 
@@ -22,7 +22,7 @@
 - [x] 4.1 Replace `trans_c2s` with `forward_c2s`: forward eth0 non-SYN packets to eth1 with Ethernet rewrite only (src=eth1 MAC, dst=gw MAC), no seq/ack change, no checksum recompute; drop unknown flows with a warning
 - [x] 4.2 Replace `trans_s2c` with `forward_s2c`: forward eth1 packets to eth0 with Ethernet rewrite only (src=eth0 MAC, dst=cached client_mac), no seq/ack change
 - [x] 4.3 Update `clientnic/dpdk-forwarder/pipeline.c` routing: eth0+SYN→`proc_handle_syn`; eth0+non-SYN→`forward_c2s`; eth1+any (known flow)→`forward_s2c` (drop the SYN-ACK special case)
-- [ ] 4.4 Build the `dpdk-forwarder` variant binary (`meson`/`ninja`) and confirm all checks pass; confirm `clientnic/dpdk/` still builds unchanged
+- [x] 4.4 Build the `dpdk-forwarder` variant binary (`meson`/`ninja`) and confirm all checks pass; confirm `clientnic/dpdk/` still builds unchanged
 
 ## 5. ServerNIC DPDK — scaffolding & I/O
 
@@ -50,7 +50,7 @@
 - [x] 8.2 `trans_s2c`: eth2 non-SYN-ACK → add delta to SEQ, recompute checksums, send toward ClientNIC (eth1); drop unknown/incomplete flow with warning
 - [x] 8.3 Implement `checksum.c` (IP via `rte_ipv4_cksum`, TCP via `rte_ipv4_udptcp_cksum`) and wire into all rewrite paths
 - [x] 8.4 Implement `pipeline.c` parse/validate (IPv4/TCP/port), re-capture MAC filter, ingress+flags routing to the four handlers
-- [ ] 8.5 Build the ServerNIC binary and confirm all checks pass
+- [x] 8.5 Build the ServerNIC binary and confirm all checks pass
 
 ## 9. Infra & orchestration
 
@@ -63,6 +63,6 @@
 
 - [x] 10.1 Unit tests: ServerNIC flow table (create/lookup/collision/delta/idempotent/buffer overflow), SYN handler (V extract + ack zero + checksum), translator (c2s ACK −delta, s2c SEQ +delta, 32-bit wraparound)
 - [x] 10.2 ClientNIC `dpdk-forwarder` unit tests: SYN forwarding stamps `V` + valid checksum, retransmit re-stamps `V`, transparent forward leaves seq/ack unchanged
-- [ ] 10.3 Integration test: end-to-end 0-RTT establishment, data correctness both directions, exactly one (spoofed) SYN-ACK reaches the client, c→s pre-delta buffering works
+- [x] 10.3 Integration test: end-to-end 0-RTT establishment, data correctness both directions, exactly one (spoofed) SYN-ACK reaches the client, c→s pre-delta buffering works
 - [x] 10.4 Add `clientnic/dpdk-forwarder/README.md` documenting the variant and how it differs from `clientnic/dpdk/` (translation shifted to ServerNIC, ISN ack-num channel); add a pointer note at the top of `clientnic/dpdk/README.md`
 - [x] 10.5 Update `servernic/dpdk/README.md` (no longer WIP) and `CLAUDE.md` — module structure (two coexisting ClientNIC DPDK variants), architecture (translation-shift), and key-docs references; mark `todos/tech-improvements.md` T8 done
