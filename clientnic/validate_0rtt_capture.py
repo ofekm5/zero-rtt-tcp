@@ -2,18 +2,29 @@
 """
 Analyze ClientNIC packet captures to validate 0-RTT behavior.
 
-Checks:
-  A. Spoofed SYN-ACK    -- ClientNIC sends a SYN-ACK with a random ISN (different
-                           from the server's real ISN) on eth0 before (or alongside)
-                           the real SYN-ACK that arrives on eth1.
-  B. ISN Delta          -- spoofed ISN differs from real ISN; delta is non-zero.
-  C. 0-RTT Timing       -- (informational) spoofed SYN-ACK timestamp vs real one.
-  D. Checksums          -- no bad IP or TCP checksums on either interface.
+Two modes depending on whether --server-pcap is supplied:
 
-Runs on the ClientNIC VM where both pcap files reside.
+T8 mode (--server-pcap omitted, default):
+  Real SYN-ACK is dropped at the ServerNIC — only the spoofed SYN-ACK reaches
+  the client.  Checks (client-side pcap only):
+    A. Spoofed SYN-ACK    -- at least one SYN-ACK per flow on eth0.
+    B. No real SYN-ACK    -- exactly one SYN-ACK per flow (real was dropped at ServerNIC).
+    C. 0-RTT Timing       -- (informational) spoofed SYN-ACK timestamp vs SYN.
+    D. Checksums          -- no bad IP or TCP checksums on eth0.
+
+Legacy mode (--server-pcap supplied):
+  Original checks requiring both eth0 and eth1 captures:
+    A. Spoofed SYN-ACK    -- ISN on eth0 differs from real ISN on eth1.
+    B. ISN Delta          -- delta is non-zero.
+    C. 0-RTT Timing       -- (informational) spoofed vs real SYN-ACK timestamp.
+    D. Checksums          -- no bad checksums on either interface.
 
 Usage:
-    python3 analyze_capture.py \\
+    # T8 mode (ServerNIC drops real SYN-ACK):
+    python3 validate_0rtt_capture.py --client-pcap /tmp/client_side.pcap
+
+    # Legacy mode (ClientNIC drops real SYN-ACK, eth1 capture available):
+    python3 validate_0rtt_capture.py \\
         --client-pcap /tmp/client_side.pcap \\
         --server-pcap /tmp/server_side.pcap
 """
@@ -112,12 +123,116 @@ def find_bad_checksums(pkts) -> List[str]:
 # Main analysis
 # --------------------------------------------------------------------------- #
 
-def analyze(client_pcap: str, server_pcap: str) -> int:
-    """Run all checks. Returns number of failures."""
+def _find_syns(pkts) -> list:
+    return [p for p in pkts if p.haslayer(IP) and p.haslayer(TCP)
+            and bool(p[TCP].flags.S) and not bool(p[TCP].flags.A)]
+
+
+def analyze_t8(client_pcap: str) -> int:
+    """T8 mode: real SYN-ACK dropped at ServerNIC. Only client-side pcap available."""
     failures = 0
 
-    # Load captures
-    log(f"Loading {client_pcap}  (eth0 - client side)")
+    log(f"T8 mode: loading {client_pcap}  (eth0 - client side)")
+    try:
+        client_pkts = rdpcap(client_pcap)
+    except Exception as exc:
+        log(f"[FAIL] Cannot read {client_pcap}: {exc}")
+        return 1
+
+    log(f"  eth0: {len(client_pkts)} packet(s)")
+
+    client_sas = find_syn_acks(client_pkts)
+    client_syns = _find_syns(client_pkts)
+
+    log(f"\n  eth0 SYNs: {len(client_syns)}")
+    log(f"  eth0 SYN-ACKs: {len(client_sas)}")
+    for p in client_sas:
+        log(f"    t={float(p.time):.6f}  ISN={p[TCP].seq}  "
+            f"{p[IP].src}:{p[TCP].sport} -> {p[IP].dst}:{p[TCP].dport}")
+
+    # Group SYN-ACKs by client port (dport on SYN-ACK == sport on client SYN)
+    sas_by_flow: Dict[int, list] = {}
+    for p in client_sas:
+        sas_by_flow.setdefault(p[TCP].dport, []).append(p)
+
+    # --- A. Spoofed SYN-ACK present -------------------------------------------
+    log("\n-- A. Spoofed SYN-ACK on eth0 (T8 mode) ---------------------------------")
+    if not report("At least one SYN-ACK seen on eth0", bool(client_sas),
+                  f"{len(client_sas)} SYN-ACK(s)"):
+        failures += 1
+        log("  NOTE: ClientNIC should send a spoofed SYN-ACK immediately on SYN receipt.")
+
+    # --- B. Real SYN-ACK must not have leaked through -------------------------
+    log("\n-- B. No duplicate SYN-ACK per flow (real SYN-ACK dropped at ServerNIC) --")
+    leaks = {port: sas for port, sas in sas_by_flow.items() if len(sas) > 1}
+    if leaks:
+        log(f"  WARNING: {len(leaks)} flow(s) have >1 SYN-ACK on eth0 — "
+            f"real SYN-ACK may have leaked through ServerNIC")
+        for port, sas in leaks.items():
+            log(f"    flow dport={port}: {len(sas)} SYN-ACKs, ISNs={[p[TCP].seq for p in sas]}")
+    if not report("Exactly one SYN-ACK per flow on eth0", not bool(leaks),
+                  f"{len(leaks)} flow(s) with multiple SYN-ACKs" if leaks
+                  else f"{len(sas_by_flow)} flow(s) OK"):
+        failures += 1
+
+    # --- C. 0-RTT Timing (informational) --------------------------------------
+    log("\n-- C. 0-RTT Timing (informational) --------------------------------------")
+    # Build SYN time index by client sport
+    syn_time_by_sport: Dict[int, float] = {}
+    for p in client_syns:
+        sport = p[TCP].sport
+        t = float(p.time)
+        if sport not in syn_time_by_sport or t < syn_time_by_sport[sport]:
+            syn_time_by_sport[sport] = t
+
+    timing_total = 0
+    timing_ok = 0
+    for p in client_sas:
+        dport = p[TCP].dport
+        if dport in syn_time_by_sport:
+            t_syn = syn_time_by_sport[dport]
+            t_sa  = float(p.time)
+            ok = t_sa >= t_syn
+            timing_total += 1
+            if ok:
+                timing_ok += 1
+            log(f"  flow dport={dport}: SYN_t={t_syn:.6f}  SYN-ACK_t={t_sa:.6f}  "
+                f"{'OK' if ok else 'WARN: SYN-ACK before SYN in capture'}")
+
+    if timing_total > 0:
+        report("SYN-ACK follows SYN in capture (informational)",
+               timing_ok == timing_total,
+               f"{timing_ok}/{timing_total} flows")
+    else:
+        log("  [SKIP] No SYN/SYN-ACK pairs found for timing comparison")
+
+    # --- D. Checksum Validation -----------------------------------------------
+    log("\n-- D. Checksum Validation -----------------------------------------------")
+    bad_client = find_bad_checksums(client_pkts)
+    if not report(
+        "No bad checksums on eth0 (client side)",
+        len(bad_client) == 0,
+        f"{len(bad_client)} bad" if bad_client else f"all {len(client_pkts)} packets valid",
+    ):
+        for line in bad_client[:5]:
+            log(f"    {line}")
+        failures += 1
+
+    # --- Summary --------------------------------------------------------------
+    log(f"\n{'-' * 60}")
+    if failures == 0:
+        log("All checks passed.")
+    else:
+        log(f"{failures} check(s) failed.")
+
+    return failures
+
+
+def analyze_legacy(client_pcap: str, server_pcap: str) -> int:
+    """Legacy mode: both eth0 and eth1 captures available (ClientNIC drops real SYN-ACK)."""
+    failures = 0
+
+    log(f"Legacy mode: loading {client_pcap}  (eth0 - client side)")
     try:
         client_pkts = rdpcap(client_pcap)
     except Exception as exc:
@@ -134,9 +249,8 @@ def analyze(client_pcap: str, server_pcap: str) -> int:
     log(f"  eth0: {len(client_pkts)} packet(s)")
     log(f"  eth1: {len(server_pkts)} packet(s)")
 
-    # Collect all SYN-ACKs from each interface
-    client_sas = find_syn_acks(client_pkts)   # everything on eth0
-    server_sas = find_syn_acks(server_pkts)   # everything on eth1
+    client_sas = find_syn_acks(client_pkts)
+    server_sas = find_syn_acks(server_pkts)
 
     log(f"\n  eth0 SYN-ACKs: {len(client_sas)}")
     for p in client_sas:
@@ -150,10 +264,7 @@ def analyze(client_pcap: str, server_pcap: str) -> int:
     # --- A. Spoofed SYN-ACK Detection ----------------------------------------
     log("\n-- A. Spoofed SYN-ACK Detection -----------------------------------------")
 
-    # ISNs seen on eth1 = the server's real ISNs
     real_isns: Set[int] = {p[TCP].seq for p in server_sas}
-
-    # Classify eth0 SYN-ACKs: spoofed (ISN not in real set) vs forwarded-real
     spoofed_sas = [p for p in client_sas if p[TCP].seq not in real_isns]
     fwded_sas   = [p for p in client_sas if p[TCP].seq in real_isns]
 
@@ -179,7 +290,6 @@ def analyze(client_pcap: str, server_pcap: str) -> int:
     log("\n-- B. ISN Delta ---------------------------------------------------------")
 
     if spoofed_sas and server_sas:
-        # Match spoofed SYN-ACK to real SYN-ACK by client port (dport on SYN-ACK)
         real_by_dport: Dict[int, int] = {}
         for p in server_sas:
             real_by_dport[p[TCP].dport] = p[TCP].seq
@@ -211,7 +321,6 @@ def analyze(client_pcap: str, server_pcap: str) -> int:
     log("\n-- C. 0-RTT Timing (informational) -------------------------------------")
 
     if spoofed_sas and server_sas:
-        # Per-flow timing comparison
         real_time_by_dport: Dict[int, float] = {}
         for p in server_sas:
             dport = p[TCP].dport
@@ -241,7 +350,6 @@ def analyze(client_pcap: str, server_pcap: str) -> int:
                 f"{timing_ok_count}/{timing_total} flows -- NOTE: intra-VPC RTT may be "
                 f"faster than Python/Scapy processing"
             )
-            # Timing failure is informational only; don't increment failures
         else:
             log("  [SKIP] No port-matched flows for timing comparison")
     else:
@@ -292,12 +400,16 @@ def main():
     )
     parser.add_argument(
         "--server-pcap",
-        default="/tmp/server_side.pcap",
-        help="eth1 capture (server side, contains real SYN-ACK)",
+        default=None,
+        help="eth1 capture (server side, contains real SYN-ACK). "
+             "Omit for T8 mode (ServerNIC drops real SYN-ACK).",
     )
     args = parser.parse_args()
 
-    failures = analyze(args.client_pcap, args.server_pcap)
+    if args.server_pcap:
+        failures = analyze_legacy(args.client_pcap, args.server_pcap)
+    else:
+        failures = analyze_t8(args.client_pcap)
     sys.exit(1 if failures > 0 else 0)
 
 

@@ -1,28 +1,27 @@
 #!/usr/bin/env bash
-# End-to-end integration test for the 0-RTT TCP demo using DPDK on ClientNIC.
+# End-to-end integration test for the 0-RTT TCP demo — T8 ISN ack-num translation shift.
 #
-# Validates tasks 10.1-10.4 from the clientnic-dpdk-port change:
-#   10.1  meson + ninja build compiles cleanly on ClientNIC VM
-#   10.2  Binary starts without errors (DPDK EAL init + component init)
-#   10.3  Single-connection end-to-end test: Server → ServerNIC (Scapy) → ClientNIC (DPDK) → Client
-#   10.4  validate_0rtt_capture.py — all checks (spoofed SYN-ACK, ISN delta, checksums) pass
+# T8 topology (all in AWS, eu-central-1):
 #
-# 4-VM chain topology (all in AWS, eu-central-1):
+#   Client ──eth0──► ClientNIC (dpdk-forwarder) ──eth1──► ServerNIC (servernic-dpdk) ──eth2──► Server
 #
-#   Client ──eth0──► ClientNIC ──eth1──► ServerNIC ──eth1──► Server
-#                    (DPDK, vfio-pci     (Scapy                (real
-#                    on eth1)            forwarder)             TCP server)
-#
-# ClientNIC uses:
+# ClientNIC (dpdk-forwarder):
 #   eth0: AF_PACKET raw socket (client-facing, kernel stack)
-#   eth1: DPDK ENA PMD via vfio-pci (server-facing, bound at boot by CDK user data)
+#   eth1: DPDK ENA PMD via vfio-pci (server-facing, Middle subnet)
+#   Role: spoof SYN-ACK, stamp V in forwarded SYN ack-num, transparent forward otherwise
+#
+# ServerNIC (servernic-dpdk):
+#   eth0: kernel/management
+#   eth1: DPDK ENA PMD via vfio-pci (ClientNIC-facing, Middle subnet)
+#   eth2: AF_PACKET (Server-facing, Server subnet)
+#   Role: extract V, translate all seq/ack, drop real SYN-ACK after delta compute
 #
 # This script runs locally and drives all 4 VMs over AWS SSM.
 #
 # Prerequisites (run locally):
 #   - aws CLI configured with credentials that have SSM access
 #   - python3 in PATH
-#   - ClientNIC VM provisioned with infra/dpdk CDK stack (DPDK installed, eth1 bound)
+#   - ClientNIC and ServerNIC VMs provisioned with infra/dpdk CDK stack
 #
 # Usage:
 #   ./experiments/zero-rtt-dpdk/run_experiment.sh
@@ -32,8 +31,9 @@
 set -uo pipefail
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
-DPDK_BUILD="$REPO_PATH/clientnic/dpdk/builddir"
-BINARY="$DPDK_BUILD/clientnic-dpdk"
+DPDK_BUILD="$REPO_PATH/clientnic/dpdk-forwarder/builddir"
+BINARY="$DPDK_BUILD/clientnic-dpdk-forwarder"
+SERVERNIC_BINARY="$REPO_PATH/servernic/dpdk/builddir/servernic-dpdk"
 SERVER_PORT=8080
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -163,8 +163,8 @@ sleep 8
 # ─── Cleanup any leftover processes ───────────────────────────────────────────
 log "Cleaning up previous runs..."
 ssm_bg "$SERVER_ID"    "pkill -f 'python3.*server.py' 2>/dev/null; rm -f /tmp/server.log"
-ssm_bg "$SERVERNIC_ID" "pkill -f 'servernic/scapy' 2>/dev/null; rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null"
-ssm_bg "$CLIENTNIC_ID" "pkill -f 'clientnic-dpdk' 2>/dev/null; pkill tcpdump 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/server_side.pcap /tmp/validate_0rtt.py; iptables -F FORWARD 2>/dev/null"
+ssm_bg "$SERVERNIC_ID" "pkill -x servernic-dpdk 2>/dev/null; pkill -f 'servernic/scapy' 2>/dev/null; rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null; iptables -F OUTPUT 2>/dev/null"
+ssm_bg "$CLIENTNIC_ID" "pkill -x clientnic-dpdk-forwarder 2>/dev/null; pkill -x clientnic-dpdk 2>/dev/null; pkill tcpdump 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/validate_0rtt.py; iptables -F FORWARD 2>/dev/null"
 ssm_bg "$CLIENT_ID"   "pkill -f 'run_trace.sh' 2>/dev/null; pkill bpftrace 2>/dev/null; rm -f /tmp/tcp_trace_client.jsonl || true"
 ssm_bg "$SERVER_ID"   "pkill -f 'run_trace.sh' 2>/dev/null; pkill bpftrace 2>/dev/null; rm -f /tmp/tcp_trace_server.jsonl || true"
 sleep 3
@@ -178,15 +178,14 @@ ssm_bg "$SERVER_ID" "setsid $TRACE_CMD --output /tmp/tcp_trace_server.jsonl < /d
 sleep 2  # allow bpftrace to attach before the experiment starts
 
 
-# ─── Task 10.1: Build clientnic-dpdk on ClientNIC VM ─────────────────────────
-# The CDK user data builds the binary at provision time, but we rebuild after
+# ─── Build step: build dpdk-forwarder (ClientNIC) + servernic-dpdk (ServerNIC) ─
+# The CDK user data builds both binaries at provision time, but we rebuild after
 # pulling the latest code to pick up any changes made since the instance launched.
-# Build command is identical to what CDK runs: meson setup builddir + ninja.
-log "Task 10.1: Building clientnic-dpdk..."
+log "Build: Building clientnic-dpdk-forwarder on ClientNIC VM..."
 
 BUILD_RESULT=$(ssm_run "$CLIENTNIC_ID" \
     "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig; \
-     cd $REPO_PATH/clientnic/dpdk; \
+     cd $REPO_PATH/clientnic/dpdk-forwarder; \
      rm -rf builddir; \
      /usr/local/bin/meson setup builddir 2>&1 && \
      cd builddir && /usr/local/bin/ninja 2>&1 && \
@@ -197,41 +196,62 @@ BUILD_STATUS=$(echo "$BUILD_RESULT" | json_idx 0)
 BUILD_STDOUT=$(echo "$BUILD_RESULT" | json_idx 1)
 BUILD_STDERR=$(echo "$BUILD_RESULT" | json_idx 2)
 
-echo "--- Build output (last 20 lines) ---"
+echo "--- ClientNIC build output (last 20 lines) ---"
 echo "$BUILD_STDOUT" | tail -20
 [[ -n "$BUILD_STDERR" ]] && echo "stderr: $BUILD_STDERR" | tail -10
-echo "------------------------------------"
+echo "----------------------------------------------"
 
 if echo "$BUILD_STDOUT" | grep -q "BUILD_SUCCESS"; then
-    pass "Task 10.1: meson + ninja build succeeded"
+    pass "Build: clientnic-dpdk-forwarder meson + ninja build succeeded"
 else
-    fail "Task 10.1: build failed (status=$BUILD_STATUS)"
+    fail "Build: clientnic-dpdk-forwarder build failed (status=$BUILD_STATUS)"
     echo "Full build output:"
     echo "$BUILD_STDOUT"
 fi
 
+log "Build: Building servernic-dpdk on ServerNIC VM..."
 
-# ─── Task 10.2: Smoke test — binary starts without errors ────────────────────
-# Verify the binary initialises DPDK EAL and all components without crashing.
-# We run it for 3 seconds in the background then check the log for expected
-# startup messages. The binary will fail fast if:
-#   - DPDK EAL init fails (hugepages not configured, vfio-pci not loaded)
-#   - eth1 not bound to vfio-pci (no DPDK ports available)
-#   - eth0 AF_PACKET init fails
-#
-# Gateway MAC: discover the ServerNIC's eth0 MAC — ClientNIC forwards traffic
-# to ServerNIC on the middle subnet, so ServerNIC eth0 is the next hop.
-log "Task 10.2: Smoke test — discovering gateway MAC and starting binary..."
+SERVERNIC_BUILD_RESULT=$(ssm_run "$SERVERNIC_ID" \
+    "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig; \
+     cd $REPO_PATH/servernic/dpdk; \
+     rm -rf builddir; \
+     /usr/local/bin/meson setup builddir 2>&1 && \
+     cd builddir && /usr/local/bin/ninja 2>&1 && \
+     echo 'BUILD_SUCCESS'" \
+    600)
 
-GW_MAC=$(ssm_stdout "$SERVERNIC_ID" "cat /sys/class/net/eth0/address" 30)
-GW_MAC=$(echo "$GW_MAC" | tr -d '[:space:]')
+SERVERNIC_BUILD_STATUS=$(echo "$SERVERNIC_BUILD_RESULT" | json_idx 0)
+SERVERNIC_BUILD_STDOUT=$(echo "$SERVERNIC_BUILD_RESULT" | json_idx 1)
+
+echo "--- ServerNIC build output (last 20 lines) ---"
+echo "$SERVERNIC_BUILD_STDOUT" | tail -20
+echo "----------------------------------------------"
+
+if echo "$SERVERNIC_BUILD_STDOUT" | grep -q "BUILD_SUCCESS"; then
+    pass "Build: servernic-dpdk meson + ninja build succeeded"
+else
+    fail "Build: servernic-dpdk build failed (status=$SERVERNIC_BUILD_STATUS)"
+    echo "Full build output:"
+    echo "$SERVERNIC_BUILD_STDOUT"
+fi
+
+
+# ─── Smoke test: binaries start without errors ───────────────────────────────
+# Gateway MAC for ClientNIC: ServerNIC eth1 MAC (DeviceIndex=1, Middle subnet, DPDK port).
+# eth1 is DPDK-controlled so the kernel can't ARP for it — read from EC2 API.
+log "Smoke test: discovering ServerNIC eth1 MAC (ClientNIC gateway)..."
+
+GW_MAC=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=smartnics-servernic" "Name=instance-state-name,Values=running" \
+    --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`1\`].MacAddress" \
+    --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
 
 if [[ -z "$GW_MAC" || "$GW_MAC" == "None" ]]; then
-    fail "Task 10.2: could not discover ServerNIC eth0 MAC"
+    fail "Smoke test: could not discover ServerNIC eth1 MAC (DeviceIndex=1)"
 else
-    log "  Gateway MAC (ServerNIC eth0): $GW_MAC"
+    log "  Gateway MAC (ServerNIC eth1, DPDK port): $GW_MAC"
 
-    # Start the binary, let it run for 3 seconds, then kill it
+    # Smoke-test clientnic-dpdk-forwarder: run 3 s, check for busy-poll
     ssm_run "$CLIENTNIC_ID" \
         "rm -f /tmp/clientnic_smoke.log; \
          setsid $BINARY -l 0 -- --port=$SERVER_PORT --gw-mac=$GW_MAC \
@@ -240,18 +260,16 @@ else
         30 > /dev/null
 
     SMOKE_LOG=$(ssm_stdout "$CLIENTNIC_ID" "cat /tmp/clientnic_smoke.log 2>/dev/null || echo MISSING" 30)
-
-    echo "--- Smoke test log ---"
+    echo "--- ClientNIC forwarder smoke log ---"
     echo "$SMOKE_LOG"
-    echo "----------------------"
+    echo "-------------------------------------"
 
-    # Success: EAL initialised and entered main loop (or clean shutdown)
     if echo "$SMOKE_LOG" | grep -qiE "busy-poll loop|Entering busy-poll"; then
-        pass "Task 10.2: binary started and entered busy-poll loop"
+        pass "Smoke test: clientnic-dpdk-forwarder entered busy-poll loop"
     elif echo "$SMOKE_LOG" | grep -qiE "EAL.*init|DPDK.*start|port.*started"; then
-        pass "Task 10.2: binary started (DPDK EAL/port initialised)"
+        pass "Smoke test: clientnic-dpdk-forwarder DPDK EAL/port initialised"
     else
-        fail "Task 10.2: binary did not reach expected startup state"
+        fail "Smoke test: clientnic-dpdk-forwarder did not reach expected startup state"
     fi
 fi
 
@@ -271,12 +289,24 @@ else
 fi
 
 
-# ─── Step 2: Start ServerNIC ──────────────────────────────────────────────────
-# nodes/servernic.sh handles: route, iptables DROP for port 8080, ip_forward check, forwarder
-log "Step 2: Starting ServerNIC via node script..."
+# ─── Step 2: Start ServerNIC (DPDK binary) ───────────────────────────────────
+# nodes/servernic.sh: discovers ClientNIC eth1 MAC + Server eth0 MAC via EC2 API,
+# builds (or skips with SKIP_BUILD=1), installs iptables rules, launches servernic-dpdk.
+log "Step 2: Starting ServerNIC DPDK binary via node script..."
 ssm_bg "$SERVERNIC_ID" \
-    "setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
-sleep 3
+    "SKIP_BUILD=1 setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
+sleep 5  # DPDK EAL + vfio-pci bind + ENA PMD init (~3-4 s)
+
+SERVERNIC_RUNNING=$(ssm_stdout "$SERVERNIC_ID" "pgrep -x servernic-dpdk && echo RUNNING || echo NOT_RUNNING" 30)
+if echo "$SERVERNIC_RUNNING" | grep -q "RUNNING"; then
+    pass "ServerNIC: servernic-dpdk process is running"
+else
+    fail "ServerNIC: servernic-dpdk process not found — startup failed"
+    SERVERNIC_LOG_EARLY=$(ssm_stdout "$SERVERNIC_ID" "cat /tmp/servernic.log 2>/dev/null || echo '(no log)'" 30)
+    echo "--- ServerNIC early log ---"
+    echo "$SERVERNIC_LOG_EARLY"
+    echo "---------------------------"
+fi
 
 FWRD=$(ssm_stdout "$SERVERNIC_ID" "cat /proc/sys/net/ipv4/ip_forward" 30)
 if [[ "$FWRD" == "1" ]]; then
@@ -286,25 +316,21 @@ else
 fi
 
 
-# ─── Task 10.3: Start ClientNIC (DPDK) + packet captures ─────────────────────
-# Uses the DPDK binary instead of the Scapy-based clientnic/scapy/main.py.
+# ─── Step 3: Start ClientNIC (dpdk-forwarder) ────────────────────────────────
+# Uses the T8 dpdk-forwarder binary — transparent forwarding with V-stamping.
 # The binary manages its own iptables rules (install_iptables() in main.c).
 #
-# Gateway MAC is ServerNIC's eth0 MAC (next hop on middle subnet).
+# Gateway MAC is ServerNIC's eth1 MAC (Middle subnet DPDK port, next hop).
 # eth1 must already be bound to vfio-pci (done by CDK user data at boot).
-#
-# Route for return traffic: server-side packets arrive on eth1 (DPDK) and
-# need to be forwarded to eth0 (client-facing). The kernel route to the client
-# subnet via eth0 ensures correct routing of rewritten packets.
-log "Task 10.3: Starting ClientNIC (DPDK) via node script..."
+log "Step 3: Starting ClientNIC (dpdk-forwarder) via node script..."
 
 # Flush any stale iptables DROP rules from the smoke test before the node script runs.
 ssm_bg "$CLIENTNIC_ID" "iptables -F FORWARD 2>/dev/null; iptables -F OUTPUT 2>/dev/null || true"
 sleep 1
 
 # nodes/clientnic.sh handles: cleanup, build (skipped via SKIP_BUILD=1), GW MAC (passed
-# as $1 — bypasses EC2 API call from VM), tcpdump on eth0, exec binary with --server-pcap.
-# SKIP_BUILD=1 because meson+ninja already ran in Task 10.1.
+# as $1 — bypasses EC2 API call from VM), tcpdump on eth0, exec forwarder binary.
+# SKIP_BUILD=1 because meson+ninja already ran in the build step above.
 ssm_bg "$CLIENTNIC_ID" \
     "SKIP_BUILD=1 setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/clientnic.sh $GW_MAC < /dev/null >> /tmp/clientnic.log 2>&1 &"
 sleep 5  # node script: cleanup + checks + tcpdump start + DPDK EAL + ENA PMD init (~3-4 s)
@@ -316,16 +342,16 @@ else
     fail "ClientNIC: IP forwarding NOT enabled"
 fi
 
-# Confirm the binary is running
-DPDK_RUNNING=$(ssm_stdout "$CLIENTNIC_ID" "pgrep -x clientnic-dpdk && echo RUNNING || echo NOT_RUNNING" 30)
+# Confirm the forwarder binary is running
+DPDK_RUNNING=$(ssm_stdout "$CLIENTNIC_ID" "pgrep -x clientnic-dpdk-forwarder && echo RUNNING || echo NOT_RUNNING" 30)
 if echo "$DPDK_RUNNING" | grep -q "RUNNING"; then
-    pass "Task 10.3: clientnic-dpdk process is running"
+    pass "Step 3: clientnic-dpdk-forwarder process is running"
 else
-    fail "Task 10.3: clientnic-dpdk process not found — startup failed"
+    fail "Step 3: clientnic-dpdk-forwarder process not found — startup failed"
     DPDK_LOG=$(ssm_stdout "$CLIENTNIC_ID" "cat /tmp/clientnic.log" 30)
-    echo "--- ClientNIC DPDK log ---"
+    echo "--- ClientNIC forwarder log ---"
     echo "$DPDK_LOG"
-    echo "--------------------------"
+    echo "-------------------------------"
 fi
 
 
@@ -352,11 +378,12 @@ fi
 sleep 3
 
 
-# ─── Step 5: Stop captures ────────────────────────────────────────────────────
-log "Step 5: Stopping packet captures and DPDK binary..."
+# ─── Step 5: Stop captures and binaries ──────────────────────────────────────
+log "Step 5: Stopping packet captures and DPDK binaries..."
 ssm_run "$CLIENTNIC_ID" "pkill tcpdump 2>/dev/null || true; sleep 1" 30 > /dev/null
-ssm_run "$CLIENTNIC_ID" "pkill -SIGTERM clientnic-dpdk 2>/dev/null || true; sleep 2" 30 > /dev/null
-pass "Captures stopped, DPDK binary signalled"
+ssm_run "$CLIENTNIC_ID" "pkill -SIGTERM clientnic-dpdk-forwarder 2>/dev/null || true; sleep 2" 30 > /dev/null
+ssm_run "$SERVERNIC_ID" "pkill -SIGTERM servernic-dpdk 2>/dev/null || true; sleep 2" 30 > /dev/null
+pass "Captures stopped, DPDK binaries signalled"
 
 # Stop eBPF traces early (they'd self-terminate at EBPF_TRACE_DURATION but we stop now)
 ssm_bg "$CLIENT_ID" "pkill bpftrace 2>/dev/null || true"
@@ -400,22 +427,28 @@ echo "--- ClientNIC DPDK log ---"
 echo "$CLIENTNIC_LOG"
 echo "--------------------------"
 
-if echo "$CLIENTNIC_LOG" | grep -qiE "SYN.*flow created|spoofed SYN-ACK|delta|flow created"; then
-    pass "ClientNIC DPDK: 0-RTT flow table activity confirmed"
+if echo "$CLIENTNIC_LOG" | grep -qiE "flow created|spoofed SYN-ACK|SYN forwarded|V="; then
+    pass "ClientNIC dpdk-forwarder: 0-RTT flow table activity confirmed"
 else
-    fail "ClientNIC DPDK: no flow table activity in log"
+    fail "ClientNIC dpdk-forwarder: no flow table activity in log"
+fi
+
+if echo "$SERVERNIC_LOG" | grep -qiE "PENDING|delta|SYN-ACK.*drop|flush|V="; then
+    pass "ServerNIC dpdk: translation activity confirmed"
+else
+    warn "ServerNIC dpdk: no translation activity in log (may indicate no SYN-ACK received yet)"
 fi
 
 
-# ─── Task 10.4: Validate packet capture ───────────────────────────────────────
+# ─── Packet capture analysis ──────────────────────────────────────────────────
 # validate_0rtt_capture.py checks spoofed SYN-ACK presence, ISN delta, checksums.
-# In DPDK mode, eth1 is DPDK-controlled so we only have the client-side pcap.
-# Pass /dev/null as the server-side pcap; the validator skips checks that
-# require both pcaps when the server pcap is absent/empty.
-log "Task 10.4: Running packet capture analysis..."
+# In T8 mode: client-side pcap is at ClientNIC (eth0 tcpdump).
+# The real SYN-ACK is dropped at the ServerNIC — so only the spoofed SYN-ACK
+# should appear on the client-side pcap (validates task 9.3 assertion).
+log "Packet analysis: Running packet capture analysis..."
 
 PCAP_SIZES=$(ssm_stdout "$CLIENTNIC_ID" \
-    "ls -lh /tmp/client_side.pcap /tmp/server_side.pcap 2>&1 || echo 'pcap files not found'" 30)
+    "ls -lh /tmp/client_side.pcap 2>&1 || echo 'pcap file not found'" 30)
 echo "pcap files: $PCAP_SIZES"
 
 # Copy validator to /tmp to avoid clientnic/scapy/ directory shadowing the
@@ -423,8 +456,7 @@ echo "pcap files: $PCAP_SIZES"
 ANALYSIS_RESULT=$(ssm_run "$CLIENTNIC_ID" \
     "cp $REPO_PATH/clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py && \
      python3 /tmp/validate_0rtt.py \
-        --client-pcap /tmp/client_side.pcap \
-        --server-pcap /tmp/server_side.pcap" \
+        --client-pcap /tmp/client_side.pcap" \
     45)
 
 ANALYSIS_STATUS=$(echo "$ANALYSIS_RESULT" | json_idx 0)
@@ -437,10 +469,10 @@ echo "$ANALYSIS_STDOUT"
 echo "---------------------------------------------------"
 
 if [[ "$ANALYSIS_STATUS" == "Success" ]] && echo "$ANALYSIS_STDOUT" | grep -q "All checks passed"; then
-    pass "Task 10.4: Packet capture analysis — all checks passed"
+    pass "Packet analysis: all checks passed"
 else
     NFAIL=$(printf '%s' "$ANALYSIS_STDOUT" | grep -c '\[FAIL\]' || true)
-    fail "Task 10.4: Packet capture analysis — $NFAIL check(s) failed (status=$ANALYSIS_STATUS)"
+    fail "Packet analysis: $NFAIL check(s) failed (status=$ANALYSIS_STATUS)"
 fi
 
 
@@ -469,7 +501,9 @@ fi
 {
     echo "# Integration Test Report — $(date +%Y-%m-%d)"
     echo ""
-    echo "**Implementation**: DPDK"
+    echo "**Implementation**: DPDK (T8 ISN ack-num translation shift)"
+    echo "**ClientNIC binary**: \`clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
+    echo "**ServerNIC binary**: \`servernic/dpdk/\` (full translator)"
     echo "**Experiment script**: \`experiments/zero-rtt-dpdk/run_experiment.sh\`"
     echo "**Node scripts**: \`experiments/zero-rtt-dpdk/nodes/\`"
     echo "**Overall result**: $OVERALL_RESULT"
