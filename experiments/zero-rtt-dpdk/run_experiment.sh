@@ -48,8 +48,8 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 
 # Build SSM parameters JSON from a shell command string
 mk_params() { python3 -c "import json,sys; print(json.dumps({'commands':[sys.argv[1]]}))" "$1"; }
-# Extract element N from a JSON array on stdin
-json_idx()  { python3 -X utf8 -c "import json,sys; print(json.load(sys.stdin)[$1], end='')"; }
+# Extract element N from a JSON array on stdin (ascii-safe for Windows terminals)
+json_idx()  { python3 -X utf8 -c "import json,sys; v=json.load(sys.stdin)[$1]; print(v.encode('ascii','replace').decode('ascii') if isinstance(v,str) else v, end='')"; }
 
 
 # ─── Dependency checks ────────────────────────────────────────────────────────
@@ -246,6 +246,21 @@ GW_MAC=$(aws ec2 describe-instances \
     --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`1\`].MacAddress" \
     --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
 
+# ClientNIC eth1 MAC (DeviceIndex=1) → ServerNIC needs this as --gw-mac
+CLIENTNIC_ETH1_MAC=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=smartnics-clientnic" "Name=instance-state-name,Values=running" \
+    --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`1\`].MacAddress" \
+    --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
+
+# Server eth0 MAC (DeviceIndex=0) → ServerNIC needs this as --server-gw-mac
+SERVER_ETH0_MAC=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=smartnics-server" "Name=instance-state-name,Values=running" \
+    --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`0\`].MacAddress" \
+    --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
+
+log "  ClientNIC eth1 MAC (ServerNIC --gw-mac):      ${CLIENTNIC_ETH1_MAC:-UNKNOWN}"
+log "  Server eth0 MAC (ServerNIC --server-gw-mac):  ${SERVER_ETH0_MAC:-UNKNOWN}"
+
 if [[ -z "$GW_MAC" || "$GW_MAC" == "None" ]]; then
     fail "Smoke test: could not discover ServerNIC eth1 MAC (DeviceIndex=1)"
 else
@@ -294,7 +309,7 @@ fi
 # builds (or skips with SKIP_BUILD=1), installs iptables rules, launches servernic-dpdk.
 log "Step 2: Starting ServerNIC DPDK binary via node script..."
 ssm_bg "$SERVERNIC_ID" \
-    "SKIP_BUILD=1 setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
+    "SKIP_BUILD=1 CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
 sleep 5  # DPDK EAL + vfio-pci bind + ENA PMD init (~3-4 s)
 
 SERVERNIC_RUNNING=$(ssm_stdout "$SERVERNIC_ID" "pgrep -x servernic-dpdk && echo RUNNING || echo NOT_RUNNING" 30)
