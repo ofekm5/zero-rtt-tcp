@@ -30,6 +30,11 @@
 
 set -uo pipefail
 
+# Force UTF-8 I/O for the AWS CLI (also Python) so non-ASCII chars in VM log
+# output (em-dashes, arrows) don't cause cp1252 encode errors on Windows.
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
+
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 DPDK_BUILD="$REPO_PATH/clientnic/dpdk-forwarder/builddir"
 BINARY="$DPDK_BUILD/clientnic-dpdk-forwarder"
