@@ -8,7 +8,40 @@ Academic Experiments & Research
 - Investigate whether techniques from APNIC post are applicable: https://blog.apnic.net/2026/05/01/react-reflection-attack-mitigation-for-asymmetric-routing/
 - Evaluate impact on 0-RTT design and reverse-path validation
 
-## Experiments
+## Phase 1b: iperf3 Stress Testing
+
+**Note:** Full spec exists in `openspec/changes/phase-1b-iperf3-stress-testing/`
+
+### Motivation
+The simple `client.py`/`server.py` pair is insufficient for stress testing. iperf3 provides parallel streams, bidirectional throughput, UDP/TCP modes, and JSON output — enabling proper load testing through the 0-RTT path.
+
+### Implementation Steps
+
+**1. CDK user data — install iperf3**
+- Modify `infra/dpdk/cdk/smartnics_stack.py` and `infra/scapy/cdk/smartnics_stack.py`
+- Add to `base_user_data`: `amazon-linux-extras install -y epel` + `yum install -y iperf3`
+
+**2. Node scripts**
+- `experiments/zero-rtt-dpdk/nodes/iperf3-server.sh` — starts server on port 5201
+- `experiments/zero-rtt-dpdk/nodes/iperf3-client.sh` — usage: `./iperf3-client.sh <server-ip> [flags]`
+- Mirror both into `experiments/zero-rtt-clientnic-translate/nodes/`
+
+**3. Orchestrator**
+- `experiments/zero-rtt-dpdk/run_iperf3_experiment.sh` — orchestrates full test matrix:
+  - Single stream TCP, 10s
+  - 4 parallel streams (`-P 4`)
+  - Reverse mode (`-R`)
+  - Bidirectional (`--bidir`)
+  - Collects JSON results + pcaps + report
+
+**4. Verification**
+- SSM into Server/Client, verify iperf3 JSON output
+- Run with ClientNIC DPDK (`--port=5201`), verify connection + seq translation under load
+- Run full orchestrator, verify report generated with throughput metrics
+
+---
+
+## Experiments (General Research)
 
 - QUIC testbed — reference: https://chatgpt.com/share/69efb1eb-e984-83eb-bda0-a9e6df2a9d81
 - Prepare testbeds for BF3 and AWS
