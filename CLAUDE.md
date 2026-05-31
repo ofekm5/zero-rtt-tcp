@@ -127,12 +127,13 @@ Scapy provides:
 - **`clientnic/README.md`**: Detailed ClientNIC implementation (0-RTT core logic)
 - **`servernic/README.md`**: ServerNIC forwarding implementation
 - **`todos/tech-improvements.md`**: T8 ISN-passing technique (ack-num field piggybacking) — recommended for current AWS VPC topology
+- **`observability/`**: eBPF observability implementation (currently disabled) — packet tracing and performance monitoring
 
 ### OpenSpec Change Tracking
 - **`openspec/changes/`**: Experimental spec-driven workflow for tracking development phases
   - **`t8-isn-ack-num-translation-shift/`**: T8 ISN-passing — implementation complete in `clientnic/dpdk-forwarder/` + `servernic/dpdk/`; pending probe verification on live AWS
   - **`aws-to-onprem-full-dpdk-migration/`**: Migration planning from AWS to on-prem Bluefield
-  - **`phase-1a-ebpf-observability/`** & **`phase-1b-iperf3-stress-testing/`**: Phase-1 initiatives
+  - **`phase-1b-iperf3-stress-testing/`**: Performance validation with stress testing
   - Archived changes in `openspec/changes/archive/`
 
 ### Reference
@@ -329,12 +330,14 @@ infra/
     ├── deployment/     # Docker and BFB image setup
     └── setup/          # DPU mode configuration and scripts
 
+observability/                # eBPF observability implementation (currently disabled)
+├── ...                        # Packet tracing and performance monitoring
+
 openspec/
 ├── changes/            # Experimental spec-driven change tracking
 │   ├── t8-isn-ack-num-translation-shift/    # Active: ISN passing for ServerNIC
 │   ├── aws-to-onprem-full-dpdk-migration/   # Migration planning to Bluefield
-│   ├── phase-1a-ebpf-observability/         # Phase-1 initiative
-│   ├── phase-1b-iperf3-stress-testing/      # Phase-1 initiative
+│   ├── phase-1b-iperf3-stress-testing/      # Performance validation with stress testing
 │   └── archive/        # Completed changes (DPDK port, SSM tests, node integration)
 
 todos/
