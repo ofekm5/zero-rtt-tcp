@@ -5,21 +5,25 @@ description: End-to-end integration testing for the 0-RTT TCP demo across all 4 
 
 # 0-RTT Integration Tester
 
-## Step 0 — Choose ClientNIC implementation
+## Step 0 — Choose experiment mode
 
-**Always ask the user** which ClientNIC data plane they want to test before doing anything:
+**Always ask the user** which mode they want to run before doing anything:
 
-> "Which ClientNIC implementation should I run the experiment with?
-> 1. **Scapy** — Python/Scapy, AF_PACKET (`experiments/zero-rtt-clientnic-translate/run_experiment.sh`)
-> 2. **DPDK** — C/DPDK 23.11 ENA PMD (`experiments/zero-rtt-dpdk/run_experiment.sh`)"
+> "Which experiment should I run?
+> 1. **Scapy** — 0-RTT, Python/Scapy AF_PACKET (`experiments/zero-rtt-clientnic-translate/run_experiment.sh`)
+> 2. **DPDK** — 0-RTT, C/DPDK 23.11 T8 forwarder (`experiments/zero-rtt-dpdk/run_experiment.sh`)
+> 3. **Baseline** — plain TCP, kernel forwarding, no 0-RTT middleware (`experiments/baseline-tcp/run_experiment.sh`)"
 
 Set variables based on the answer:
 
-| Variable | Scapy | DPDK |
-|----------|-------|------|
-| `EXPERIMENT_SCRIPT` | `experiments/zero-rtt-clientnic-translate/run_experiment.sh` | `experiments/zero-rtt-dpdk/run_experiment.sh` |
-| `REPORT_DIR` | `experiments/zero-rtt-clientnic-translate/reports/` | `experiments/zero-rtt-dpdk/reports/` |
-| `IMPL_NAME` | `scapy` | `dpdk` |
+| Variable | Scapy | DPDK | Baseline |
+|----------|-------|------|----------|
+| `EXPERIMENT_SCRIPT` | `experiments/zero-rtt-clientnic-translate/run_experiment.sh` | `experiments/zero-rtt-dpdk/run_experiment.sh` | `experiments/baseline-tcp/run_experiment.sh` |
+| `REPORT_DIR` | `experiments/zero-rtt-clientnic-translate/reports/` | `experiments/zero-rtt-dpdk/reports/` | `experiments/baseline-tcp/reports/` |
+| `IMPL_NAME` | `scapy` | `dpdk` | `baseline` |
+| Default `CONNECTIONS` | 5 | 5 | 20 |
+| Infra stack | `infra/scapy` | `infra/dpdk` | `infra/baseline` |
+| Instance tag prefix | `smartnics-*` | `smartnics-*` | `baseline-*` |
 
 ## Step 1 — Run the automated script
 
@@ -43,7 +47,7 @@ For DPDK-only unit tests (no full 4-VM chain needed), see `references/dpdk-tests
 | Server | `nodes/server.sh` | `setsid bash nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &` |
 | ServerNIC | `nodes/servernic.sh` | `setsid bash nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &` |
 | ClientNIC | `nodes/clientnic.sh <GW_MAC>` | `SKIP_BUILD=1 setsid bash nodes/clientnic.sh $GW_MAC < /dev/null >> /tmp/clientnic.log 2>&1 &` |
-| Client | (not via node script) | `python3 client.py --mode repeated --count 1 --verbose` |
+| Client | (not via node script) | `python3 client.py --mode repeated --count ${CONNECTIONS:-5} --verbose` |
 
 Key details:
 - `clientnic.sh` requires the gateway MAC as `$1` — the orchestrator reads it from `ServerNIC:/sys/class/net/eth0/address` via SSM (avoids EC2 API IAM issues from the VM)
@@ -53,6 +57,8 @@ Key details:
 
 **DPDK note**: The CDK user data builds `clientnic-dpdk` at provision time (~15-20 min after deploy). The DPDK script rebuilds from source (Task 10.1) before running the node scripts. If the build fails, wait for user data to finish or check meson/ninja output.
 
+**Baseline note**: No DPDK, no Scapy, no build step. ClientNIC and ServerNIC are plain kernel routers (`ip_forward=1` + static routes set by CDK user data). The baseline script discovers `baseline-*` tagged instances (separate `infra/baseline` CDK stack) — deploy with `cd infra/baseline && .\deploy.ps1` before running. Override connection count: `CONNECTIONS=50 ./run_experiment.sh`.
+
 ## Step 2 — Save the report
 
 **Always save a report to the experiment's `reports/` subfolder** after every run, regardless of pass/fail outcome. Never skip this step.
@@ -60,7 +66,7 @@ Key details:
 Report filename: `integration-test-report-YYYY-MM-DD.md` (today's date).
 Report path: `<REPORT_DIR>/integration-test-report-YYYY-MM-DD.md`
 
-Report template:
+Report template — **0-RTT (Scapy or DPDK)**:
 
 ```markdown
 # Integration Test Report — <YYYY-MM-DD>
@@ -78,7 +84,7 @@ Report template:
 | 1 | Server listening on :8080 | ✅ / ❌ |
 | 2 | ServerNIC IP forwarding enabled | ✅ / ❌ |
 | 3 | ClientNIC process running | ✅ / ❌ |
-| 4 | Client connections succeeded | ✅ / ❌ |
+| 4 | Client: N/N connections succeeded | ✅ / ❌ |
 | 6 | Server received data | ✅ / ❌ |
 | 7 | ClientNIC 0-RTT flow table activity | ✅ / ❌ |
 | 8 | Packet capture analysis — all checks passed | ✅ / ❌ |
@@ -106,9 +112,72 @@ Report template:
 <Describe any failures with exact log lines. "None" if all passed.>
 ```
 
+Report template — **Baseline TCP**:
+
+```markdown
+# Baseline TCP Report — <YYYY-MM-DD>
+
+**Mode**: Plain TCP (no 0-RTT middleware)
+**Infra**: `infra/baseline` CDK stack — 4× t3.micro, kernel forwarding
+**Connections**: N sequential
+**Overall result**: <ALL PASSED ✅ | N FAILURE(S) ❌>
+
+## Check Results
+
+| Step | Check | Result |
+|------|-------|--------|
+| 1 | ClientNIC + ServerNIC IP forwarding enabled | ✅ / ❌ |
+| 2 | Static routes present on NIC VMs | ✅ / ❌ |
+| 3 | Server listening on :8080 | ✅ / ❌ |
+| 4 | Client: N/N connections succeeded | ✅ / ❌ |
+| 5 | Server received data | ✅ / ❌ |
+
+## TTFB Measurements
+
+```
+<client stdout — min/avg/max TTFB across N connections>
+```
+
+## Failures / Notes
+
+<Describe any failures. "None" if all passed.>
+
+## Comparison
+
+| Metric | Baseline | 0-RTT (DPDK T8) | Delta |
+|--------|----------|-----------------|-------|
+| TTFB min (ms) | | | |
+| TTFB avg (ms) | | | |
+| TTFB max (ms) | | | |
+```
+
+## Step 2b — Update experiments/summary.md
+
+After saving the report, update `experiments/summary.md`:
+
+1. **Add a row** to the Comprehensive Metrics Table. Use `—` for fields that don't apply.
+
+   | Field | Where to get it |
+   |-------|----------------|
+   | Date | Today's date |
+   | Implementation | `Baseline TCP` / `Scapy 0-RTT` / `DPDK Legacy` / `DPDK T8` |
+   | Connections | Connection count used |
+   | TTFB Min/Max/Avg/Median/Std Dev | Client stdout statistics block |
+   | ISN Delta | ClientNIC log or pcap analysis (`—` for baseline) |
+   | Lead Time | Packet analysis timing section (`—` for baseline) |
+   | Throughput | iperf output if applicable (`—` otherwise) |
+   | Notes | One-line characterisation of the run |
+
+2. **Update the Implementation Summary** row for this implementation:
+   - Increment the Reports count
+   - Recompute Avg TTFB across all runs for that implementation
+   - Update Key Characteristic if something changed
+
+3. **Update Key Findings** only if the run reveals something new (new bottleneck, regression, milestone). Don't touch it for routine repeat runs.
+
 ## Step 3 — Report results to the user in chat
 
-After saving the report, post a concise summary in chat:
+After saving the report, post a concise summary in chat. For **baseline**, omit the ClientNIC log and packet analysis sections.
 
 ---
 **Experiment Run — `<timestamp>`** (`<IMPL_NAME>`)
@@ -120,7 +189,7 @@ After saving the report, post a concise summary in chat:
 | 1 | Server listening on :8080 | ✅ PASS |
 | 2 | ServerNIC IP forwarding enabled | ✅ PASS |
 | 3 | ClientNIC process running | ✅ PASS |
-| 4 | Client connections succeeded | ✅ PASS |
+| 4 | Client: N/N connections succeeded | ✅ PASS |
 | 6 | Server received data | ✅ PASS |
 | 7 | ClientNIC 0-RTT flow table activity | ✅ PASS |
 | 8 | Packet capture analysis | ✅ PASS |
@@ -200,8 +269,8 @@ setsid ./clientnic/dpdk/builddir/clientnic-dpdk -l 0 -- \
     --port=8080 --gw-mac=<GW_MAC> --server-pcap=/tmp/server_side.pcap \
     < /dev/null >> /tmp/clientnic.log 2>&1 &
 
-# 4. Client VM
-python3 client-app/client.py --host <server-ip> --port 8080 --mode repeated --count 3 --verbose
+# 4. Client VM  (override with CONNECTIONS=N env var, default 5)
+python3 client-app/client.py --host <server-ip> --port 8080 --mode repeated --count 5 --verbose
 ```
 
 ### Pre-flight Checks

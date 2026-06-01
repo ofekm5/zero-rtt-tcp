@@ -26,7 +26,8 @@ export PYTHONIOENCODING=utf-8
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 SERVER_PORT=8080
-BASELINE_CONNECTIONS=20
+# Override via env: CONNECTIONS=50 ./run_experiment.sh
+BASELINE_CONNECTIONS="${CONNECTIONS:-20}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 

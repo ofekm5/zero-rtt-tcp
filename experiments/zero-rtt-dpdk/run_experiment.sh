@@ -43,6 +43,9 @@ SERVER_PORT=8080
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
+# Number of sequential connections to run. Override via env: CONNECTIONS=20 ./run_experiment.sh
+CONNECTIONS="${CONNECTIONS:-5}"
+
 FAILURES=0
 
 log()  { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}" >&2; }
@@ -368,10 +371,10 @@ fi
 
 
 # ─── Step 4: Run client test ──────────────────────────────────────────────────
-log "Step 4: Running client test (1 connection)..."
+log "Step 4: Running client test ($CONNECTIONS connection(s))..."
 CLIENT_RESULT=$(ssm_run "$CLIENT_ID" \
-    "cd $REPO_PATH/client-app && python3 client.py --host $SERVER_IP --port $SERVER_PORT --mode repeated --count 1 --verbose" \
-    60)
+    "cd $REPO_PATH/client-app && python3 client.py --host $SERVER_IP --port $SERVER_PORT --mode repeated --count $CONNECTIONS --verbose" \
+    120)
 
 CLIENT_STDOUT=$(echo "$CLIENT_RESULT" | json_idx 1)
 CLIENT_STDERR=$(echo "$CLIENT_RESULT"  | json_idx 2)
@@ -381,10 +384,10 @@ echo "$CLIENT_STDOUT"
 [[ -n "$CLIENT_STDERR" ]] && echo "stderr: $CLIENT_STDERR"
 echo "---------------------"
 
-if echo "$CLIENT_STDOUT" | grep -qE "Success: 1/1|100%"; then
-    pass "Task 10.3: Client connection succeeded"
+if echo "$CLIENT_STDOUT" | grep -qE "Success: ${CONNECTIONS}/${CONNECTIONS}|100%"; then
+    pass "Client: all $CONNECTIONS connection(s) succeeded"
 else
-    fail "Task 10.3: Client connection failed"
+    fail "Client: not all $CONNECTIONS connection(s) succeeded"
 fi
 
 sleep 3
