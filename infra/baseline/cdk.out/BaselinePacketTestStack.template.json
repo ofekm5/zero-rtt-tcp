@@ -1,0 +1,477 @@
+{
+ "Resources": {
+  "PacketTestVPC787871FA": {
+   "Type": "AWS::EC2::VPC",
+   "Properties": {
+    "CidrBlock": "10.1.0.0/16",
+    "EnableDnsHostnames": true,
+    "EnableDnsSupport": true,
+    "InstanceTenancy": "default",
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "BaselinePacketTestStack/PacketTestVPC"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/Resource"
+   }
+  },
+  "PacketTestVPCClientSubnet1SubnetE86F43FC": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": "eu-central-1a",
+    "CidrBlock": "10.1.0.0/24",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "Client"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "BaselinePacketTestStack/PacketTestVPC/ClientSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "PacketTestVPC787871FA"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/ClientSubnet1/Subnet"
+   }
+  },
+  "PacketTestVPCClientSubnet1RouteTableBB25B53A": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "BaselinePacketTestStack/PacketTestVPC/ClientSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "PacketTestVPC787871FA"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/ClientSubnet1/RouteTable"
+   }
+  },
+  "PacketTestVPCClientSubnet1RouteTableAssociation3EDFFE05": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "PacketTestVPCClientSubnet1RouteTableBB25B53A"
+    },
+    "SubnetId": {
+     "Ref": "PacketTestVPCClientSubnet1SubnetE86F43FC"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/ClientSubnet1/RouteTableAssociation"
+   }
+  },
+  "PacketTestVPCClientSubnet1DefaultRoute5757CDAE": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "PacketTestVPCIGW8E9A3A0B"
+    },
+    "RouteTableId": {
+     "Ref": "PacketTestVPCClientSubnet1RouteTableBB25B53A"
+    }
+   },
+   "DependsOn": [
+    "PacketTestVPCVPCGWF501A45E"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/ClientSubnet1/DefaultRoute"
+   }
+  },
+  "PacketTestVPCMiddleSubnet1Subnet189B22F6": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": "eu-central-1a",
+    "CidrBlock": "10.1.1.0/24",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "Middle"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "BaselinePacketTestStack/PacketTestVPC/MiddleSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "PacketTestVPC787871FA"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/MiddleSubnet1/Subnet"
+   }
+  },
+  "PacketTestVPCMiddleSubnet1RouteTable26F04481": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "BaselinePacketTestStack/PacketTestVPC/MiddleSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "PacketTestVPC787871FA"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/MiddleSubnet1/RouteTable"
+   }
+  },
+  "PacketTestVPCMiddleSubnet1RouteTableAssociationF06B0E94": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "PacketTestVPCMiddleSubnet1RouteTable26F04481"
+    },
+    "SubnetId": {
+     "Ref": "PacketTestVPCMiddleSubnet1Subnet189B22F6"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/MiddleSubnet1/RouteTableAssociation"
+   }
+  },
+  "PacketTestVPCMiddleSubnet1DefaultRoute7A67C5E6": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "PacketTestVPCIGW8E9A3A0B"
+    },
+    "RouteTableId": {
+     "Ref": "PacketTestVPCMiddleSubnet1RouteTable26F04481"
+    }
+   },
+   "DependsOn": [
+    "PacketTestVPCVPCGWF501A45E"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/MiddleSubnet1/DefaultRoute"
+   }
+  },
+  "PacketTestVPCServerSubnet1Subnet780ACC65": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": "eu-central-1a",
+    "CidrBlock": "10.1.2.0/24",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "Server"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "BaselinePacketTestStack/PacketTestVPC/ServerSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "PacketTestVPC787871FA"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/ServerSubnet1/Subnet"
+   }
+  },
+  "PacketTestVPCServerSubnet1RouteTable56A16BAD": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "BaselinePacketTestStack/PacketTestVPC/ServerSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "PacketTestVPC787871FA"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/ServerSubnet1/RouteTable"
+   }
+  },
+  "PacketTestVPCServerSubnet1RouteTableAssociationDDDC7BB2": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "PacketTestVPCServerSubnet1RouteTable56A16BAD"
+    },
+    "SubnetId": {
+     "Ref": "PacketTestVPCServerSubnet1Subnet780ACC65"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/ServerSubnet1/RouteTableAssociation"
+   }
+  },
+  "PacketTestVPCServerSubnet1DefaultRouteF00C8C3D": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "PacketTestVPCIGW8E9A3A0B"
+    },
+    "RouteTableId": {
+     "Ref": "PacketTestVPCServerSubnet1RouteTable56A16BAD"
+    }
+   },
+   "DependsOn": [
+    "PacketTestVPCVPCGWF501A45E"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/ServerSubnet1/DefaultRoute"
+   }
+  },
+  "PacketTestVPCIGW8E9A3A0B": {
+   "Type": "AWS::EC2::InternetGateway",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "BaselinePacketTestStack/PacketTestVPC"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/IGW"
+   }
+  },
+  "PacketTestVPCVPCGWF501A45E": {
+   "Type": "AWS::EC2::VPCGatewayAttachment",
+   "Properties": {
+    "InternetGatewayId": {
+     "Ref": "PacketTestVPCIGW8E9A3A0B"
+    },
+    "VpcId": {
+     "Ref": "PacketTestVPC787871FA"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/VPCGW"
+   }
+  },
+  "PacketTestVPCRestrictDefaultSecurityGroupCustomResource12A12284": {
+   "Type": "Custom::VpcRestrictDefaultSG",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomVpcRestrictDefaultSGCustomResourceProviderHandlerDC833E5E",
+      "Arn"
+     ]
+    },
+    "DefaultSecurityGroupId": {
+     "Fn::GetAtt": [
+      "PacketTestVPC787871FA",
+      "DefaultSecurityGroup"
+     ]
+    },
+    "Account": "191106064063"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/PacketTestVPC/RestrictDefaultSecurityGroupCustomResource/Default"
+   }
+  },
+  "CustomVpcRestrictDefaultSGCustomResourceProviderRole26592FE0": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ]
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+     }
+    ],
+    "Policies": [
+     {
+      "PolicyName": "Inline",
+      "PolicyDocument": {
+       "Version": "2012-10-17",
+       "Statement": [
+        {
+         "Effect": "Allow",
+         "Action": [
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+          "ec2:RevokeSecurityGroupEgress"
+         ],
+         "Resource": [
+          {
+           "Fn::Join": [
+            "",
+            [
+             "arn:aws:ec2:eu-central-1:191106064063:security-group/",
+             {
+              "Fn::GetAtt": [
+               "PacketTestVPC787871FA",
+               "DefaultSecurityGroup"
+              ]
+             }
+            ]
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/Custom::VpcRestrictDefaultSGCustomResourceProvider/Role"
+   }
+  },
+  "CustomVpcRestrictDefaultSGCustomResourceProviderHandlerDC833E5E": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-191106064063-eu-central-1",
+     "S3Key": "7fa1e366ee8a9ded01fc355f704cff92bfd179574e6f9cfee800a3541df1b200.zip"
+    },
+    "Timeout": 900,
+    "MemorySize": 128,
+    "Handler": "__entrypoint__.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomVpcRestrictDefaultSGCustomResourceProviderRole26592FE0",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs22.x",
+    "Description": "Lambda function for removing all inbound/outbound rules from the VPC default security group"
+   },
+   "DependsOn": [
+    "CustomVpcRestrictDefaultSGCustomResourceProviderRole26592FE0"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/Custom::VpcRestrictDefaultSGCustomResourceProvider/Handler",
+    "aws:asset:path": "asset.7fa1e366ee8a9ded01fc355f704cff92bfd179574e6f9cfee800a3541df1b200",
+    "aws:asset:property": "Code"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/3WNsQrCQBBEv8X+cmoUrGMKsQuJpJXNuepqsie3e4Yg/ruIYiqrmXkzMKlNl3M7m0AviTtck5Ya+6gU3NVAL3t0qX3UN2fyI9dFborYtOSq2DDqm42u9FFxB02LIx9ZJuIdgZLn3/httqwYGHUDij0M35tvylTBnTtkfZoSxcfg0ORR1HdjPPKfqgj+TgcMaxA0mQhqpXAiPj1NMejZ83Rh5wu7mlyEKAmRlTq05Udfcbw6mRcBAAA="
+   },
+   "Metadata": {
+    "aws:cdk:path": "BaselinePacketTestStack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "ExportsOutputRefPacketTestVPC787871FA3BDB9318": {
+   "Value": {
+    "Ref": "PacketTestVPC787871FA"
+   },
+   "Export": {
+    "Name": "BaselinePacketTestStack:ExportsOutputRefPacketTestVPC787871FA3BDB9318"
+   }
+  },
+  "ExportsOutputRefPacketTestVPCClientSubnet1SubnetE86F43FC9CD6C463": {
+   "Value": {
+    "Ref": "PacketTestVPCClientSubnet1SubnetE86F43FC"
+   },
+   "Export": {
+    "Name": "BaselinePacketTestStack:ExportsOutputRefPacketTestVPCClientSubnet1SubnetE86F43FC9CD6C463"
+   }
+  },
+  "ExportsOutputRefPacketTestVPCServerSubnet1Subnet780ACC659593D101": {
+   "Value": {
+    "Ref": "PacketTestVPCServerSubnet1Subnet780ACC65"
+   },
+   "Export": {
+    "Name": "BaselinePacketTestStack:ExportsOutputRefPacketTestVPCServerSubnet1Subnet780ACC659593D101"
+   }
+  },
+  "ExportsOutputRefPacketTestVPCMiddleSubnet1Subnet189B22F6B240D9F0": {
+   "Value": {
+    "Ref": "PacketTestVPCMiddleSubnet1Subnet189B22F6"
+   },
+   "Export": {
+    "Name": "BaselinePacketTestStack:ExportsOutputRefPacketTestVPCMiddleSubnet1Subnet189B22F6B240D9F0"
+   }
+  },
+  "ExportsOutputRefPacketTestVPCIGW8E9A3A0BDBA1E512": {
+   "Value": {
+    "Ref": "PacketTestVPCIGW8E9A3A0B"
+   },
+   "Export": {
+    "Name": "BaselinePacketTestStack:ExportsOutputRefPacketTestVPCIGW8E9A3A0BDBA1E512"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}
