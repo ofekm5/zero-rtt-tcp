@@ -232,7 +232,7 @@ fi
 # builds (or skips with SKIP_BUILD=1), installs iptables rules, launches servernic-dpdk.
 log "Step 2: Starting ServerNIC DPDK binary via node script..."
 ssm_bg "$SERVERNIC_ID" \
-    "SKIP_BUILD=1 CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC setsid bash $REPO_PATH/experiments/dpdk/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
+    "SKIP_BUILD=1 CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC MIDDLE_ENI_MAC=$GW_MAC setsid bash $REPO_PATH/experiments/dpdk/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
 sleep 5  # DPDK EAL + vfio-pci bind + ENA PMD init (~3-4 s)
 
 SERVERNIC_RUNNING=$(ssm_stdout "$SERVERNIC_ID" "pgrep -f servernic-dpdk && echo RUNNING || echo NOT_RUNNING" 30)

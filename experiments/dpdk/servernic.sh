@@ -109,13 +109,18 @@ log "Server-side gateway MAC (eth2):    $SERVER_GW_MAC"
 # Correct: DeviceIndex=1 (Middle subnet, ClientNIC-facing) → vfio-pci
 # Correct: DeviceIndex=2 (Server subnet) → kernel AF_PACKET
 log "Checking DPDK binding (Middle subnet ENI should be vfio-pci)..."
-MIDDLE_ENI_MAC=$(aws ec2 describe-instances \
-    --filters "Name=tag:Name,Values=smartnics-servernic" "Name=instance-state-name,Values=running" \
-    --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`1\`].MacAddress" \
-    --output text --region "$REGION" 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+# Accept MIDDLE_ENI_MAC from caller (run_experiment.sh has IAM access); fall back
+# to EC2 API only if not provided (requires ec2:DescribeInstances on the VM).
+MIDDLE_ENI_MAC="${MIDDLE_ENI_MAC:-}"
+if [ -z "$MIDDLE_ENI_MAC" ] || [ "$MIDDLE_ENI_MAC" = "none" ]; then
+    MIDDLE_ENI_MAC=$(aws ec2 describe-instances \
+        --filters "Name=tag:Name,Values=smartnics-servernic" "Name=instance-state-name,Values=running" \
+        --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`1\`].MacAddress" \
+        --output text --region "$REGION" 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+fi
 
 if [ -z "$MIDDLE_ENI_MAC" ] || [ "$MIDDLE_ENI_MAC" = "none" ]; then
-    log "WARNING: Could not query Middle subnet ENI MAC — skipping binding check"
+    log "WARNING: Could not determine Middle subnet ENI MAC — skipping binding check"
 else
     MIDDLE_KERNEL_IFACE=""
     for _iface in eth1 eth2 eth3; do
