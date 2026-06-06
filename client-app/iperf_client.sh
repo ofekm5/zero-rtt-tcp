@@ -39,11 +39,11 @@ done
 echo ""
 
 # ── 3. Parallel streams ───────────────────────────────────────────────────────
-run_test "03_parallel_4_streams" \
-    -t 10 -P 4
+run_test "03_parallel_100000_streams" \
+    -t 10 -P 100000
 
-run_test "04_parallel_16_streams" \
-    -t 10 -P 16
+run_test "04_parallel_100000_streams_v2" \
+    -t 10 -P 100000
 
 # ── 4. Bulk transfers ─────────────────────────────────────────────────────────
 run_test "05_bulk_100MB" \
@@ -77,9 +77,9 @@ run_test "10_udp_flood_1Gbps" \
 run_test "11_udp_flood_100Mbps" \
     -u -b 100M -t 10
 
-# ── 9. Stress: 32 parallel streams for 60 s ──────────────────────────────────
-run_test "12_stress_32p_60s" \
-    -t 60 -P 32
+# ── 9. Stress: 100000 parallel streams for 60 s ──────────────────────────────
+run_test "12_stress_100000p_60s" \
+    -t 60 -P 100000
 
 # ── 10. Large window size (tests buffering under 0-RTT translation) ───────────
 run_test "13_large_window_256K" \

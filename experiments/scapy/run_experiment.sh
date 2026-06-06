@@ -27,11 +27,14 @@
 #   - python3 in PATH
 #
 # Usage:
-#   ./experiments/zero-rtt-clientnic-translate/run_experiment.sh
+#   ./experiments/scapy/run_experiment.sh
 #
 # Exit code: 0 = all checks passed, non-zero = number of failures
 
 set -uo pipefail
+
+# shellcheck source=../lib/ssm.sh
+source "$(dirname "$0")/../lib/ssm.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 SERVER_PORT=8080
@@ -44,95 +47,6 @@ log()  { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}" >&2; }
 pass() { echo -e "${GREEN}[PASS]${NC} $*"; }
 fail() { echo -e "${RED}[FAIL]${NC} $*"; FAILURES=$((FAILURES + 1)); }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-
-# Build SSM parameters JSON from a shell command string
-mk_params() { python3 -c "import json,sys; print(json.dumps({'commands':[sys.argv[1]]}))" "$1"; }
-# Extract element N from a JSON array on stdin
-json_idx()  { python3 -X utf8 -c "import json,sys; print(json.load(sys.stdin)[$1], end='')"; }
-
-
-# ─── Dependency checks ────────────────────────────────────────────────────────
-if ! command -v aws &>/dev/null; then
-    echo "ERROR: aws CLI is required" >&2
-    exit 1
-fi
-if ! command -v python3 &>/dev/null; then
-    echo "ERROR: python3 is required" >&2
-    exit 1
-fi
-
-
-# ─── SSM helpers ──────────────────────────────────────────────────────────────
-
-# ssm_run <instance-id> <command> [timeout-sec]
-# Runs a command synchronously via SSM.
-# Returns JSON array: [Status, Stdout, Stderr]
-ssm_run() {
-    local iid="$1" cmd="$2" timeout="${3:-120}"
-    local params cid
-
-    params=$(mk_params "$cmd")
-
-    cid=$(aws ssm send-command \
-        --instance-ids "$iid" \
-        --document-name "AWS-RunShellScript" \
-        --parameters "$params" \
-        --timeout-seconds "$timeout" \
-        --query "Command.CommandId" \
-        --output text --region eu-central-1)
-
-    # Wait until the command finishes (Success or Failed)
-    aws ssm wait command-executed \
-        --command-id "$cid" \
-        --instance-id "$iid" --region eu-central-1 2>/dev/null || true
-
-    aws ssm get-command-invocation \
-        --command-id "$cid" \
-        --instance-id "$iid" \
-        --query "[Status, StandardOutputContent, StandardErrorContent]" \
-        --output json --region eu-central-1
-}
-
-# ssm_stdout <instance-id> <command> [timeout-sec]
-# Like ssm_run but returns only stdout text.
-ssm_stdout() {
-    ssm_run "$1" "$2" "${3:-120}" | json_idx 1
-}
-
-# ssm_bg <instance-id> <command>
-# Fires a command in the background on the VM and returns immediately.
-# The command must daemonize itself (nohup ... &).
-ssm_bg() {
-    local iid="$1" cmd="$2"
-    local params
-    params=$(mk_params "$cmd")
-    aws ssm send-command \
-        --instance-ids "$iid" \
-        --document-name "AWS-RunShellScript" \
-        --parameters "$params" \
-        --timeout-seconds 30 \
-        --query "Command.CommandId" \
-        --output text --region eu-central-1 > /dev/null
-}
-
-
-# ─── EC2 discovery ────────────────────────────────────────────────────────────
-# Look up instance IDs and IPs by the Name tag set in the CDK stack.
-# IPs change on every instance restart, so we always query fresh.
-
-get_iid() {
-    aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=$1" "Name=instance-state-name,Values=running" \
-        --query "Reservations[0].Instances[0].InstanceId" \
-        --output text --region eu-central-1
-}
-
-get_ip() {
-    aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=$1" "Name=instance-state-name,Values=running" \
-        --query "Reservations[0].Instances[0].PrivateIpAddress" \
-        --output text --region eu-central-1
-}
 
 
 # ─── Step 0: Discover instances ───────────────────────────────────────────────
@@ -426,8 +340,8 @@ fi
     echo "# Integration Test Report — $(date +%Y-%m-%d)"
     echo ""
     echo "**Implementation**: Scapy"
-    echo "**Experiment script**: \`experiments/zero-rtt-clientnic-translate/run_experiment.sh\`"
-    echo "**Node scripts**: \`experiments/zero-rtt-clientnic-translate/nodes/\`"
+    echo "**Experiment script**: \`experiments/scapy/run_experiment.sh\`"
+    echo "**Node scripts**: \`experiments/scapy/\` (clientnic/servernic), \`experiments/nodes/\` (client/server)"
     echo "**Overall result**: $OVERALL_RESULT"
     echo ""
     echo "## Client Output"

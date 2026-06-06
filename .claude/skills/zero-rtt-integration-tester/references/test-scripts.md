@@ -4,17 +4,17 @@ Two experiment orchestrators and one pcap validator. Choose the orchestrator bas
 
 ---
 
-## experiments/zero-rtt-clientnic-translate/run_experiment.sh
+## experiments/scapy/run_experiment.sh
 
 **Scapy stack** — ClientNIC uses Python/Scapy on both eth0 and eth1.
 
 **Prerequisites**: `aws` CLI with SSM access, `python3` in PATH, `eu-central-1` region.
 
 ```bash
-./experiments/zero-rtt-clientnic-translate/run_experiment.sh
+./experiments/scapy/run_experiment.sh
 ```
 
-Exit code = number of failed checks (0 = all passed). Reports go in `experiments/zero-rtt-clientnic-translate/reports/`.
+Exit code = number of failed checks (0 = all passed). Reports go in `experiments/scapy/reports/`.
 
 ### Steps
 
@@ -41,15 +41,15 @@ Exit code = number of failed checks (0 = all passed). Reports go in `experiments
 
 ---
 
-## experiments/zero-rtt-dpdk/run_experiment.sh
+## experiments/dpdk/run_experiment.sh
 
 **DPDK stack** — ClientNIC uses C/DPDK 23.11 ENA PMD on eth1, AF_PACKET on eth0.
 
 ```bash
-./experiments/zero-rtt-dpdk/run_experiment.sh
+./experiments/dpdk/run_experiment.sh
 ```
 
-Exit code = number of failed checks. Reports go in `experiments/zero-rtt-dpdk/reports/`.
+Exit code = number of failed checks. Reports go in `experiments/dpdk/reports/`.
 
 ### Steps
 

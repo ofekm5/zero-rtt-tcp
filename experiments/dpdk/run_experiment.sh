@@ -24,7 +24,7 @@
 #   - ClientNIC and ServerNIC VMs provisioned with infra/dpdk CDK stack
 #
 # Usage:
-#   ./experiments/zero-rtt-dpdk/run_experiment.sh
+#   ./experiments/dpdk/run_experiment.sh
 #
 # Exit code: 0 = all checks passed, non-zero = number of failures
 
@@ -34,6 +34,9 @@ set -uo pipefail
 # output (em-dashes, arrows) don't cause cp1252 encode errors on Windows.
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
+
+# shellcheck source=../lib/ssm.sh
+source "$(dirname "$0")/../lib/ssm.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 DPDK_BUILD="$REPO_PATH/clientnic/dpdk-forwarder/builddir"
@@ -52,88 +55,6 @@ log()  { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}" >&2; }
 pass() { echo -e "${GREEN}[PASS]${NC} $*"; }
 fail() { echo -e "${RED}[FAIL]${NC} $*"; FAILURES=$((FAILURES + 1)); }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-
-# Build SSM parameters JSON from a shell command string
-mk_params() { python3 -c "import json,sys; print(json.dumps({'commands':[sys.argv[1]]}))" "$1"; }
-# Extract element N from a JSON array on stdin (binary read avoids Windows codec issues)
-json_idx()  { python3 -c "import json,sys; raw=sys.stdin.buffer.read(); v=json.loads(raw.decode('utf-8','replace'))[$1]; print(v.encode('ascii','replace').decode('ascii') if isinstance(v,str) else v, end='')"; }
-
-
-# ─── Dependency checks ────────────────────────────────────────────────────────
-if ! command -v aws &>/dev/null; then
-    echo "ERROR: aws CLI is required" >&2
-    exit 1
-fi
-if ! command -v python3 &>/dev/null; then
-    echo "ERROR: python3 is required" >&2
-    exit 1
-fi
-
-
-# ─── SSM helpers ──────────────────────────────────────────────────────────────
-
-# ssm_run <instance-id> <command> [timeout-sec]
-ssm_run() {
-    local iid="$1" cmd="$2" timeout="${3:-120}"
-    local params cid
-
-    params=$(mk_params "$cmd")
-
-    cid=$(aws ssm send-command \
-        --instance-ids "$iid" \
-        --document-name "AWS-RunShellScript" \
-        --parameters "$params" \
-        --timeout-seconds "$timeout" \
-        --query "Command.CommandId" \
-        --output text --region eu-central-1)
-
-    aws ssm wait command-executed \
-        --command-id "$cid" \
-        --instance-id "$iid" --region eu-central-1 2>/dev/null || true
-
-    aws ssm get-command-invocation \
-        --command-id "$cid" \
-        --instance-id "$iid" \
-        --query "[Status, StandardOutputContent, StandardErrorContent]" \
-        --output json --region eu-central-1
-}
-
-# ssm_stdout <instance-id> <command> [timeout-sec]
-ssm_stdout() {
-    ssm_run "$1" "$2" "${3:-120}" | json_idx 1
-}
-
-# ssm_bg <instance-id> <command>
-# Fires a command in the background and returns immediately.
-ssm_bg() {
-    local iid="$1" cmd="$2"
-    local params
-    params=$(mk_params "$cmd")
-    aws ssm send-command \
-        --instance-ids "$iid" \
-        --document-name "AWS-RunShellScript" \
-        --parameters "$params" \
-        --timeout-seconds 30 \
-        --query "Command.CommandId" \
-        --output text --region eu-central-1 > /dev/null
-}
-
-
-# ─── EC2 discovery ────────────────────────────────────────────────────────────
-
-get_iid() {
-    aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=$1" "Name=instance-state-name,Values=running" \
-        --query "Reservations[0].Instances[0].InstanceId" \
-        --output text --region eu-central-1
-}
-
-get_ip() {
-    aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=$1" "Name=instance-state-name,Values=running" \
-        --query "Reservations[0].Instances[0].PrivateIpAddress" \
-        --output text --region eu-central-1
-}
 
 
 # ─── Step 0: Discover instances ───────────────────────────────────────────────
@@ -292,7 +213,7 @@ fi
 # ─── Step 1: Start Server ─────────────────────────────────────────────────────
 log "Step 1: Starting Server via node script..."
 ssm_bg "$SERVER_ID" \
-    "setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+    "setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
 sleep 3
 
 LISTEN_CHECK=$(ssm_stdout "$SERVER_ID" "ss -tlnp | grep $SERVER_PORT && echo LISTENING || echo NOT_LISTENING" 30)
@@ -309,7 +230,7 @@ fi
 # builds (or skips with SKIP_BUILD=1), installs iptables rules, launches servernic-dpdk.
 log "Step 2: Starting ServerNIC DPDK binary via node script..."
 ssm_bg "$SERVERNIC_ID" \
-    "SKIP_BUILD=1 CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
+    "SKIP_BUILD=1 CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC setsid bash $REPO_PATH/experiments/dpdk/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &"
 sleep 5  # DPDK EAL + vfio-pci bind + ENA PMD init (~3-4 s)
 
 SERVERNIC_RUNNING=$(ssm_stdout "$SERVERNIC_ID" "pgrep -f servernic-dpdk && echo RUNNING || echo NOT_RUNNING" 30)
@@ -347,7 +268,7 @@ sleep 1
 # as $1 — bypasses EC2 API call from VM), tcpdump on eth0, exec forwarder binary.
 # SKIP_BUILD=1 because meson+ninja already ran in the build step above.
 ssm_bg "$CLIENTNIC_ID" \
-    "SKIP_BUILD=1 setsid bash $REPO_PATH/experiments/zero-rtt-dpdk/nodes/clientnic.sh $GW_MAC < /dev/null >> /tmp/clientnic.log 2>&1 &"
+    "SKIP_BUILD=1 setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC < /dev/null >> /tmp/clientnic.log 2>&1 &"
 sleep 5  # node script: cleanup + checks + tcpdump start + DPDK EAL + ENA PMD init (~3-4 s)
 
 FWRD=$(ssm_stdout "$CLIENTNIC_ID" "cat /proc/sys/net/ipv4/ip_forward" 30)
@@ -505,8 +426,8 @@ fi
     echo "**Implementation**: DPDK (T8 ISN ack-num translation shift)"
     echo "**ClientNIC binary**: \`clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
     echo "**ServerNIC binary**: \`servernic/dpdk/\` (full translator)"
-    echo "**Experiment script**: \`experiments/zero-rtt-dpdk/run_experiment.sh\`"
-    echo "**Node scripts**: \`experiments/zero-rtt-dpdk/nodes/\`"
+    echo "**Experiment script**: \`experiments/dpdk/run_experiment.sh\`"
+    echo "**Node scripts**: \`experiments/dpdk/\` (clientnic/servernic), \`experiments/nodes/\` (client/server)"
     echo "**Overall result**: $OVERALL_RESULT"
     echo ""
     echo "## Client Output"

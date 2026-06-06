@@ -10,16 +10,16 @@ description: End-to-end integration testing for the 0-RTT TCP demo across all 4 
 **Always ask the user** which mode they want to run before doing anything:
 
 > "Which experiment should I run?
-> 1. **Scapy** — 0-RTT, Python/Scapy AF_PACKET (`experiments/zero-rtt-clientnic-translate/run_experiment.sh`)
-> 2. **DPDK** — 0-RTT, C/DPDK 23.11 T8 forwarder (`experiments/zero-rtt-dpdk/run_experiment.sh`)
+> 1. **Scapy** — 0-RTT, Python/Scapy AF_PACKET (`experiments/scapy/run_experiment.sh`)
+> 2. **DPDK** — 0-RTT, C/DPDK 23.11 T8 forwarder (`experiments/dpdk/run_experiment.sh`)
 > 3. **Baseline** — plain TCP, kernel forwarding, no 0-RTT middleware (`experiments/baseline-tcp/run_experiment.sh`)"
 
 Set variables based on the answer:
 
 | Variable | Scapy | DPDK | Baseline |
 |----------|-------|------|----------|
-| `EXPERIMENT_SCRIPT` | `experiments/zero-rtt-clientnic-translate/run_experiment.sh` | `experiments/zero-rtt-dpdk/run_experiment.sh` | `experiments/baseline-tcp/run_experiment.sh` |
-| `REPORT_DIR` | `experiments/zero-rtt-clientnic-translate/reports/` | `experiments/zero-rtt-dpdk/reports/` | `experiments/baseline-tcp/reports/` |
+| `EXPERIMENT_SCRIPT` | `experiments/scapy/run_experiment.sh` | `experiments/dpdk/run_experiment.sh` | `experiments/baseline-tcp/run_experiment.sh` |
+| `REPORT_DIR` | `experiments/scapy/reports/` | `experiments/dpdk/reports/` | `experiments/baseline-tcp/reports/` |
 | `IMPL_NAME` | `scapy` | `dpdk` | `baseline` |
 | Default `CONNECTIONS` | 5 | 5 | 20 |
 | Infra stack | `infra/scapy` | `infra/dpdk` | `infra/baseline` |
@@ -37,23 +37,23 @@ See `references/test-scripts.md` for the full step-by-step breakdown and expecte
 
 For DPDK-only unit tests (no full 4-VM chain needed), see `references/dpdk-tests.md` and run:
 ```bash
-./experiments/zero-rtt-dpdk/run_dpdk_tests_ssm.sh
+./experiments/dpdk/run_dpdk_tests_ssm.sh
 ```
 
-**DPDK node-script flow**: `run_experiment.sh` delegates per-VM startup to the individual node scripts under `experiments/zero-rtt-dpdk/nodes/` via SSM `send-command`:
+**DPDK node-script flow**: `run_experiment.sh` delegates per-VM startup to node scripts via SSM `send-command`. Shared scripts (server/client) live in `experiments/nodes/`; NIC-specific scripts live in `experiments/dpdk/`:
 
 | VM | Node script | SSM invocation |
 |----|-------------|----------------|
-| Server | `nodes/server.sh` | `setsid bash nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &` |
-| ServerNIC | `nodes/servernic.sh` | `setsid bash nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &` |
-| ClientNIC | `nodes/clientnic.sh <GW_MAC>` | `SKIP_BUILD=1 setsid bash nodes/clientnic.sh $GW_MAC < /dev/null >> /tmp/clientnic.log 2>&1 &` |
+| Server | `experiments/nodes/server.sh` | `setsid bash experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &` |
+| ServerNIC | `experiments/dpdk/servernic.sh` | `setsid bash experiments/dpdk/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &` |
+| ClientNIC | `experiments/dpdk/clientnic.sh <GW_MAC>` | `SKIP_BUILD=1 setsid bash experiments/dpdk/clientnic.sh $GW_MAC < /dev/null >> /tmp/clientnic.log 2>&1 &` |
 | Client | (not via node script) | `python3 client.py --mode repeated --count ${CONNECTIONS:-5} --verbose` |
 
 Key details:
 - `clientnic.sh` requires the gateway MAC as `$1` — the orchestrator reads it from `ServerNIC:/sys/class/net/eth0/address` via SSM (avoids EC2 API IAM issues from the VM)
 - `SKIP_BUILD=1` skips the meson+ninja build since `run_experiment.sh` runs the build explicitly as Task 10.1
 - `client.sh` has an interactive `read` loop — client runs via `client.py --mode repeated --count 1` directly
-- The report is written automatically to `experiments/zero-rtt-dpdk/reports/integration-test-report-YYYY-MM-DD.md`
+- The report is written automatically to `experiments/dpdk/reports/integration-test-report-YYYY-MM-DD.md`
 
 **DPDK note**: The CDK user data builds `clientnic-dpdk` at provision time (~15-20 min after deploy). The DPDK script rebuilds from source (Task 10.1) before running the node scripts. If the build fails, wait for user data to finish or check meson/ninja output.
 
@@ -209,7 +209,7 @@ After saving the report, post a concise summary in chat. For **baseline**, omit 
 <validate_0rtt_capture.py output>
 ```
 
-**Report saved**: `<REPORT_DIR>/integration-test-report-YYYY-MM-DD.md`
+**Report saved**: `experiments/{scapy|dpdk|baseline-tcp}/reports/integration-test-report-YYYY-MM-DD.md`
 
 ---
 

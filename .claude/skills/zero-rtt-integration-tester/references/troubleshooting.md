@@ -195,7 +195,7 @@ This can fail with `AccessDenied` if the ClientNIC IAM role lacks `ec2:DescribeI
 GW_MAC=$(ssm_stdout "$SERVERNIC_ID" "cat /sys/class/net/eth0/address" 30)
 
 # Then passes it to clientnic.sh:
-SKIP_BUILD=1 setsid bash nodes/clientnic.sh $GW_MAC ...
+SKIP_BUILD=1 setsid bash experiments/dpdk/clientnic.sh $GW_MAC ...
 ```
 
 Fallback for manual runs — on the ServerNIC VM:
