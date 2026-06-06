@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Shared TTFB / FCT measurement helpers for experiment orchestrators.
+# Shared measurement helpers for experiment orchestrators.
 # Source after ssm.sh. Requires: ssm_run, json_idx, pass, fail, warn.
 #
 # Measurement points (all intra-host intervals — no cross-machine clock sync):
 #   - ClientNIC TTFB: stamped in clientnic-dpdk-forwarder (SYN ingress → 1st s2c data byte)
 #   - ServerNIC TTFB: stamped in servernic-dpdk        (SYN ingress → 1st s2c data byte)
-#   - Client TTFB/FCT: stamped in client.py            (connect → 1st byte / → FIN)
-# Each source emits parseable lines: "[METRIC] <ttfb|fct> node=<n> flow=... <us|ms>=<v>"
+# Each NIC source emits: "[METRIC] <ttfb|fct> node=<n> flow=... <us|ms>=<v>"
 
 # summarize_metric <metric> <node> <label>
 # Reads text on stdin, extracts all matching [METRIC] samples, prints count +
@@ -46,7 +45,7 @@ report_nic_ttfb() {
 }
 
 # run_ttfb_measurement <client-iid> <server-ip> <port> <count> <repo-path> [timeout-sec] [label]
-# Runs python3 client.py on the client VM via SSM.
+# Runs <count> sequential iperf flows on the client VM via SSM.
 # Sets globals: CLIENT_STDOUT, CLIENT_STDERR
 run_ttfb_measurement() {
     local client_iid="$1" server_ip="$2" port="$3" count="$4" repo="$5"
@@ -54,7 +53,15 @@ run_ttfb_measurement() {
 
     local result
     result=$(ssm_run "$client_iid" \
-        "cd $repo/client-app && python3 client.py --host $server_ip --port $port --mode repeated --count $count --verbose" \
+        "command -v iperf >/dev/null || { echo 'ERROR: iperf not installed'; exit 1; }
+         success=0
+         for i in \$(seq 1 $count); do
+             echo \"--- Connection \$i/$count ---\"
+             out=\$(iperf -c $server_ip -p $port -n 1M -f m 2>&1)
+             echo \"\$out\"
+             echo \"\$out\" | grep -q 'bits/sec' && success=\$((success + 1))
+         done
+         echo \"Success: \${success}/$count\"" \
         "$timeout")
 
     CLIENT_STDOUT=$(echo "$result" | json_idx 1)
@@ -65,17 +72,11 @@ run_ttfb_measurement() {
     [[ -n "$CLIENT_STDERR" ]] && echo "stderr: $CLIENT_STDERR"
     echo "---"
 
-    if echo "$CLIENT_STDOUT" | grep -qE "Success: ${count}/${count}|100%"; then
+    if echo "$CLIENT_STDOUT" | grep -qE "Success: ${count}/${count}"; then
         pass "$label: all $count connection(s) succeeded"
     elif echo "$CLIENT_STDOUT" | grep -qE "Success: [1-9][0-9]*/${count}"; then
-        warn "$label: partial success — see TTFB output"
+        warn "$label: partial success — see iperf output"
     else
         fail "$label: all $count connection(s) failed"
     fi
-
-    # Aggregate the client-side samples emitted by client.py.
-    echo "--- $label metrics ---"
-    echo "$CLIENT_STDOUT" | summarize_metric "ttfb" "client" "Client TTFB"
-    echo "$CLIENT_STDOUT" | summarize_metric "fct"  "client" "Client FCT "
-    echo "---"
 }

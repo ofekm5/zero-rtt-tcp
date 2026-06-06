@@ -90,7 +90,7 @@ sleep 8   # give git pulls time to complete before starting anything
 # Scapy sniffers on the NIC VMs (bad — duplicate spoofed SYN-ACKs, double seq deltas).
 # Also flush iptables FORWARD rules to avoid stale DROP rules from a prior run.
 log "Cleaning up previous runs..."
-ssm_bg "$SERVER_ID"    "pkill -f 'python3.*server.py' 2>/dev/null; rm -f /tmp/server.log"
+ssm_bg "$SERVER_ID"    "pkill -f iperf 2>/dev/null; rm -f /tmp/server.log"
 ssm_bg "$SERVERNIC_ID" "pkill -f 'servernic/scapy' 2>/dev/null; rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null"
 ssm_bg "$CLIENTNIC_ID" "pkill -f 'clientnic/scapy' 2>/dev/null; pkill tcpdump 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/server_side.pcap; iptables -F FORWARD 2>/dev/null"
 sleep 3
@@ -108,7 +108,7 @@ sleep 3
 # SSM tears down.
 log "Step 1: Starting Server..."
 ssm_bg "$SERVER_ID" \
-    "cd $REPO_PATH && echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/server.log && setsid python3 -u server-app/server.py --host 0.0.0.0 --port $SERVER_PORT --verbose < /dev/null >> /tmp/server.log 2>&1 &"
+    "setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
 sleep 3
 # Confirm the server actually bound to the port before proceeding.
 # 'ss -tlnp' shows TCP listening sockets with the process name.

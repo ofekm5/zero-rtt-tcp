@@ -94,7 +94,7 @@ sleep 8
 # ClientNIC cleanup is blocking (ssm_run) so the DPDK lock is released before
 # the smoke test tries to start a new primary process.
 log "Cleaning up previous runs..."
-ssm_bg "$SERVER_ID"    "pkill -f 'python3.*server.py' 2>/dev/null; rm -f /tmp/server.log"
+ssm_bg "$SERVER_ID"    "pkill -f iperf 2>/dev/null; rm -f /tmp/server.log"
 ssm_bg "$SERVERNIC_ID" "pkill -x servernic-dpdk 2>/dev/null; pkill -f 'servernic/scapy' 2>/dev/null; rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null; iptables -F OUTPUT 2>/dev/null"
 ssm_run "$CLIENTNIC_ID" "pkill -f clientnic-dpdk-forwarder 2>/dev/null; pkill -f clientnic-dpdk 2>/dev/null; pkill tcpdump 2>/dev/null; sleep 5; pkill -9 -f clientnic-dpdk-forwarder 2>/dev/null; sleep 2; rm -rf /var/run/dpdk/rte/ 2>/dev/null; rm -f /tmp/clientnic.log /tmp/client_side.pcap /tmp/validate_0rtt.py; iptables -F FORWARD 2>/dev/null; echo CLEANUP_DONE" 30 > /dev/null
 

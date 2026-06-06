@@ -1,42 +1,23 @@
 # Client App
 
-Standard TCP client for the 0-RTT demo. Connects to the server through the ClientNIC → ServerNIC middleware chain and measures Time-to-First-Byte (TTFB).
+iperf (v2) client for the 0-RTT demo. Connects to the server through the ClientNIC → ServerNIC middleware chain.
 
-The client is **completely unmodified** — it has no awareness of the 0-RTT optimization happening in the network layer.
+The client is **completely unmodified** from the network's perspective — it sends standard TCP flows with no awareness of the 0-RTT optimization happening in the network layer.
 
 ## Usage
 
 ```bash
-# Single connection
-python client.py
+# Single 1 MB flow
+iperf -c <server-ip> -p 8080 -n 1M -f m
 
-# Repeated connections with statistics
-python client.py --mode repeated --count 20 --verbose
-
-# Concurrent connections
-python client.py --mode concurrent --concurrency 10
+# Run the full stress test suite (multi-flow, parallel, burst, UDP flood)
+./iperf_client.sh <server-ip> 8080
 ```
 
-## Options
+## Interactive Mode
 
-| Flag | Default | Description |
-|---|---|---|
-| `--host` | `10.0.0.4` | Server IP address |
-| `--port` | `8080` | Server port |
-| `--mode` | `single` | `single`, `repeated`, or `concurrent` |
-| `--count` | `10` | Number of connections (repeated mode) |
-| `--concurrency` | `5` | Parallel connections (concurrent mode) |
-| `--message` | HTTP GET | Message to send |
-| `--payload-size` | `0` | Generate N-byte payload (overrides `--message`) |
-| `--delay` | `0` | Delay between connections in ms (repeated mode) |
-| `--verbose` | off | Show per-connection TTFB details |
+Use `experiments/nodes/client.sh` for interactive testing — press Enter to send a new flow each time.
 
-## Output
+## Stress Suite
 
-In `repeated` or `concurrent` mode, prints TTFB statistics (min/max/avg/median/stdev) across all successful connections.
-
-## Tests
-
-```bash
-pytest tests/
-```
+`iperf_client.sh` runs the full suite: sequential flows, parallel streams, bulk transfers, short-lived burst connections, bidirectional tests, and UDP flood.
