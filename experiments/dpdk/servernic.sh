@@ -101,6 +101,54 @@ fi
 log "ClientNIC-side gateway MAC (eth1): $CLIENTNIC_GW_MAC"
 log "Server-side gateway MAC (eth2):    $SERVER_GW_MAC"
 
+# ─── Ensure correct DPDK binding ─────────────────────────────────────────────
+# CDK user data binds eth1 (by OS name) to vfio-pci. On some instances the OS
+# assigns the Server-subnet ENI as eth1 and the Middle-subnet ENI as eth2,
+# putting the DPDK on the wrong interface. Detect and fix at startup.
+#
+# Correct: DeviceIndex=1 (Middle subnet, ClientNIC-facing) → vfio-pci
+# Correct: DeviceIndex=2 (Server subnet) → kernel AF_PACKET
+log "Checking DPDK binding (Middle subnet ENI should be vfio-pci)..."
+MIDDLE_ENI_MAC=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=smartnics-servernic" "Name=instance-state-name,Values=running" \
+    --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`1\`].MacAddress" \
+    --output text --region "$REGION" 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+
+if [ -z "$MIDDLE_ENI_MAC" ] || [ "$MIDDLE_ENI_MAC" = "none" ]; then
+    log "WARNING: Could not query Middle subnet ENI MAC — skipping binding check"
+else
+    MIDDLE_KERNEL_IFACE=""
+    for _iface in eth1 eth2 eth3; do
+        [ -d /sys/class/net/$_iface ] || continue
+        _mac=$(cat /sys/class/net/$_iface/address 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        if [ "$_mac" = "$MIDDLE_ENI_MAC" ]; then MIDDLE_KERNEL_IFACE="$_iface"; break; fi
+    done
+
+    if [ -n "$MIDDLE_KERNEL_IFACE" ]; then
+        log "Middle subnet ENI ($MIDDLE_ENI_MAC) is kernel $MIDDLE_KERNEL_IFACE — rebinding..."
+        CURRENT_DPDK_PCI=$(dpdk-devbind.py --status 2>/dev/null | grep "drv=vfio-pci" | awk '{print $1}' | head -1)
+        if [ -n "$CURRENT_DPDK_PCI" ]; then
+            dpdk-devbind.py --bind=ena "$CURRENT_DPDK_PCI" 2>/dev/null || true
+            sleep 3
+            log "Unbound old DPDK device $CURRENT_DPDK_PCI"
+        fi
+        MIDDLE_PCI=$(basename "$(readlink /sys/class/net/$MIDDLE_KERNEL_IFACE/device)")
+        ip link set "$MIDDLE_KERNEL_IFACE" down
+        dpdk-devbind.py --bind=vfio-pci "$MIDDLE_PCI"
+        sleep 3
+        log "Rebound Middle subnet ENI ($MIDDLE_PCI / $MIDDLE_KERNEL_IFACE) to vfio-pci"
+    else
+        log "Middle subnet ENI ($MIDDLE_ENI_MAC) not in kernel — already DPDK-bound, OK"
+    fi
+fi
+
+# Detect server-facing kernel interface: first non-eth0 interface in /sys/class/net
+SERVER_IFACE="eth2"
+for _iface in eth1 eth2 eth3; do
+    [ -d /sys/class/net/$_iface ] && SERVER_IFACE="$_iface" && break
+done
+log "Server-facing interface (AF_PACKET): $SERVER_IFACE"
+
 # ─── IP forwarding check ──────────────────────────────────────────────────────
 FWRD=$(cat /proc/sys/net/ipv4/ip_forward)
 if [ "$FWRD" != "1" ]; then
@@ -128,4 +176,4 @@ exec "$BINARY" -l 0 -- \
     --gw-mac="$CLIENTNIC_GW_MAC" \
     --server-gw-mac="$SERVER_GW_MAC" \
     --client-iface=eth1 \
-    --server-iface=eth2
+    --server-iface="$SERVER_IFACE"
