@@ -19,6 +19,7 @@ Aggregated metrics from all experiment reports in `experiments/` directory.
 | 2026-04-21 | DPDK Legacy (iperf) | Multi | — | — | — | — | — | 1,542,316,412 avg | — | **0.06–0.89** | TCP throughput bottleneck; 1074 Mbps UDP baseline |
 | 2026-05-30 | DPDK T8 | 1 | 1.74 | 1.74 | **1.74** | 1.74 | 0.00 | 0x90771689 | ~instant | — | Shifted translation; stateless ClientNIC |
 | 2026-05-31 | DPDK T8 | 1 | 2.91 | 2.91 | **2.91** | 2.91 | 0.00 | 0x9d1ec791 | ~instant | — | Buffered packets flushed (1-2); near-baseline |
+| 2026-06-06 | DPDK T8 | 5 | 1.50 | 5.22 | **2.88** | 1.83 | 1.68 | various | ~instant | — | First 5-connection run; ENI rebind fix applied; clientnic 0.99–3.65 ms TTFB |
 
 ---
 
@@ -30,7 +31,7 @@ Aggregated metrics from all experiment reports in `experiments/` directory.
 | **Scapy 0-RTT (early)** | 2 | 2.72 | +1.01 ms | — | Kernel race condition (bypassed 0-RTT) |
 | **Scapy 0-RTT (iptables)** | 2 | 388.39 | +386.68 ms | — | Userspace processing overhead; 0-RTT verified |
 | **DPDK Legacy** | 3 | 292.81 | +291.10 ms | 0.06–0.89 Mbps | C/DPDK; full-owner translation; AF_PACKET bottleneck |
-| **DPDK T8** | 2 | 2.33 | +0.62 ms | — | Stateless forwarding; shifted translation; **near-baseline** |
+| **DPDK T8** | 3 | 2.51 | +0.80 ms | — | Stateless forwarding; shifted translation; **near-baseline** |
 
 
 ---
