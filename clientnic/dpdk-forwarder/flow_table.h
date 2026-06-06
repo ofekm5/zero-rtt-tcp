@@ -21,6 +21,8 @@ struct flow_entry {
     uint32_t        spoofed_server_isn;  /* V, host order */
     uint8_t         client_mac[6];
     int             state;               /* 0=SYN_SENT, 1=ESTABLISHED */
+    uint64_t        t0_tsc;              /* TSC at SYN ingress on eth0 (TTFB start) */
+    int             ttfb_logged;         /* 1 once first s2c data byte was timed */
 };
 
 /* Hash table */

@@ -35,8 +35,10 @@ set -uo pipefail
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-# shellcheck source=../lib/ssm.sh
-source "$(dirname "$0")/../lib/ssm.sh"
+# shellcheck source=../utils/ssm.sh
+source "$(dirname "$0")/../utils/ssm.sh"
+# shellcheck source=../utils/measure.sh
+source "$(dirname "$0")/../utils/measure.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 DPDK_BUILD="$REPO_PATH/clientnic/dpdk-forwarder/builddir"
@@ -293,23 +295,7 @@ fi
 
 # ─── Step 4: Run client test ──────────────────────────────────────────────────
 log "Step 4: Running client test ($CONNECTIONS connection(s))..."
-CLIENT_RESULT=$(ssm_run "$CLIENT_ID" \
-    "cd $REPO_PATH/client-app && python3 client.py --host $SERVER_IP --port $SERVER_PORT --mode repeated --count $CONNECTIONS --verbose" \
-    120)
-
-CLIENT_STDOUT=$(echo "$CLIENT_RESULT" | json_idx 1)
-CLIENT_STDERR=$(echo "$CLIENT_RESULT"  | json_idx 2)
-
-echo "--- Client output ---"
-echo "$CLIENT_STDOUT"
-[[ -n "$CLIENT_STDERR" ]] && echo "stderr: $CLIENT_STDERR"
-echo "---------------------"
-
-if echo "$CLIENT_STDOUT" | grep -qE "Success: ${CONNECTIONS}/${CONNECTIONS}|100%"; then
-    pass "Client: all $CONNECTIONS connection(s) succeeded"
-else
-    fail "Client: not all $CONNECTIONS connection(s) succeeded"
-fi
+run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" "$CONNECTIONS" "$REPO_PATH" 120
 
 sleep 3
 
@@ -359,6 +345,32 @@ if echo "$SERVERNIC_LOG" | grep -qiE "PENDING|delta|SYN-ACK.*drop|flush|V="; the
     pass "ServerNIC dpdk: translation activity confirmed"
 else
     warn "ServerNIC dpdk: no translation activity in log (may indicate no SYN-ACK received yet)"
+fi
+
+
+# ─── Latency metrics: TTFB at 3 points + FCT ─────────────────────────────────
+# Each TTFB is an intra-host interval (SYN ingress → first s2c data byte), so the
+# three points need no clock sync. FCT is the client connect→FIN lifetime.
+log "Latency metrics: aggregating TTFB (ClientNIC, ServerNIC, Client) + FCT..."
+METRICS_SUMMARY=$(
+    report_nic_ttfb "$CLIENTNIC_LOG" "clientnic"
+    report_nic_ttfb "$SERVERNIC_LOG" "servernic"
+    echo "$CLIENT_STDOUT" | summarize_metric "ttfb" "client" "Client TTFB   "
+    echo "$CLIENT_STDOUT" | summarize_metric "fct"  "client" "Client FCT    "
+)
+echo "--- Latency summary ---"
+echo "$METRICS_SUMMARY"
+echo "-----------------------"
+
+if echo "$METRICS_SUMMARY" | grep -q "clientnic TTFB.*n=[1-9]"; then
+    pass "Metrics: ClientNIC in-app TTFB samples collected"
+else
+    warn "Metrics: no ClientNIC in-app TTFB samples (binary may predate instrumentation)"
+fi
+if echo "$METRICS_SUMMARY" | grep -q "servernic TTFB.*n=[1-9]"; then
+    pass "Metrics: ServerNIC in-app TTFB samples collected"
+else
+    warn "Metrics: no ServerNIC in-app TTFB samples (binary may predate instrumentation)"
 fi
 
 
@@ -429,6 +441,12 @@ fi
     echo "**Experiment script**: \`experiments/dpdk/run_experiment.sh\`"
     echo "**Node scripts**: \`experiments/dpdk/\` (clientnic/servernic), \`experiments/nodes/\` (client/server)"
     echo "**Overall result**: $OVERALL_RESULT"
+    echo ""
+    echo "## Latency Summary (TTFB @ 3 points + FCT)"
+    echo ""
+    echo '```'
+    echo "$METRICS_SUMMARY"
+    echo '```'
     echo ""
     echo "## Client Output"
     echo ""

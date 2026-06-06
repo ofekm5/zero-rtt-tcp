@@ -16,7 +16,12 @@ DEFAULT_MESSAGE = "GET /test HTTP/1.0\r\n\r\n"
 
 
 def measure_ttfb(host, port, message):
-    """Measure Time-to-First-Byte for a single connection."""
+    """Measure Time-to-First-Byte and Flow Completion Time for one connection.
+
+    TTFB stops at the first response byte; FCT stops when the peer closes the
+    connection (FIN → recv() returns b''). Both intervals start at connect() and
+    are measured on this single host, so no cross-machine clock sync is needed.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(5.0)
 
@@ -25,15 +30,27 @@ def measure_ttfb(host, port, message):
         sock.connect((host, port))
         sock.sendall(message.encode())
         first_byte = sock.recv(1)
-        t_end = time.perf_counter()
+        t_first = time.perf_counter()
+        ttfb_ms = (t_first - t_start) * 1000
 
-        ttfb_ms = (t_end - t_start) * 1000
-        rest = sock.recv(4096)
-        response_size = len(first_byte) + len(rest)
+        # Drain until the server's FIN (recv → b'') to get flow completion time.
+        response_size = len(first_byte)
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            response_size += len(chunk)
+        t_fin = time.perf_counter()
+        fct_ms = (t_fin - t_start) * 1000
 
-        return {'ttfb_ms': ttfb_ms, 'success': True, 'response_size': response_size}
+        # Machine-parseable samples for the experiment harness (measure.sh).
+        print(f"[METRIC] ttfb node=client flow={host}:{port} ms={ttfb_ms:.3f}")
+        print(f"[METRIC] fct node=client flow={host}:{port} ms={fct_ms:.3f}")
+
+        return {'ttfb_ms': ttfb_ms, 'fct_ms': fct_ms,
+                'success': True, 'response_size': response_size}
     except Exception as e:
-        return {'ttfb_ms': None, 'success': False, 'error': str(e)}
+        return {'ttfb_ms': None, 'fct_ms': None, 'success': False, 'error': str(e)}
     finally:
         sock.close()
 
@@ -53,6 +70,7 @@ def run_single_test(args):
     if result['success']:
         print(f"Result:")
         print(f"  TTFB: {result['ttfb_ms']:.2f} ms")
+        print(f"  FCT:  {result['fct_ms']:.2f} ms")
         print(f"  Status: Success")
         print(f"  Response size: {result['response_size']} bytes")
     else:
@@ -96,6 +114,15 @@ def run_repeated_tests(args):
         print(f"    Median:  {statistics.median(ttfbs):.2f} ms")
         if len(ttfbs) > 1:
             print(f"    Std Dev: {statistics.stdev(ttfbs):.2f} ms")
+
+        fcts = [r['fct_ms'] for r in successful]
+        print(f"  FCT Statistics:")
+        print(f"    Min:     {min(fcts):.2f} ms")
+        print(f"    Max:     {max(fcts):.2f} ms")
+        print(f"    Average: {statistics.mean(fcts):.2f} ms")
+        print(f"    Median:  {statistics.median(fcts):.2f} ms")
+        if len(fcts) > 1:
+            print(f"    Std Dev: {statistics.stdev(fcts):.2f} ms")
 
 
 def run_concurrent_tests(args):

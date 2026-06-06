@@ -46,7 +46,6 @@ Concrete measurement and validation tasks. Requires testbeds to be up first.
 Prerequisites and tooling decisions that gate multiple experiments.
 
 - [ ] **Define Key Metrics** — Formally specify FCT, TTFB, and throughput measurement methodology before running comparative experiments
-- [ ] **TRex vs iperf3** — Compare traffic generators for stress testing; determine which produces more realistic load for the 0-RTT use case
 - [ ] **BF3 Testbed Bring-Up** — Configure DOCA + DPDK environment on RUNS3 after hardware ops above complete
 - [ ] **Read BenchBF3** — Review [BenchBF3](https://github.com/RC4ML/BenchBF3) benchmarking methodology for BF3
 

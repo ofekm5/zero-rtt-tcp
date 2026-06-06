@@ -24,8 +24,10 @@ set -uo pipefail
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-# shellcheck source=../lib/ssm.sh
-source "$(dirname "$0")/../lib/ssm.sh"
+# shellcheck source=../utils/ssm.sh
+source "$(dirname "$0")/../utils/ssm.sh"
+# shellcheck source=../utils/measure.sh
+source "$(dirname "$0")/../utils/measure.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 SERVER_PORT=8080
@@ -127,26 +129,16 @@ fi
 
 # ─── Step 4: Run baseline TTFB measurements ──────────────────────────────────
 log "Step 4: Running baseline TTFB ($BASELINE_CONNECTIONS connections)..."
+run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" "$BASELINE_CONNECTIONS" "$REPO_PATH" 120 "Baseline TTFB"
 
-CLIENT_RESULT=$(ssm_run "$CLIENT_ID" \
-    "cd $REPO_PATH/client-app && python3 client.py --host $SERVER_IP --port $SERVER_PORT --mode repeated --count $BASELINE_CONNECTIONS --verbose" \
-    120)
-
-CLIENT_STDOUT=$(echo "$CLIENT_RESULT" | json_idx 1)
-CLIENT_STDERR=$(echo "$CLIENT_RESULT" | json_idx 2)
-
-echo "--- Baseline TTFB results ---"
-echo "$CLIENT_STDOUT"
-[[ -n "$CLIENT_STDERR" ]] && echo "stderr: $CLIENT_STDERR"
-echo "-----------------------------"
-
-if echo "$CLIENT_STDOUT" | grep -qE "Success: $BASELINE_CONNECTIONS/$BASELINE_CONNECTIONS|100%"; then
-    pass "Baseline: all $BASELINE_CONNECTIONS connections succeeded"
-elif echo "$CLIENT_STDOUT" | grep -qE "Success: [1-9][0-9]*/$BASELINE_CONNECTIONS"; then
-    warn "Baseline: partial success — see TTFB output"
-else
-    fail "Baseline: client connections all failed"
-fi
+# Aggregate client-side latency (no NIC data plane in baseline — kernel forwarding).
+METRICS_SUMMARY=$(
+    echo "$CLIENT_STDOUT" | summarize_metric "ttfb" "client" "Client TTFB"
+    echo "$CLIENT_STDOUT" | summarize_metric "fct"  "client" "Client FCT "
+)
+echo "--- Latency summary ---"
+echo "$METRICS_SUMMARY"
+echo "-----------------------"
 
 
 # ─── Step 5: Stop Server and collect logs ────────────────────────────────────
@@ -191,6 +183,12 @@ if [[ $FAILURES -eq 0 ]]; then OVERALL_RESULT="ALL PASSED ✅"; else OVERALL_RES
     echo "**Infra**: \`infra/baseline\` CDK stack (BaselineStack) — 4× t3.micro, kernel forwarding"
     echo "**Connections**: $BASELINE_CONNECTIONS sequential"
     echo "**Overall result**: $OVERALL_RESULT"
+    echo ""
+    echo "## Latency Summary (Client TTFB + FCT)"
+    echo ""
+    echo '```'
+    echo "$METRICS_SUMMARY"
+    echo '```'
     echo ""
     echo "## TTFB Measurements"
     echo ""

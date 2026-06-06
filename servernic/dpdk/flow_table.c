@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <arpa/inet.h>
+#include <rte_cycles.h>
 
 static uint32_t hash_key(const struct flow_key *key)
 {
@@ -43,6 +44,8 @@ struct flow_entry *ft_create(struct flow_table *ft, const struct flow_key *key,
             e->delta_valid       = 0;
             e->state             = FLOW_STATE_PENDING;
             e->buf_count         = 0;
+            e->t0_tsc            = rte_rdtsc(); /* TTFB start: SYN ingress */
+            e->ttfb_logged       = 0;
             memcpy(e->server_mac, server_mac, 6);
             return e;
         }

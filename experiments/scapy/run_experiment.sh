@@ -33,8 +33,10 @@
 
 set -uo pipefail
 
-# shellcheck source=../lib/ssm.sh
-source "$(dirname "$0")/../lib/ssm.sh"
+# shellcheck source=../utils/ssm.sh
+source "$(dirname "$0")/../utils/ssm.sh"
+# shellcheck source=../utils/measure.sh
+source "$(dirname "$0")/../utils/measure.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 SERVER_PORT=8080
@@ -195,34 +197,12 @@ fi
 
 
 # ─── Step 4: Run client test ──────────────────────────────────────────────────
-# This is the actual 0-RTT test. The client opens 3 TCP connections to the
-# server's private IP, sends a message, and expects a response.
-#
-# From the client's perspective this is a completely normal TCP connection —
-# it knows nothing about 0-RTT. The SYN-ACK it receives looks legitimate
-# (correct src IP, valid sequence numbers) because ClientNIC spoofed it.
-#
-# Success means: all 3 connections completed data exchange correctly,
-# meaning the sequence number translation was applied consistently across
-# the entire connection (handshake + data + teardown).
+# The client opens 3 TCP connections to the server — from its perspective a
+# completely normal TCP session. ClientNIC spoofed the SYN-ACK so it knows
+# nothing about 0-RTT. Success means seq/ack translation held for the full
+# connection (handshake + data + teardown).
 log "Step 4: Running client test (3 connections)..."
-CLIENT_RESULT=$(ssm_run "$CLIENT_ID" \
-    "cd $REPO_PATH/client-app && python3 client.py --host $SERVER_IP --port $SERVER_PORT --mode repeated --count 3 --verbose" \
-    60)
-
-CLIENT_STDOUT=$(echo "$CLIENT_RESULT" | json_idx 1)
-CLIENT_STDERR=$(echo "$CLIENT_RESULT"  | json_idx 2)
-
-echo "--- Client output ---"
-echo "$CLIENT_STDOUT"
-[[ -n "$CLIENT_STDERR" ]] && echo "stderr: $CLIENT_STDERR"
-echo "---------------------"
-
-if echo "$CLIENT_STDOUT" | grep -qE "Success: 3/3|100%"; then
-    pass "All 3 client connections succeeded"
-else
-    fail "Not all client connections succeeded"
-fi
+run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" 3 "$REPO_PATH" 60
 
 # Give tcpdump time to flush the last packets to disk before we kill it.
 # TCP FIN/RST packets from connection teardown arrive slightly after the

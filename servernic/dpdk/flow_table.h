@@ -36,6 +36,8 @@ struct flow_entry {
     uint8_t         server_mac[6];      /* Server-side next-hop MAC for eth2 TX */
     struct pkt_buffer buffer[FT_MAX_BUFFER];
     int             buf_count;
+    uint64_t        t0_tsc;             /* TSC at SYN ingress on eth1 (TTFB start) */
+    int             ttfb_logged;        /* 1 once first s2c data byte was timed */
 };
 
 /* Hash table */

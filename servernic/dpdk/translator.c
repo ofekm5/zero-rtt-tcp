@@ -3,12 +3,44 @@
 #include "log.h"
 
 #include <string.h>
+#include <stdio.h>
 #include <arpa/inet.h>
 #include <rte_ether.h>
 #include <rte_ip.h>
 #include <rte_tcp.h>
 #include <rte_mbuf.h>
 #include <rte_ethdev.h>
+#include <rte_cycles.h>
+
+/* TCP application payload length of an IPv4/TCP packet. */
+static uint16_t tcp_payload_len(const struct rte_ipv4_hdr *ip,
+                                const struct rte_tcp_hdr *tcp)
+{
+    uint16_t ip_total   = ntohs(ip->total_length);
+    uint16_t ip_hdr_len = (ip->version_ihl & 0x0F) * 4;
+    uint16_t tcp_hdr    = ((tcp->data_off & 0xF0) >> 4) * 4;
+    if (ip_total < ip_hdr_len + tcp_hdr)
+        return 0;
+    return ip_total - ip_hdr_len - tcp_hdr;
+}
+
+/* Emit a parseable per-flow TTFB sample for the experiment harness to aggregate.
+ * Interval is intra-host (t0 stamped at SYN ingress) so no clock sync is needed. */
+static void log_ttfb(struct flow_entry *entry)
+{
+    uint64_t cycles = rte_rdtsc() - entry->t0_tsc;
+    double   us     = (double)cycles * 1e6 / (double)rte_get_tsc_hz();
+
+    char src[INET_ADDRSTRLEN], dst[INET_ADDRSTRLEN];
+    struct in_addr s = { .s_addr = entry->key.src_ip };
+    struct in_addr d = { .s_addr = entry->key.dst_ip };
+    snprintf(src, sizeof(src), "%s", inet_ntoa(s));
+    snprintf(dst, sizeof(dst), "%s", inet_ntoa(d));
+
+    LOG_INFO("[METRIC] ttfb node=servernic flow=%s:%u->%s:%u us=%.1f",
+             src, ntohs(entry->key.src_port),
+             dst, ntohs(entry->key.dst_port), us);
+}
 
 void trans_init(struct translator *t, struct flow_table *ft,
                 struct eth1_io *eth1, struct eth2_io *eth2)
@@ -84,6 +116,17 @@ void trans_s2c(struct translator *t, struct rte_mbuf *mbuf)
     if (!entry || !entry->delta_valid) {
         LOG_WARN("s2c: unknown or incomplete flow, dropping");
         return;
+    }
+
+    /* TTFB stop: first server→client segment carrying application payload. */
+    if (!entry->ttfb_logged) {
+        const struct rte_ipv4_hdr *ip0  = (const struct rte_ipv4_hdr *)(data + 14);
+        const struct rte_tcp_hdr  *tcp0 = (const struct rte_tcp_hdr *)
+                                          (data + 14 + ((ip0->version_ihl & 0x0F) * 4));
+        if (tcp_payload_len(ip0, tcp0) > 0) {
+            log_ttfb(entry);
+            entry->ttfb_logged = 1;
+        }
     }
 
     /* Copy, add delta to SEQ, recompute checksums, forward toward ClientNIC */
