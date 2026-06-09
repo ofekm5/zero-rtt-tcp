@@ -20,12 +20,12 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 log() { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}"; }
 
 # ─── Cleanup ──────────────────────────────────────────────────────────────────
-log "Killing any leftover iperf processes..."
-pkill -f iperf 2>/dev/null || true
+log "Killing any leftover iperf3 processes..."
+pkill -f iperf3 2>/dev/null || true
 sleep 1
 
 # ─── Check iperf available ────────────────────────────────────────────────────
-command -v iperf >/dev/null || { echo -e "${RED}ERROR: iperf not installed. Run: sudo yum install -y iperf${NC}"; exit 1; }
+command -v iperf3 >/dev/null || { echo -e "${RED}ERROR: iperf3 not installed. Run: sudo yum install -y iperf3${NC}"; exit 1; }
 
 # ─── Pull latest code ─────────────────────────────────────────────────────────
 log "Pulling latest code..."
@@ -38,6 +38,6 @@ log "Will listen on 0.0.0.0:$SERVER_PORT"
 echo ""
 
 # ─── Start iperf server (foreground) ─────────────────────────────────────────
-log "Starting iperf server — press Ctrl+C to stop."
+log "Starting iperf3 server — press Ctrl+C to stop."
 echo ""
-exec iperf -s -p "$SERVER_PORT"
+exec iperf3 -s -p "$SERVER_PORT"
