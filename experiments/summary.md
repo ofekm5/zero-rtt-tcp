@@ -10,6 +10,8 @@ Aggregated metrics from all experiment reports in `experiments/` directory.
 |------|---|---|---|---|---|---|---|---|---|---|---|
 | 2026-06-01 | Baseline TCP | 20 | 1.53 | 5.68 | **1.93** | 1.71 | 0.91 | N/A | N/A | — | Plain kernel forwarding; conn 9 outlier (5.68 ms); median 1.71 ms |
 | 2026-06-09 | Baseline TCP | 20 | — | — | — | — | — | N/A | N/A | 1121–2478 | iperf3 bandwidth; intra-VPC t3.micro; 20/20 pass; BaselineStack eu-central-1 |
+| 2026-06-09 | Baseline TCP | 20 | — | — | — | — | — | N/A | N/A | 923–2812 | iperf3 bandwidth; run #2; avg ~1806 Mbps; 20/20 pass |
+| 2026-06-09 | Baseline TCP | 20 | — | — | — | — | — | N/A | N/A | 1231–2520 | iperf3 bandwidth; run #3; avg ~1474 Mbps; 20/20 pass |
 | 2026-03-06 | Scapy 0-RTT | 3 | 1.98 | 3.62 | **2.66** | 2.38 | 0.85 | Non-zero | N/A | — | Kernel race; buffering issue found |
 | 2026-03-07 | Scapy 0-RTT | 3 | 2.09 | 3.85 | **2.79** | 2.42 | 0.93 | Non-zero | N/A | — | After metadata/SYN-retransmit fixes |
 | 2026-03-12 | Scapy 0-RTT | 3 | 351.82 | 409.80 | **373.85** | 359.93 | 31.40 | 3,980,068,009 | +83–199 ms | — | iptables DROP applied; 0-RTT timing verified |
@@ -28,7 +30,7 @@ Aggregated metrics from all experiment reports in `experiments/` directory.
 
 | Implementation | Reports | Avg TTFB (ms) | Overhead vs Baseline | Throughput | Key Characteristic |
 |---|---|---|---|---|---|
-| **Baseline TCP** | 2 | 1.93 (median 1.71) | — | 1121–2478 Mbps | Plain kernel forwarding reference; iperf3 throughput from 2026-06-09 run |
+| **Baseline TCP** | 4 | 1.93 (median 1.71) | — | 923–2812 Mbps | Plain kernel forwarding reference; iperf3 throughput: 3 runs avg ~1625 Mbps |
 | **Scapy 0-RTT (early)** | 2 | 2.72 | +1.01 ms | — | Kernel race condition (bypassed 0-RTT) |
 | **Scapy 0-RTT (iptables)** | 2 | 388.39 | +386.68 ms | — | Userspace processing overhead; 0-RTT verified |
 | **DPDK Legacy** | 3 | 292.81 | +291.10 ms | 0.06–0.89 Mbps | C/DPDK; full-owner translation; AF_PACKET bottleneck |

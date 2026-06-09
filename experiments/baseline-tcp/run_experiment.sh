@@ -172,12 +172,12 @@ echo "════════════════════════�
 # ─── Write report ─────────────────────────────────────────────────────────────
 REPORT_DIR="$(dirname "$0")/reports"
 mkdir -p "$REPORT_DIR"
-REPORT_FILE="$REPORT_DIR/baseline-report-$(date +%Y-%m-%d).md"
+REPORT_FILE="$REPORT_DIR/baseline-report-$(date +%Y-%m-%d-%H%M%S).md"
 
 if [[ $FAILURES -eq 0 ]]; then OVERALL_RESULT="ALL PASSED ✅"; else OVERALL_RESULT="$FAILURES FAILURE(S) ❌"; fi
 
 {
-    echo "# Baseline TCP Report — $(date +%Y-%m-%d)"
+    echo "# Baseline TCP Report — $(date +%Y-%m-%d-%H%M%S)"
     echo ""
     echo "**Mode**: Plain TCP (no 0-RTT middleware)"
     echo "**Infra**: \`infra/baseline\` CDK stack (BaselineStack) — 4× t3.micro, kernel forwarding"
