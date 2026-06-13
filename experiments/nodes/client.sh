@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run on the Client VM — interactive 0-RTT iperf client.
+# Run on the Client VM — interactive 0-RTT iperf client (iperf2).
 # Press Enter to run a new iperf flow; each invocation opens a fresh TCP connection.
 #
 # Startup order: server.sh → servernic.sh → clientnic.sh → client.sh
