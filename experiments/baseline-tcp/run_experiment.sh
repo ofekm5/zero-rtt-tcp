@@ -108,7 +108,7 @@ sleep 2
 
 # ─── Step 2: Cleanup any leftover server processes ───────────────────────────
 log "Step 2: Cleaning up any leftover server processes..."
-ssm_bg "$SERVER_ID" "pkill -f iperf3 2>/dev/null; rm -f /tmp/server.log"
+ssm_bg "$SERVER_ID" "pkill -f 'iperf -s' 2>/dev/null; rm -f /tmp/server.log"
 sleep 2
 
 
@@ -143,7 +143,7 @@ echo "-----------------------"
 
 # ─── Step 5: Stop Server and collect logs ────────────────────────────────────
 log "Step 5: Stopping Server and collecting logs..."
-ssm_bg "$SERVER_ID" "pkill -f iperf3 2>/dev/null || true"
+ssm_bg "$SERVER_ID" "pkill -f 'iperf -s' 2>/dev/null || true"
 sleep 2
 
 SERVER_LOG=$(ssm_stdout "$SERVER_ID" "cat /tmp/server.log" 30)
@@ -151,7 +151,7 @@ echo "--- Server log ---"
 echo "$SERVER_LOG"
 echo "------------------"
 
-if echo "$SERVER_LOG" | grep -qiE "Accepted|bytes|connection|iperf3"; then
+if echo "$SERVER_LOG" | grep -qiE "Accepted|bytes|connection"; then
     pass "Server received data from client"
 else
     fail "Server log shows no received data"

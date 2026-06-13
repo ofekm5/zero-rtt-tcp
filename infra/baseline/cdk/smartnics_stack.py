@@ -46,7 +46,8 @@ class SmartNicsStack(Stack):
         base_user_data = ec2.UserData.for_linux()
         base_user_data.add_commands(
             "yum update -y",
-            "yum install -y git python3 python3-pip",
+            "amazon-linux-extras install -y epel",
+            "yum install -y git python3 python3-pip iperf",
             "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token "
             "--with-decryption --query Parameter.Value --output text --region eu-central-1)",
             'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" '

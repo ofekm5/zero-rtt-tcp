@@ -53,11 +53,11 @@ run_ttfb_measurement() {
 
     local result
     result=$(ssm_run "$client_iid" \
-        "command -v iperf3 >/dev/null || { echo 'ERROR: iperf3 not installed'; exit 1; }
+        "command -v iperf >/dev/null || { echo 'ERROR: iperf not installed'; exit 1; }
          success=0
          for i in \$(seq 1 $count); do
              echo \"--- Connection \$i/$count ---\"
-             out=\$(iperf3 -c $server_ip -p $port -n 1M -f m 2>&1)
+             out=\$(iperf -c $server_ip -p $port -n 1M -f m 2>&1)
              echo \"\$out\"
              echo \"\$out\" | grep -q 'bits/sec' && success=\$((success + 1))
          done
