@@ -14,7 +14,8 @@
       "Bash(aws ec2 describe-subnets *)",
       "Bash(openspec validate *)",
       "Bash(Remove-Item *)",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "Bash(grep -iv \"//\")"
     ]
   }
 }
