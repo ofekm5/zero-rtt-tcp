@@ -5,11 +5,12 @@
 # Measurement points (all intra-host intervals — no cross-machine clock sync):
 #   - ClientNIC TTFB: stamped in clientnic-dpdk-forwarder (SYN ingress → 1st s2c data byte)
 #   - ServerNIC TTFB: stamped in servernic-dpdk        (SYN ingress → 1st s2c data byte)
-# Each NIC source emits: "[METRIC] <ttfb|fct> node=<n> flow=... <us|ms>=<v>"
+# Each NIC source emits [DIAG] rdtsc samples; the pcap analyzer emits structured lines:
+#   metric=<name> node=<n> flow=... value_ms=<v>
 
 # summarize_metric <metric> <node> <label>
-# Reads text on stdin, extracts all matching [METRIC] samples, prints count +
-# min/mean/median/max in ms (us values are normalised to ms). No-op if none found.
+# Reads text on stdin, extracts all matching analyzer output lines, prints count +
+# min/mean/median/max in ms. No-op if none found.
 # stdin is consumed into an env var so the heredoc can supply the Python script.
 summarize_metric() {
     local metric="$1" node="$2" label="$3" data
@@ -17,17 +18,14 @@ summarize_metric() {
     METRIC_DATA="$data" python3 - "$metric" "$node" "$label" <<'PY'
 import os, sys, re, statistics
 metric, node, label = sys.argv[1], sys.argv[2], sys.argv[3]
-pat = re.compile(r'\[METRIC\]\s+%s\s+node=%s\b.*?(us|ms)=([0-9.]+)'
-                 % (re.escape(metric), re.escape(node)))
+pat = re.compile(r'metric=' + re.escape(metric) + r'\b.*?node=' + re.escape(node) + r'\b.*?value_ms=([0-9.]+)')
+pat_alt = re.compile(r'node=' + re.escape(node) + r'\b.*?metric=' + re.escape(metric) + r'\b.*?value_ms=([0-9.]+)')
 vals = []
 for line in os.environ.get("METRIC_DATA", "").splitlines():
-    m = pat.search(line)
+    m = pat.search(line) or pat_alt.search(line)
     if not m:
         continue
-    v = float(m.group(2))
-    if m.group(1) == 'us':
-        v /= 1000.0
-    vals.append(v)
+    vals.append(float(m.group(1)))
 if not vals:
     print(f"  {label}: no samples found")
     sys.exit(0)
@@ -38,7 +36,7 @@ PY
 }
 
 # report_nic_ttfb <log-text> <node>
-# Convenience wrapper: summarise a NIC's per-flow TTFB from its captured log blob.
+# Convenience wrapper: summarise a NIC's per-flow TTFB from analyzer output.
 report_nic_ttfb() {
     local log_text="$1" node="$2"
     echo "$log_text" | summarize_metric "ttfb" "$node" "$node TTFB (in-app)"

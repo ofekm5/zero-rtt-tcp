@@ -36,7 +36,7 @@ static void log_ttfb(struct flow_entry *entry)
     snprintf(src, sizeof(src), "%s", inet_ntoa(s));
     snprintf(dst, sizeof(dst), "%s", inet_ntoa(d));
 
-    LOG_INFO("[METRIC] ttfb node=clientnic flow=%s:%u->%s:%u us=%.1f",
+    LOG_INFO("[DIAG] ttfb node=clientnic flow=%s:%u->%s:%u us=%.1f",
              src, ntohs(entry->key.src_port),
              dst, ntohs(entry->key.dst_port), us);
 }
