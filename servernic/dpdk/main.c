@@ -35,20 +35,22 @@ static int parse_mac(const char *str, uint8_t *mac)
     return 0;
 }
 
-static void install_iptables(uint16_t port)
+static void install_iptables(uint16_t base, uint16_t count)
 {
     char cmd[256];
+    uint16_t hi = (uint16_t)(base + (count ? count : 1) - 1);
 
     snprintf(cmd, sizeof(cmd),
              "iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP");
     system(cmd);
 
+    /* iptables accepts an inclusive port range with the lo:hi syntax */
     snprintf(cmd, sizeof(cmd),
-             "iptables -A FORWARD -p tcp --dport %u -j DROP", port);
+             "iptables -A FORWARD -p tcp --dport %u:%u -j DROP", base, hi);
     system(cmd);
 
     snprintf(cmd, sizeof(cmd),
-             "iptables -A FORWARD -p tcp --sport %u -j DROP", port);
+             "iptables -A FORWARD -p tcp --sport %u:%u -j DROP", base, hi);
     system(cmd);
 }
 
@@ -67,6 +69,7 @@ int main(int argc, char *argv[])
 
     /* ── CLI arg parsing (post-EAL) ──────────────────────────────────────── */
     uint16_t app_port = 8080;
+    uint16_t app_port_count = 1;
     uint8_t  gw_mac[6]        = {0};  /* ClientNIC-side next-hop */
     uint8_t  server_gw_mac[6] = {0};  /* Server-side next-hop */
     int      gw_mac_set        = 0;
@@ -76,6 +79,7 @@ int main(int argc, char *argv[])
 
     static struct option long_opts[] = {
         {"port",            required_argument, NULL, 'p'},
+        {"port-count",      required_argument, NULL, 'n'},
         {"gw-mac",          required_argument, NULL, 'g'},
         {"server-gw-mac",   required_argument, NULL, 'G'},
         {"client-iface",    required_argument, NULL, 'c'},
@@ -84,10 +88,15 @@ int main(int argc, char *argv[])
     };
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "p:g:G:c:s:", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "p:n:g:G:c:s:", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'p':
             app_port = (uint16_t)atoi(optarg);
+            break;
+        case 'n':
+            app_port_count = (uint16_t)atoi(optarg);
+            if (app_port_count == 0)
+                app_port_count = 1;
             break;
         case 'g':
             if (parse_mac(optarg, gw_mac) < 0) {
@@ -111,7 +120,7 @@ int main(int argc, char *argv[])
             break;
         default:
             fprintf(stderr,
-                    "Usage: %s [EAL opts] -- --port=PORT"
+                    "Usage: %s [EAL opts] -- --port=PORT [--port-count=N]"
                     " --gw-mac=CLIENTNIC_GW_MAC"
                     " --server-gw-mac=SERVER_GW_MAC\n", argv[0]);
             return 1;
@@ -127,8 +136,9 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    LOG_INFO("ServerNIC DPDK starting (port=%u, client-iface=%s, server-iface=%s)",
-             app_port, client_iface, server_iface);
+    LOG_INFO("ServerNIC DPDK starting (port=%u..%u, client-iface=%s, server-iface=%s)",
+             app_port, (uint16_t)(app_port + app_port_count - 1),
+             client_iface, server_iface);
 
     /* ── Mempool ─────────────────────────────────────────────────────────── */
     struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL",
@@ -162,10 +172,10 @@ int main(int argc, char *argv[])
     ft_init(&ft);
     syn_handler_init(&sh, &ft, &eth1, &eth2);
     trans_init(&trans, &ft, &eth1, &eth2);
-    pipeline_init(&pipeline, &sh, &trans, &eth1, &eth2, app_port);
+    pipeline_init(&pipeline, &sh, &trans, &eth1, &eth2, app_port, app_port_count);
 
     /* ── iptables rules ──────────────────────────────────────────────────── */
-    install_iptables(app_port);
+    install_iptables(app_port, app_port_count);
 
     /* ── Signal handler ──────────────────────────────────────────────────── */
     signal(SIGINT,  signal_handler);

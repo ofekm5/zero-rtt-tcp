@@ -33,6 +33,15 @@ run_experiment() {
     local CLIENTNIC_ETH1_MAC="$2"
     local SERVER_ETH0_MAC="$3"
 
+    # Port range the load is spread across (see measure.sh IPERF_PORTS). The data
+    # plane (clientnic-dpdk-forwarder + servernic-dpdk) is told to cover the same
+    # range via --port-count; endpoint captures filter the same range.
+    local NPORTS="${IPERF_PORTS:-1}"
+    [[ "$NPORTS" -lt 1 ]] && NPORTS=1
+    local PORT_HI=$(( SERVER_PORT + NPORTS - 1 ))
+    local BPF_PORTS="portrange ${SERVER_PORT}-${PORT_HI}"
+    log "Load/port plan: $NPORTS port(s) [${SERVER_PORT}-${PORT_HI}], IPERF_PARALLEL=${IPERF_PARALLEL:-100000}"
+
     # ─── Pull latest code ─────────────────────────────────────────────────────
     log "Pulling latest code on all VMs..."
     for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
@@ -142,9 +151,9 @@ run_experiment() {
     fi
 
     # ─── Step 1: Start Server ─────────────────────────────────────────────────
-    log "Step 1: Starting Server via node script..."
+    log "Step 1: Starting Server via node script ($NPORTS iperf port(s))..."
     remote_bg "$SERVER_ID" \
-        "setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+        "IPERF_PORTS=$NPORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
     sleep 3
 
     local LISTEN_CHECK
@@ -160,7 +169,7 @@ run_experiment() {
     # ─── Step 2: Start ServerNIC (DPDK binary) ───────────────────────────────
     log "Step 2: Starting ServerNIC DPDK binary via node script..."
     remote_bg "$SERVERNIC_ID" \
-        "SKIP_BUILD=1 CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC \
+        "SKIP_BUILD=1 PORT_COUNT=$NPORTS CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC \
          MIDDLE_ENI_MAC=$GW_MAC setsid bash $REPO_PATH/experiments/dpdk/servernic.sh \
          < /dev/null >> /tmp/servernic.log 2>&1 &"
     sleep 5
@@ -195,7 +204,7 @@ run_experiment() {
     sleep 1
 
     remote_bg "$CLIENTNIC_ID" \
-        "SKIP_BUILD=1 setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC \
+        "SKIP_BUILD=1 PORT_COUNT=$NPORTS setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC \
          < /dev/null >> /tmp/clientnic.log 2>&1 &"
     sleep 5
 
@@ -241,8 +250,8 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
 "
     }
 
-    _hiprec_start "$CLIENT_ID" "eth0" "tcp port $SERVER_PORT" "/tmp/client_side.pcap"
-    _hiprec_start "$SERVER_ID" "eth0" "tcp port $SERVER_PORT" "/tmp/server_side.pcap"
+    _hiprec_start "$CLIENT_ID" "eth0" "tcp $BPF_PORTS" "/tmp/client_side.pcap"
+    _hiprec_start "$SERVER_ID" "eth0" "tcp $BPF_PORTS" "/tmp/server_side.pcap"
     sleep 2
 
     # ─── Step 4: Run client test ──────────────────────────────────────────────

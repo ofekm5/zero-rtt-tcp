@@ -2,6 +2,16 @@
 # Shared measurement helpers for experiment orchestrators.
 # Source after ssm.sh. Requires: ssm_run, json_idx, pass, fail, warn.
 #
+# Load-generator knobs (single source of truth; override via env):
+#   IPERF_PARALLEL : total parallel TCP connections per round (default 100000)
+#   IPERF_PORTS    : number of contiguous server ports the load is spread across
+#                    (default 4). 100000 conns / 4 ports = 25000 per (dst-port)
+#                    tuple, comfortably under the ~28K-usable ephemeral range, so
+#                    one client source IP can actually open them all. The 0-RTT
+#                    data plane must cover the same port range (--port-count).
+IPERF_PARALLEL="${IPERF_PARALLEL:-100000}"
+IPERF_PORTS="${IPERF_PORTS:-4}"
+#
 # Measurement points (all intra-host intervals — no cross-machine clock sync):
 #   - ClientNIC TTFB: stamped in clientnic-dpdk-forwarder (SYN ingress → 1st s2c data byte)
 #   - ServerNIC TTFB: stamped in servernic-dpdk        (SYN ingress → 1st s2c data byte)
@@ -46,21 +56,50 @@ report_nic_ttfb() {
 }
 
 # run_ttfb_measurement <client-iid> <server-ip> <port> <count> <repo-path> [timeout-sec] [label]
-# Runs <count> sequential iperf flows on the client VM via SSM.
+# Runs <count> sequential rounds on the client VM via SSM. Each round opens
+# IPERF_PARALLEL total parallel TCP connections, spread across IPERF_PORTS
+# contiguous server ports ([port .. port+IPERF_PORTS-1]) — one iperf2 process per
+# port, each with -P (IPERF_PARALLEL / IPERF_PORTS). Spreading across multiple
+# destination ports multiplies the ephemeral-port space so the client can actually
+# open 100000 connections from a single source IP.
+# Load generator is iperf2 ONLY — an iperf3 binary shadowing `iperf` is rejected.
 # Sets globals: CLIENT_STDOUT, CLIENT_STDERR
 run_ttfb_measurement() {
     local client_iid="$1" server_ip="$2" port="$3" count="$4" repo="$5"
     local timeout="${6:-120}" label="${7:-Client}"
+    local parallel="${IPERF_PARALLEL:-100000}"
+    local nports="${IPERF_PORTS:-1}"
+    [[ "$nports" -lt 1 ]] && nports=1
+    local base="$port"
+    local hi=$(( base + nports - 1 ))
+    local perport=$(( (parallel + nports - 1) / nports ))   # ceil(parallel/nports)
+    local plist="" p
+    for (( p=base; p<=hi; p++ )); do plist="$plist $p"; done
+    plist="${plist# }"
 
     local result
     result=$(ssm_run "$client_iid" \
         "command -v iperf >/dev/null || { echo 'ERROR: iperf not installed'; exit 1; }
+         if iperf --version 2>&1 | grep -qiE 'iperf[ ]?3'; then
+             echo 'ERROR: iperf3 detected — this experiment requires iperf2'; exit 1
+         fi
+         ulimit -n $((perport + 1024)) 2>/dev/null || true
          success=0
          for i in \$(seq 1 $count); do
-             echo \"--- Connection \$i/$count ---\"
-             out=\$(iperf -c $server_ip -p $port -n 1M -f m 2>&1)
-             echo \"\$out\"
-             echo \"\$out\" | grep -q 'bits/sec' && success=\$((success + 1))
+             echo \"--- Round \$i/$count: $nports port(s) [$base-$hi] x $perport parallel = $((perport * nports)) conns ---\"
+             rm -f /tmp/iperf_round.*.out
+             pids=\"\"
+             for p in $plist; do
+                 iperf -c $server_ip -p \$p -P $perport -n 1M -f m > /tmp/iperf_round.\$p.out 2>&1 &
+                 pids=\"\$pids \$!\"
+             done
+             wait \$pids 2>/dev/null
+             ok=0
+             for p in $plist; do
+                 cat /tmp/iperf_round.\$p.out
+                 grep -q 'bits/sec' /tmp/iperf_round.\$p.out && ok=\$((ok + 1))
+             done
+             [ \$ok -eq $nports ] && success=\$((success + 1))
          done
          echo \"Success: \${success}/$count\"" \
         "$timeout")

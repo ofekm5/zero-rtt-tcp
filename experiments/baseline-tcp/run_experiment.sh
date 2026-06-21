@@ -31,8 +31,10 @@ source "$(dirname "$0")/../utils/measure.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 SERVER_PORT=8080
-# Override via env: CONNECTIONS=50 ./run_experiment.sh
-BASELINE_CONNECTIONS="${CONNECTIONS:-20}"
+# Number of measurement ROUNDS (each round opens IPERF_PARALLEL connections across
+# IPERF_PORTS ports — see measure.sh). Default 1 round of 100000 parallel conns.
+# Override rounds via env: CONNECTIONS=5 ./run_experiment.sh
+BASELINE_CONNECTIONS="${CONNECTIONS:-1}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 

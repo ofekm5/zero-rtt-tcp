@@ -41,6 +41,12 @@ source "$(dirname "$0")/../utils/measure.sh"
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 SERVER_PORT=8080
 
+# Legacy Scapy data plane: single app port, userspace Python — not suited to the
+# high-parallel multi-port load. Pin to one port / low parallelism so the shared
+# measure.sh defaults (100000 conns across 4 ports) don't overwhelm it.
+export IPERF_PORTS=1
+export IPERF_PARALLEL="${IPERF_PARALLEL:-1}"
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
 FAILURES=0
@@ -108,7 +114,7 @@ sleep 3
 # SSM tears down.
 log "Step 1: Starting Server..."
 ssm_bg "$SERVER_ID" \
-    "setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+    "IPERF_PORTS=1 setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
 sleep 3
 # Confirm the server actually bound to the port before proceeding.
 # 'ss -tlnp' shows TCP listening sockets with the process name.

@@ -45,8 +45,10 @@ SERVER_PORT=8080
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-# Number of sequential connections to run. Override via env: CONNECTIONS=20 ./run_experiment.sh
-CONNECTIONS="${CONNECTIONS:-5}"
+# Number of measurement ROUNDS (each round opens IPERF_PARALLEL connections across
+# IPERF_PORTS ports — see experiments/utils/measure.sh). Default 1 round of 100000.
+# Override via env: CONNECTIONS=3 ./run_experiment.sh
+CONNECTIONS="${CONNECTIONS:-1}"
 
 FAILURES=0
 

@@ -9,13 +9,27 @@
 
 void pipeline_init(struct pipeline_ctx *ctx, struct syn_handler *sh,
                    struct translator *trans, struct eth1_io *eth1,
-                   struct eth2_io *eth2, uint16_t app_port)
+                   struct eth2_io *eth2, uint16_t app_port_base,
+                   uint16_t app_port_count)
 {
-    ctx->sh       = sh;
-    ctx->trans    = trans;
-    ctx->eth1     = eth1;
-    ctx->eth2     = eth2;
-    ctx->app_port = htons(app_port);
+    ctx->sh             = sh;
+    ctx->trans          = trans;
+    ctx->eth1           = eth1;
+    ctx->eth2           = eth2;
+    ctx->app_port_base  = app_port_base;
+    ctx->app_port_count = app_port_count ? app_port_count : 1;
+}
+
+/* True if the packet's src or dst port falls in [base, base+count). Ports in the
+ * TCP header are network byte order; compare in host order. */
+static inline int port_in_app_range(const struct pipeline_ctx *ctx,
+                                    const struct rte_tcp_hdr *tcp)
+{
+    uint32_t lo = ctx->app_port_base;
+    uint32_t hi = lo + ctx->app_port_count;          /* exclusive */
+    uint16_t dp = rte_be_to_cpu_16(tcp->dst_port);
+    uint16_t sp = rte_be_to_cpu_16(tcp->src_port);
+    return (dp >= lo && dp < hi) || (sp >= lo && sp < hi);
 }
 
 /* ── eth1 ingress (DPDK mbuf from ClientNIC) ─────────────────────────────── */
@@ -44,7 +58,7 @@ void pipeline_feed_eth1(struct pipeline_ctx *ctx, struct rte_mbuf *mbuf)
     const struct rte_tcp_hdr *tcp = (const struct rte_tcp_hdr *)
                                     (data + 14 + ((ip->version_ihl & 0x0F) * 4));
 
-    if (tcp->dst_port != ctx->app_port && tcp->src_port != ctx->app_port)
+    if (!port_in_app_range(ctx, tcp))
         return;
 
     uint8_t flags  = tcp->tcp_flags;
@@ -79,7 +93,7 @@ void pipeline_feed_eth2(struct pipeline_ctx *ctx, uint8_t *pkt, uint16_t len)
     const struct rte_tcp_hdr *tcp = (const struct rte_tcp_hdr *)
                                     (pkt + 14 + ((ip->version_ihl & 0x0F) * 4));
 
-    if (tcp->dst_port != ctx->app_port && tcp->src_port != ctx->app_port)
+    if (!port_in_app_range(ctx, tcp))
         return;
 
     uint8_t flags     = tcp->tcp_flags;

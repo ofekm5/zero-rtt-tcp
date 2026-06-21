@@ -10,12 +10,14 @@ struct pipeline_ctx {
     struct translator  *trans;
     struct eth1_io     *eth1;
     struct eth2_io     *eth2;
-    uint16_t            app_port; /* network byte order */
+    uint16_t            app_port_base;  /* host byte order, inclusive low  */
+    uint16_t            app_port_count; /* number of contiguous app ports  */
 };
 
 void pipeline_init(struct pipeline_ctx *ctx, struct syn_handler *sh,
                    struct translator *trans, struct eth1_io *eth1,
-                   struct eth2_io *eth2, uint16_t app_port);
+                   struct eth2_io *eth2, uint16_t app_port_base,
+                   uint16_t app_port_count);
 
 /* eth1 ingress (DPDK mbuf from ClientNIC) */
 void pipeline_feed_eth1(struct pipeline_ctx *ctx, struct rte_mbuf *mbuf);
