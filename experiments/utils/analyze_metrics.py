@@ -75,46 +75,23 @@ def _is_fin(pkt) -> bool:
 # Client-side analysis
 # --------------------------------------------------------------------------- #
 
-def analyze_client(pkts) -> Tuple[Optional[str], list]:
-    """
-    Find the TCP flow anchored on the first outbound SYN to server port.
-    Returns (flow_str, list_of_metric_dicts_or_error_dicts).
-
-    Each dict has keys: kind ('metric' or 'missing'), and for metrics:
-        name, value_ms, node, flow
-    For missing events:
-        event, flow
-    """
-    # Step 1: find the first outbound SYN (client initiated — SYN only, not SYN-ACK)
-    first_syn = None
-    for pkt in pkts:
-        if _is_syn(pkt):
-            first_syn = pkt
-            break
-
-    if first_syn is None:
-        return None, [{"kind": "missing", "event": "SYN", "flow": "unknown"}]
-
-    # Identify the flow 4-tuple from the SYN
-    syn_src_ip = first_syn[IP].src
-    syn_src_port = first_syn[TCP].sport
-    syn_dst_ip = first_syn[IP].dst
-    syn_dst_port = first_syn[TCP].dport
+def _analyze_client_flow(pkts, syn_pkt) -> Tuple[str, list]:
+    """Compute send_unlock and fct for a single client-side flow anchored on syn_pkt."""
+    syn_src_ip = syn_pkt[IP].src
+    syn_src_port = syn_pkt[TCP].sport
+    syn_dst_ip = syn_pkt[IP].dst
+    syn_dst_port = syn_pkt[TCP].dport
     flow = _flow_str(syn_src_ip, syn_src_port, syn_dst_ip, syn_dst_port)
+    t_syn = float(syn_pkt.time)
 
-    t_syn = float(first_syn.time)
-
-    # Step 2: filter packets belonging to this flow (both directions)
     flow_pkts = []
     for pkt in pkts:
         if not (pkt.haslayer(IP) and pkt.haslayer(TCP)):
             continue
         ip = pkt[IP]
         tcp = pkt[TCP]
-        # client→server direction
         c2s = (ip.src == syn_src_ip and tcp.sport == syn_src_port
                and ip.dst == syn_dst_ip and tcp.dport == syn_dst_port)
-        # server→client direction
         s2c = (ip.src == syn_dst_ip and tcp.sport == syn_dst_port
                and ip.dst == syn_src_ip and tcp.dport == syn_src_port)
         if c2s or s2c:
@@ -122,9 +99,8 @@ def analyze_client(pkts) -> Tuple[Optional[str], list]:
 
     results = []
 
-    # Step 3: find first outbound payload-bearing segment → send_unlock
     first_payload_pkt = None
-    for pkt, c2s, s2c in flow_pkts:
+    for pkt, c2s, _ in flow_pkts:
         if c2s and _has_payload(pkt):
             first_payload_pkt = pkt
             break
@@ -132,8 +108,7 @@ def analyze_client(pkts) -> Tuple[Optional[str], list]:
     if first_payload_pkt is None:
         results.append({"kind": "missing", "event": "first_outbound_payload", "flow": flow})
     else:
-        t_payload = float(first_payload_pkt.time)
-        send_unlock_ms = (t_payload - t_syn) * 1000.0
+        send_unlock_ms = (float(first_payload_pkt.time) - t_syn) * 1000.0
         results.append({
             "kind": "metric",
             "name": "send_unlock",
@@ -142,8 +117,6 @@ def analyze_client(pkts) -> Tuple[Optional[str], list]:
             "flow": flow,
         })
 
-    # Step 4: find last data byte or FIN → fct
-    # Last packet in the flow (latest timestamp) with payload or FIN flag
     last_data_pkt = None
     for pkt, c2s, s2c in flow_pkts:
         if _has_payload(pkt) or _is_fin(pkt):
@@ -152,8 +125,7 @@ def analyze_client(pkts) -> Tuple[Optional[str], list]:
     if last_data_pkt is None:
         results.append({"kind": "missing", "event": "last_data_or_FIN", "flow": flow})
     else:
-        t_last = float(last_data_pkt.time)
-        fct_ms = (t_last - t_syn) * 1000.0
+        fct_ms = (float(last_data_pkt.time) - t_syn) * 1000.0
         results.append({
             "kind": "metric",
             "name": "fct",
@@ -165,49 +137,59 @@ def analyze_client(pkts) -> Tuple[Optional[str], list]:
     return flow, results
 
 
+def analyze_client(pkts) -> Tuple[Optional[str], list]:
+    """
+    Find all outbound TCP flows (one per unique SYN 4-tuple) and compute metrics for each.
+    Returns (first_flow_str_or_None, flat_list_of_all_metric_and_error_dicts).
+    """
+    seen: set = set()
+    syns = []
+    for pkt in pkts:
+        if _is_syn(pkt):
+            key = (pkt[IP].src, pkt[TCP].sport, pkt[IP].dst, pkt[TCP].dport)
+            if key not in seen:
+                seen.add(key)
+                syns.append(pkt)
+
+    if not syns:
+        return None, [{"kind": "missing", "event": "SYN", "flow": "unknown"}]
+
+    if len(syns) > 1:
+        print(f"# info: {len(syns)} client flows found; emitting metrics for all",
+              file=sys.stderr)
+
+    all_results: list = []
+    first_flow: Optional[str] = None
+    for syn in syns:
+        flow, results = _analyze_client_flow(pkts, syn)
+        if first_flow is None:
+            first_flow = flow
+        all_results.extend(results)
+
+    return first_flow, all_results
+
+
 # --------------------------------------------------------------------------- #
 # Server-side analysis
 # --------------------------------------------------------------------------- #
 
-def analyze_server(pkts) -> Tuple[Optional[str], list]:
-    """
-    From the server pcap, find the first SYN-ACK outbound (server→client direction,
-    i.e., the server is replying) and first inbound payload-bearing segment.
-
-    Server pcap is captured on the server host's interface. 'Outbound' from the
-    server means server→client direction (SYN-ACK). 'Inbound' to the server means
-    client→server direction (data from client).
-    """
-    # Step 1: find first SYN-ACK (server sends this, so src=server, dst=client)
-    first_syn_ack = None
-    for pkt in pkts:
-        if _is_syn_ack(pkt):
-            first_syn_ack = pkt
-            break
-
-    if first_syn_ack is None:
-        return None, [{"kind": "missing", "event": "SYN-ACK", "flow": "unknown"}]
-
-    # The SYN-ACK is server→client: src=server, dst=client
-    server_ip = first_syn_ack[IP].src
-    server_port = first_syn_ack[TCP].sport
-    client_ip = first_syn_ack[IP].dst
-    client_port = first_syn_ack[TCP].dport
-
+def _analyze_server_flow(pkts, syn_ack_pkt) -> Tuple[str, list]:
+    """Compute server_gap for a single server-side flow anchored on syn_ack_pkt."""
+    server_ip = syn_ack_pkt[IP].src
+    server_port = syn_ack_pkt[TCP].sport
+    client_ip = syn_ack_pkt[IP].dst
+    client_port = syn_ack_pkt[TCP].dport
     flow = _flow_str(client_ip, client_port, server_ip, server_port)
-    t_syn_ack = float(first_syn_ack.time)
+    t_syn_ack = float(syn_ack_pkt.time)
 
-    # Step 2: filter packets for this flow
     flow_pkts = []
     for pkt in pkts:
         if not (pkt.haslayer(IP) and pkt.haslayer(TCP)):
             continue
         ip = pkt[IP]
         tcp = pkt[TCP]
-        # client→server (inbound to server)
         c2s = (ip.src == client_ip and tcp.sport == client_port
                and ip.dst == server_ip and tcp.dport == server_port)
-        # server→client (outbound from server)
         s2c = (ip.src == server_ip and tcp.sport == server_port
                and ip.dst == client_ip and tcp.dport == client_port)
         if c2s or s2c:
@@ -215,9 +197,8 @@ def analyze_server(pkts) -> Tuple[Optional[str], list]:
 
     results = []
 
-    # Step 3: find first inbound payload segment after the SYN-ACK
     first_inbound_payload = None
-    for pkt, c2s, s2c in flow_pkts:
+    for pkt, c2s, _ in flow_pkts:
         if c2s and _has_payload(pkt) and float(pkt.time) >= t_syn_ack:
             first_inbound_payload = pkt
             break
@@ -225,8 +206,7 @@ def analyze_server(pkts) -> Tuple[Optional[str], list]:
     if first_inbound_payload is None:
         results.append({"kind": "missing", "event": "first_inbound_payload", "flow": flow})
     else:
-        t_data = float(first_inbound_payload.time)
-        server_gap_ms = (t_data - t_syn_ack) * 1000.0
+        server_gap_ms = (float(first_inbound_payload.time) - t_syn_ack) * 1000.0
         results.append({
             "kind": "metric",
             "name": "server_gap",
@@ -236,6 +216,38 @@ def analyze_server(pkts) -> Tuple[Optional[str], list]:
         })
 
     return flow, results
+
+
+def analyze_server(pkts) -> Tuple[Optional[str], list]:
+    """
+    Find all server-side TCP flows (one per unique SYN-ACK 4-tuple) and compute
+    server_gap for each. Returns (first_flow_str_or_None, flat_list_of_results).
+    """
+    seen: set = set()
+    syn_acks = []
+    for pkt in pkts:
+        if _is_syn_ack(pkt):
+            key = (pkt[IP].src, pkt[TCP].sport, pkt[IP].dst, pkt[TCP].dport)
+            if key not in seen:
+                seen.add(key)
+                syn_acks.append(pkt)
+
+    if not syn_acks:
+        return None, [{"kind": "missing", "event": "SYN-ACK", "flow": "unknown"}]
+
+    if len(syn_acks) > 1:
+        print(f"# info: {len(syn_acks)} server flows found; emitting metrics for all",
+              file=sys.stderr)
+
+    all_results: list = []
+    first_flow: Optional[str] = None
+    for syn_ack in syn_acks:
+        flow, results = _analyze_server_flow(pkts, syn_ack)
+        if first_flow is None:
+            first_flow = flow
+        all_results.extend(results)
+
+    return first_flow, all_results
 
 
 # --------------------------------------------------------------------------- #
