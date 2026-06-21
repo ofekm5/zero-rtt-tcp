@@ -101,22 +101,24 @@ sleep 2
 
 
 # ─── Accuracy knobs: offload-off + netem on endpoint NICs ─────────────────────
-# GRO/LRO coalesces multiple segments into one before the kernel timestamps them,
-# producing inflated inter-arrival times and corrupted pcap traces.  Disabling
-# them on the endpoint hosts (Client + Server) gives accurate per-packet captures.
-# tc netem with a near-zero (1 µs) delay preserves the existing traffic shape
-# while enabling precise hardware-timestamping paths on supported ENI drivers.
-log "Accuracy knobs: disabling GRO/LRO on Client and Server NICs..."
-ssm_bg "$CLIENT_ID" "ethtool -K eth0 gro off lro off 2>/dev/null || true"
-ssm_bg "$SERVER_ID" "ethtool -K eth0 gro off lro off 2>/dev/null || true"
+# GRO/LRO/TSO/GSO coalesce multiple segments into one super-segment before the
+# kernel timestamps them, corrupting the per-segment timing events (send_unlock,
+# server_gap) that the metrics pipeline measures.  Disabling all four on Client
+# and Server is the single biggest per-packet fidelity lever.
+# tc netem 50 ms/side inflates the RTT to ~100 ms so the ~1-RTT 0-RTT saving
+# is two orders of magnitude above tens-of-µs pcap jitter (design D5/X2 hard
+# dependency: sub-ms LAN would make the saving invisible in the noise floor).
+log "Accuracy knobs: disabling GRO/LRO/TSO/GSO on Client and Server NICs..."
+ssm_bg "$CLIENT_ID" "ethtool -K eth0 gro off lro off tso off gso off 2>/dev/null || true"
+ssm_bg "$SERVER_ID" "ethtool -K eth0 gro off lro off tso off gso off 2>/dev/null || true"
 
-log "Accuracy knobs: applying tc netem on Client and Server egress..."
+log "Accuracy knobs: applying tc netem 50ms delay on Client and Server egress..."
 ssm_bg "$CLIENT_ID" \
     "tc qdisc del dev eth0 root 2>/dev/null || true; \
-     tc qdisc add dev eth0 root netem delay 1us 2>/dev/null || true"
+     tc qdisc add dev eth0 root netem delay 50ms 2>/dev/null || true"
 ssm_bg "$SERVER_ID" \
     "tc qdisc del dev eth0 root 2>/dev/null || true; \
-     tc qdisc add dev eth0 root netem delay 1us 2>/dev/null || true"
+     tc qdisc add dev eth0 root netem delay 50ms 2>/dev/null || true"
 sleep 2
 
 
@@ -334,22 +336,30 @@ log "Step 3b: Starting endpoint tcpdump captures (Client host + Server host)..."
 ssm_run "$CLIENT_ID" "pkill tcpdump 2>/dev/null || true; rm -f /tmp/client_side.pcap" 15 > /dev/null
 ssm_run "$SERVER_ID" "pkill tcpdump 2>/dev/null || true; rm -f /tmp/server_side.pcap" 15 > /dev/null
 
-# Detect high-precision tcpdump flag on each host:
-#   1. Try --time-stamp-precision=nano (tcpdump 4.5+)
-#   2. Fall back to host_hiprec (some older distro builds expose this)
-#   3. Fall back to no high-precision flag (standard µs)
-# The sentinel echo after 1 second tells us whether tcpdump started without error.
+# Detect high-precision tcpdump flag on each host synchronously, then start
+# the chosen tcpdump in the background as a single unconditional & command.
+# Probe order:
+#   1. --time-stamp-precision=nano  (tcpdump 4.5+, preferred)
+#   2. -j adapter (some older distros use -j to select timestamp type)
+#   3. No high-precision flag (standard µs fallback)
+# Detection uses a dry-run (-d: dump BPF bytecode) which exits 0 immediately
+# with the flag accepted or non-zero if the flag is unrecognised — no capture
+# is started during probing, so the async & does not corrupt exit status.
 host_hiprec_start() {
     local iid="$1" iface="$2" filter="$3" outfile="$4"
     ssm_bg "$iid" "
-if tcpdump --time-stamp-precision=nano -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tmp/tcpdump_hiprec.log 2>&1 & then
+if tcpdump --time-stamp-precision=nano -d -i lo 2>/dev/null | grep -q .; then
+    HIPREC_FLAG='--time-stamp-precision=nano'
     echo TCPDUMP_HIPREC_NANO
-elif tcpdump host_hiprec -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tmp/tcpdump_hiprec.log 2>&1 & then
-    echo TCPDUMP_HIPREC_HOST
+elif tcpdump -j adapter -d -i lo 2>/dev/null | grep -q .; then
+    HIPREC_FLAG='-j adapter'
+    echo TCPDUMP_HIPREC_ADAPTER
 else
-    tcpdump -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tmp/tcpdump_hiprec.log 2>&1 &
+    HIPREC_FLAG=''
     echo TCPDUMP_STANDARD
 fi
+tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tmp/tcpdump_hiprec.log 2>&1 &
+echo TCPDUMP_PID=\$!
 "
 }
 
