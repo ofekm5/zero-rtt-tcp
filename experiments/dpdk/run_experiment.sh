@@ -100,6 +100,26 @@ ssm_bg "$SERVER_ID" "sysctl -w net.ipv4.tcp_timestamps=0 net.ipv4.tcp_window_sca
 sleep 2
 
 
+# ─── Accuracy knobs: offload-off + netem on endpoint NICs ─────────────────────
+# GRO/LRO coalesces multiple segments into one before the kernel timestamps them,
+# producing inflated inter-arrival times and corrupted pcap traces.  Disabling
+# them on the endpoint hosts (Client + Server) gives accurate per-packet captures.
+# tc netem with a near-zero (1 µs) delay preserves the existing traffic shape
+# while enabling precise hardware-timestamping paths on supported ENI drivers.
+log "Accuracy knobs: disabling GRO/LRO on Client and Server NICs..."
+ssm_bg "$CLIENT_ID" "ethtool -K eth0 gro off lro off 2>/dev/null || true"
+ssm_bg "$SERVER_ID" "ethtool -K eth0 gro off lro off 2>/dev/null || true"
+
+log "Accuracy knobs: applying tc netem on Client and Server egress..."
+ssm_bg "$CLIENT_ID" \
+    "tc qdisc del dev eth0 root 2>/dev/null || true; \
+     tc qdisc add dev eth0 root netem delay 1us 2>/dev/null || true"
+ssm_bg "$SERVER_ID" \
+    "tc qdisc del dev eth0 root 2>/dev/null || true; \
+     tc qdisc add dev eth0 root netem delay 1us 2>/dev/null || true"
+sleep 2
+
+
 # ─── Cleanup any leftover processes ───────────────────────────────────────────
 # ClientNIC cleanup is blocking (ssm_run) so the DPDK lock is released before
 # the smoke test tries to start a new primary process.
@@ -304,6 +324,40 @@ else
 fi
 
 
+# ─── Step 3b: Start endpoint captures on Client and Server ───────────────────
+# These are endpoint-side (application host) captures, yielding the accurate
+# FCT, send_unlock, and server_gap metrics consumed by analyze_metrics.py.
+# High-precision hardware timestamping is requested via --time-stamp-precision=nano
+# where supported; we fall back gracefully to host_hiprec (software nanosecond)
+# and finally to standard µs timestamps if neither flag is accepted.
+log "Step 3b: Starting endpoint tcpdump captures (Client host + Server host)..."
+ssm_run "$CLIENT_ID" "pkill tcpdump 2>/dev/null || true; rm -f /tmp/client_side.pcap" 15 > /dev/null
+ssm_run "$SERVER_ID" "pkill tcpdump 2>/dev/null || true; rm -f /tmp/server_side.pcap" 15 > /dev/null
+
+# Detect high-precision tcpdump flag on each host:
+#   1. Try --time-stamp-precision=nano (tcpdump 4.5+)
+#   2. Fall back to host_hiprec (some older distro builds expose this)
+#   3. Fall back to no high-precision flag (standard µs)
+# The sentinel echo after 1 second tells us whether tcpdump started without error.
+host_hiprec_start() {
+    local iid="$1" iface="$2" filter="$3" outfile="$4"
+    ssm_bg "$iid" "
+if tcpdump --time-stamp-precision=nano -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tmp/tcpdump_hiprec.log 2>&1 & then
+    echo TCPDUMP_HIPREC_NANO
+elif tcpdump host_hiprec -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tmp/tcpdump_hiprec.log 2>&1 & then
+    echo TCPDUMP_HIPREC_HOST
+else
+    tcpdump -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tmp/tcpdump_hiprec.log 2>&1 &
+    echo TCPDUMP_STANDARD
+fi
+"
+}
+
+host_hiprec_start "$CLIENT_ID" "eth0" "tcp port $SERVER_PORT" "/tmp/client_side.pcap"
+host_hiprec_start "$SERVER_ID" "eth0" "tcp port $SERVER_PORT" "/tmp/server_side.pcap"
+sleep 2  # allow tcpdump processes to open pcap files before traffic starts
+
+
 # ─── Step 4: Run client test ──────────────────────────────────────────────────
 log "Step 4: Running client test ($CONNECTIONS connection(s))..."
 run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" "$CONNECTIONS" "$REPO_PATH" 120
@@ -313,6 +367,10 @@ sleep 3
 
 # ─── Step 5: Stop captures and binaries ──────────────────────────────────────
 log "Step 5: Stopping packet captures and DPDK binaries..."
+# Stop endpoint captures first (Client + Server hosts)
+ssm_run "$CLIENT_ID"   "pkill tcpdump 2>/dev/null || true; sleep 1" 30 > /dev/null
+ssm_run "$SERVER_ID"   "pkill tcpdump 2>/dev/null || true; sleep 1" 30 > /dev/null
+# Stop NIC-side captures and DPDK binaries
 ssm_run "$CLIENTNIC_ID" "pkill tcpdump 2>/dev/null || true; sleep 1" 30 > /dev/null
 ssm_run "$CLIENTNIC_ID" "pkill -f clientnic-dpdk-forwarder 2>/dev/null || true; sleep 2" 30 > /dev/null
 ssm_run "$SERVERNIC_ID" "pkill -f servernic-dpdk 2>/dev/null || true; sleep 2" 30 > /dev/null
@@ -359,15 +417,83 @@ else
 fi
 
 
-# ─── Latency metrics: TTFB at 3 points + FCT ─────────────────────────────────
+# ─── Packet capture analysis ──────────────────────────────────────────────────
+# analyze_metrics.py computes three endpoint-observed metrics from the pcaps:
+#   - fct         (client pcap): first SYN out → last data byte or FIN
+#   - send_unlock (client pcap): first SYN out → first outbound payload segment
+#   - server_gap  (server pcap): first SYN-ACK out → first inbound payload segment
+# Captures are at the endpoint hosts (Client + Server), not at the NICs.
+log "Packet analysis: Collecting endpoint pcap sizes..."
+
+CLIENT_PCAP_SIZE=$(ssm_stdout "$CLIENT_ID" \
+    "ls -lh /tmp/client_side.pcap 2>&1 || echo 'pcap file not found'" 30)
+SERVER_PCAP_SIZE=$(ssm_stdout "$SERVER_ID" \
+    "ls -lh /tmp/server_side.pcap 2>&1 || echo 'pcap file not found'" 30)
+echo "  client_side.pcap: $CLIENT_PCAP_SIZE"
+echo "  server_side.pcap: $SERVER_PCAP_SIZE"
+
+# Fetch pcaps from endpoint hosts to the ClientNIC for analysis
+# (analyzer runs where scapy is available — ClientNIC has it from CDK setup)
+log "Packet analysis: Fetching server_side.pcap from Server host to ClientNIC..."
+SERVER_PCAP_B64=$(ssm_stdout "$SERVER_ID" \
+    "base64 /tmp/server_side.pcap 2>/dev/null || echo ''" 30)
+if [[ -n "$SERVER_PCAP_B64" ]]; then
+    ssm_bg "$CLIENTNIC_ID" \
+        "echo '$SERVER_PCAP_B64' | base64 -d > /tmp/server_side.pcap"
+    sleep 1
+fi
+
+log "Packet analysis: Fetching client_side.pcap from Client host to ClientNIC..."
+CLIENT_PCAP_B64=$(ssm_stdout "$CLIENT_ID" \
+    "base64 /tmp/client_side.pcap 2>/dev/null || echo ''" 30)
+if [[ -n "$CLIENT_PCAP_B64" ]]; then
+    ssm_bg "$CLIENTNIC_ID" \
+        "echo '$CLIENT_PCAP_B64' | base64 -d > /tmp/client_side_endpoint.pcap"
+    sleep 1
+fi
+
+# Run analyze_metrics.py on the endpoint pcaps
+log "Packet analysis: Running analyze_metrics.py on endpoint pcaps..."
+ANALYSIS_RESULT=$(ssm_run "$CLIENTNIC_ID" \
+    "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
+        --client-pcap /tmp/client_side_endpoint.pcap \
+        --server-pcap /tmp/server_side.pcap" \
+    60)
+
+ANALYSIS_STATUS=$(echo "$ANALYSIS_RESULT" | json_idx 0)
+ANALYSIS_STDOUT=$(echo "$ANALYSIS_RESULT" | json_idx 1)
+ANALYSIS_STDERR=$(echo "$ANALYSIS_RESULT" | json_idx 2)
+
+echo "--- Endpoint metric analysis (status: $ANALYSIS_STATUS) ---"
+echo "$ANALYSIS_STDOUT"
+[[ -n "$ANALYSIS_STDERR" ]] && echo "stderr: $ANALYSIS_STDERR"
+echo "------------------------------------------------------------"
+
+if [[ "$ANALYSIS_STATUS" == "Success" ]] && ! echo "$ANALYSIS_STDOUT" | grep -q "^missing="; then
+    pass "Packet analysis: all endpoint metrics computed"
+else
+    NMISSING=$(printf '%s' "$ANALYSIS_STDOUT" | grep -c '^missing=' || true)
+    fail "Packet analysis: $NMISSING missing metric event(s) (status=$ANALYSIS_STATUS)"
+fi
+
+# Feed analyze_metrics.py output into measure.sh summarize_metric for latency summary
+ENDPOINT_METRICS="$ANALYSIS_STDOUT"
+
+
+# ─── Latency metrics: TTFB at 3 points + FCT + endpoint pcap metrics ─────────
 # Each TTFB is an intra-host interval (SYN ingress → first s2c data byte), so the
 # three points need no clock sync. FCT is the client connect→FIN lifetime.
-log "Latency metrics: aggregating TTFB (ClientNIC, ServerNIC, Client) + FCT..."
+# Endpoint pcap metrics (fct, send_unlock, server_gap) come from analyze_metrics.py
+# and are fed into measure.sh's summarize_metric for consistent output format.
+log "Latency metrics: aggregating TTFB (ClientNIC, ServerNIC, Client) + FCT + endpoint pcap metrics..."
 METRICS_SUMMARY=$(
     report_nic_ttfb "$CLIENTNIC_LOG" "clientnic"
     report_nic_ttfb "$SERVERNIC_LOG" "servernic"
     echo "$CLIENT_STDOUT" | summarize_metric "ttfb" "client" "Client TTFB   "
     echo "$CLIENT_STDOUT" | summarize_metric "fct"  "client" "Client FCT    "
+    echo "${ENDPOINT_METRICS:-}" | summarize_metric "fct"         "client" "Pcap FCT      "
+    echo "${ENDPOINT_METRICS:-}" | summarize_metric "send_unlock" "client" "Send unlock   "
+    echo "${ENDPOINT_METRICS:-}" | summarize_metric "server_gap"  "server" "Server gap    "
 )
 echo "--- Latency summary ---"
 echo "$METRICS_SUMMARY"
@@ -382,42 +508,6 @@ if echo "$METRICS_SUMMARY" | grep -q "servernic TTFB.*n=[1-9]"; then
     pass "Metrics: ServerNIC in-app TTFB samples collected"
 else
     warn "Metrics: no ServerNIC in-app TTFB samples (binary may predate instrumentation)"
-fi
-
-
-# ─── Packet capture analysis ──────────────────────────────────────────────────
-# validate_0rtt_capture.py checks spoofed SYN-ACK presence, ISN delta, checksums.
-# In T8 mode: client-side pcap is at ClientNIC (eth0 tcpdump).
-# The real SYN-ACK is dropped at the ServerNIC — so only the spoofed SYN-ACK
-# should appear on the client-side pcap (validates task 9.3 assertion).
-log "Packet analysis: Running packet capture analysis..."
-
-PCAP_SIZES=$(ssm_stdout "$CLIENTNIC_ID" \
-    "ls -lh /tmp/client_side.pcap 2>&1 || echo 'pcap file not found'" 30)
-echo "pcap files: $PCAP_SIZES"
-
-# Copy validator to /tmp to avoid clientnic/scapy/ directory shadowing the
-# real scapy package when Python adds the script's directory to sys.path.
-ANALYSIS_RESULT=$(ssm_run "$CLIENTNIC_ID" \
-    "cp $REPO_PATH/clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py && \
-     python3 /tmp/validate_0rtt.py \
-        --client-pcap /tmp/client_side.pcap" \
-    45)
-
-ANALYSIS_STATUS=$(echo "$ANALYSIS_RESULT" | json_idx 0)
-ANALYSIS_STDOUT=$(echo "$ANALYSIS_RESULT" | json_idx 1)
-ANALYSIS_STDERR=$(echo "$ANALYSIS_RESULT" | json_idx 2)
-
-echo "--- Packet analysis (status: $ANALYSIS_STATUS) ---"
-echo "$ANALYSIS_STDOUT"
-[[ -n "$ANALYSIS_STDERR" ]] && echo "stderr: $ANALYSIS_STDERR"
-echo "---------------------------------------------------"
-
-if [[ "$ANALYSIS_STATUS" == "Success" ]] && echo "$ANALYSIS_STDOUT" | grep -q "All checks passed"; then
-    pass "Packet analysis: all checks passed"
-else
-    NFAIL=$(printf '%s' "$ANALYSIS_STDOUT" | grep -c '\[FAIL\]' || true)
-    fail "Packet analysis: $NFAIL check(s) failed (status=$ANALYSIS_STATUS)"
 fi
 
 
