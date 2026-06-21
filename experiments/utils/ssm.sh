@@ -31,9 +31,20 @@ ssm_run() {
         --timeout-seconds "$timeout" \
         --query "Command.CommandId" \
         --output text --region eu-central-1)
-    aws ssm wait command-executed \
-        --command-id "$cid" \
-        --instance-id "$iid" --region eu-central-1 2>/dev/null || true
+    # The `command-executed` waiter caps at ~100s (20 attempts x 5s), which is far
+    # short of a 100000-connection round. Poll the invocation status ourselves up
+    # to $timeout so long-running measurements run to completion before we read out.
+    local waited=0 status
+    while :; do
+        status=$(aws ssm get-command-invocation \
+            --command-id "$cid" --instance-id "$iid" \
+            --query "Status" --output text --region eu-central-1 2>/dev/null || echo Pending)
+        case "$status" in
+            Success|Cancelled|TimedOut|Failed) break ;;
+        esac
+        [ "$waited" -ge "$timeout" ] && break
+        sleep 5; waited=$((waited + 5))
+    done
     aws ssm get-command-invocation \
         --command-id "$cid" \
         --instance-id "$iid" \

@@ -115,9 +115,12 @@ sleep 2
 
 
 # ─── Step 3: Start Server ─────────────────────────────────────────────────────
-log "Step 3: Starting Server..."
+# SSM commands don't inherit this orchestrator's env, so pass IPERF_PORTS through
+# explicitly — otherwise the remote server.sh falls back to its own default and may
+# listen on a different port set than the client (measure.sh) dials into.
+log "Step 3: Starting Server ($IPERF_PORTS iperf port(s))..."
 ssm_bg "$SERVER_ID" \
-    "setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+    "IPERF_PORTS=$IPERF_PORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
 sleep 3
 
 LISTEN_CHECK=$(ssm_stdout "$SERVER_ID" "ss -tlnp | grep $SERVER_PORT && echo LISTENING || echo NOT_LISTENING" 30)
@@ -131,7 +134,7 @@ fi
 
 # ─── Step 4: Run baseline TTFB measurements ──────────────────────────────────
 log "Step 4: Running baseline TTFB ($BASELINE_CONNECTIONS connections)..."
-run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" "$BASELINE_CONNECTIONS" "$REPO_PATH" 120 "Baseline TTFB"
+run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" "$BASELINE_CONNECTIONS" "$REPO_PATH" "${IPERF_TIMEOUT:-1800}" "Baseline TTFB"
 
 # Aggregate client-side latency (no NIC data plane in baseline — kernel forwarding).
 METRICS_SUMMARY=$(

@@ -9,8 +9,13 @@
 #                    tuple, comfortably under the ~28K-usable ephemeral range, so
 #                    one client source IP can actually open them all. The 0-RTT
 #                    data plane must cover the same port range (--port-count).
+#   IPERF_TIMEOUT  : seconds a measurement round may run before SSM gives up
+#                    (default 1800). 100000 conns x 1 MB across a 50 ms-netem path
+#                    moves ~100 GB and takes far longer than the old 120 s cap —
+#                    ssm_run polls up to this value instead of the ~100 s waiter.
 IPERF_PARALLEL="${IPERF_PARALLEL:-100000}"
 IPERF_PORTS="${IPERF_PORTS:-4}"
+IPERF_TIMEOUT="${IPERF_TIMEOUT:-1800}"
 #
 # Measurement points (all intra-host intervals — no cross-machine clock sync):
 #   - ClientNIC TTFB: stamped in clientnic-dpdk-forwarder (SYN ingress → 1st s2c data byte)
@@ -66,7 +71,7 @@ report_nic_ttfb() {
 # Sets globals: CLIENT_STDOUT, CLIENT_STDERR
 run_ttfb_measurement() {
     local client_iid="$1" server_ip="$2" port="$3" count="$4" repo="$5"
-    local timeout="${6:-120}" label="${7:-Client}"
+    local timeout="${6:-${IPERF_TIMEOUT:-1800}}" label="${7:-Client}"
     local parallel="${IPERF_PARALLEL:-100000}"
     local nports="${IPERF_PORTS:-1}"
     [[ "$nports" -lt 1 ]] && nports=1

@@ -257,7 +257,7 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     # ─── Step 4: Run client test ──────────────────────────────────────────────
     log "Step 4: Running client test ($CONNECTIONS connection(s))..."
     run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" \
-        "$CONNECTIONS" "$REPO_PATH" 120
+        "$CONNECTIONS" "$REPO_PATH" "${IPERF_TIMEOUT:-1800}"
 
     sleep 3
 
