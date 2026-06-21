@@ -6,7 +6,7 @@
 #   - ClientNIC TTFB: stamped in clientnic-dpdk-forwarder (SYN ingress → 1st s2c data byte)
 #   - ServerNIC TTFB: stamped in servernic-dpdk        (SYN ingress → 1st s2c data byte)
 # Each NIC source emits [DIAG] rdtsc samples; the pcap analyzer emits structured lines:
-#   metric=<name> node=<n> flow=... value_ms=<v>
+#   metric=<name> value_ms=<v> node=<n> flow=...
 
 # summarize_metric <metric> <node> <label>
 # Reads text on stdin, extracts all matching analyzer output lines, prints count +
@@ -18,11 +18,14 @@ summarize_metric() {
     METRIC_DATA="$data" python3 - "$metric" "$node" "$label" <<'PY'
 import os, sys, re, statistics
 metric, node, label = sys.argv[1], sys.argv[2], sys.argv[3]
-pat = re.compile(r'metric=' + re.escape(metric) + r'\b.*?node=' + re.escape(node) + r'\b.*?value_ms=([0-9.]+)')
-pat_alt = re.compile(r'node=' + re.escape(node) + r'\b.*?metric=' + re.escape(metric) + r'\b.*?value_ms=([0-9.]+)')
+pat_metric = re.compile(r'\bmetric=' + re.escape(metric) + r'\b')
+pat_node   = re.compile(r'\bnode='   + re.escape(node)   + r'\b')
+pat_value  = re.compile(r'\bvalue_ms=([0-9.]+)')
 vals = []
 for line in os.environ.get("METRIC_DATA", "").splitlines():
-    m = pat.search(line) or pat_alt.search(line)
+    if not (pat_metric.search(line) and pat_node.search(line)):
+        continue
+    m = pat_value.search(line)
     if not m:
         continue
     vals.append(float(m.group(1)))
