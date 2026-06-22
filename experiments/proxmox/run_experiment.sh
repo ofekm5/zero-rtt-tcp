@@ -41,7 +41,9 @@ source "$(dirname "$0")/../utils/run_core.sh"
 
 REPO_PATH="/home/user/zero-rtt-demo"
 SERVER_PORT=8080
-CONNECTIONS="${CONNECTIONS:-5}"
+# Measurement ROUNDS (each round opens IPERF_PARALLEL conns across IPERF_PORTS
+# ports — see experiments/utils/measure.sh). Default 1 round of 100000.
+CONNECTIONS="${CONNECTIONS:-1}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 FAILURES=0

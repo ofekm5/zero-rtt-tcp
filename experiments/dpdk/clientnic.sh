@@ -38,6 +38,10 @@ REPO_PATH="/home/ec2-user/zero-rtt-demo"
 DPDK_BUILD="$REPO_PATH/clientnic/dpdk-forwarder/builddir"
 BINARY="$DPDK_BUILD/clientnic-dpdk-forwarder"
 SERVER_PORT=8080
+# Number of contiguous app ports to 0-RTT-process (SERVER_PORT .. +PORT_COUNT-1).
+# Must match the iperf load spread (IPERF_PORTS) and the ServerNIC --port-count.
+PORT_COUNT="${PORT_COUNT:-1}"
+PORT_HI=$(( SERVER_PORT + PORT_COUNT - 1 ))
 REGION="eu-central-1"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -107,8 +111,8 @@ log "IP forwarding: enabled"
 
 # ─── Start packet capture on eth0 (background) ───────────────────────────────
 # eth1 is DPDK-controlled; the binary captures it directly via --server-pcap.
-log "Starting tcpdump on eth0 → /tmp/client_side.pcap ..."
-sudo tcpdump -i eth0 -nn -tttt "tcp port $SERVER_PORT" -w /tmp/client_side.pcap \
+log "Starting tcpdump on eth0 → /tmp/client_side.pcap (ports ${SERVER_PORT}-${PORT_HI}) ..."
+sudo tcpdump -i eth0 -nn -tttt "tcp portrange ${SERVER_PORT}-${PORT_HI}" -w /tmp/client_side.pcap \
     </dev/null >/tmp/tcpdump_eth0.log 2>&1 &
 TCPDUMP_PID=$!
 sleep 1
@@ -137,8 +141,9 @@ trap cleanup EXIT
 
 # ─── Start DPDK forwarder binary (foreground) ────────────────────────────────
 log "Starting clientnic-dpdk-forwarder — transparent forwarding with V-stamp. Press Ctrl+C to stop."
-log "  --port=$SERVER_PORT --gw-mac=$GW_MAC"
+log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$GW_MAC"
 echo ""
 exec "$BINARY" -l 0 -- \
     --port="$SERVER_PORT" \
+    --port-count="$PORT_COUNT" \
     --gw-mac="$GW_MAC"

@@ -15,6 +15,10 @@ set -uo pipefail
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 SERVER_PORT=8080
+# Number of contiguous ports to listen on (SERVER_PORT .. SERVER_PORT+IPERF_PORTS-1).
+# The client spreads its parallel connections across these to clear the per-port
+# ephemeral-port ceiling. Must match the data plane's --port-count.
+IPERF_PORTS="${IPERF_PORTS:-4}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 log() { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}"; }
@@ -24,8 +28,16 @@ log "Killing any leftover iperf processes..."
 pkill -f 'iperf -s' 2>/dev/null || true
 sleep 1
 
-# ─── Check iperf available ────────────────────────────────────────────────────
+# ─── Check iperf available (iperf2 ONLY) ──────────────────────────────────────
 command -v iperf >/dev/null || { echo -e "${RED}ERROR: iperf not installed. Run: sudo amazon-linux-extras install -y epel && sudo yum install -y iperf${NC}"; exit 1; }
+if iperf --version 2>&1 | grep -qiE 'iperf[ ]?3'; then
+    echo -e "${RED}ERROR: iperf3 detected — this experiment requires iperf2. Install iperf2 and ensure it is first in PATH.${NC}"; exit 1
+fi
+
+# Raise the open-file limit so the server can accept the client's parallel
+# connections (iperf2 -P on the client opens up to 100000 streams).
+ulimit -n 1048576 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
+log "Open-file limit (ulimit -n): $(ulimit -n)"
 
 # ─── Pull latest code ─────────────────────────────────────────────────────────
 log "Pulling latest code..."
@@ -33,11 +45,21 @@ sudo -u ec2-user git -C "$REPO_PATH" pull origin main 2>&1 || true
 
 # ─── Pre-flight ───────────────────────────────────────────────────────────────
 MY_IP=$(hostname -I | awk '{print $1}')
+SERVER_PORT_HI=$(( SERVER_PORT + IPERF_PORTS - 1 ))
 log "Server VM IP: $MY_IP"
-log "Will listen on 0.0.0.0:$SERVER_PORT"
+log "Will listen on 0.0.0.0:${SERVER_PORT}-${SERVER_PORT_HI} ($IPERF_PORTS port(s))"
 echo ""
 
-# ─── Start iperf server (foreground) ─────────────────────────────────────────
-log "Starting iperf server — press Ctrl+C to stop."
+# ─── Start iperf servers (one per port, background) ──────────────────────────
+log "Starting $IPERF_PORTS iperf2 server(s) on ports ${SERVER_PORT}-${SERVER_PORT_HI} — press Ctrl+C to stop."
 echo ""
-exec iperf -s -p "$SERVER_PORT"
+SRV_PIDS=()
+cleanup() { kill "${SRV_PIDS[@]}" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
+for (( p=SERVER_PORT; p<=SERVER_PORT_HI; p++ )); do
+    iperf -s -p "$p" &
+    SRV_PIDS+=("$!")
+done
+log "iperf servers running (pids: ${SRV_PIDS[*]})"
+# Block in the foreground keeping all servers alive until signalled.
+wait

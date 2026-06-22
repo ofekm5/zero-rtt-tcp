@@ -31,8 +31,10 @@ source "$(dirname "$0")/../utils/measure.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-demo"
 SERVER_PORT=8080
-# Override via env: CONNECTIONS=50 ./run_experiment.sh
-BASELINE_CONNECTIONS="${CONNECTIONS:-20}"
+# Number of measurement ROUNDS (each round opens IPERF_PARALLEL connections across
+# IPERF_PORTS ports — see measure.sh). Default 1 round of 100000 parallel conns.
+# Override rounds via env: CONNECTIONS=5 ./run_experiment.sh
+BASELINE_CONNECTIONS="${CONNECTIONS:-1}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
@@ -113,9 +115,12 @@ sleep 2
 
 
 # ─── Step 3: Start Server ─────────────────────────────────────────────────────
-log "Step 3: Starting Server..."
+# SSM commands don't inherit this orchestrator's env, so pass IPERF_PORTS through
+# explicitly — otherwise the remote server.sh falls back to its own default and may
+# listen on a different port set than the client (measure.sh) dials into.
+log "Step 3: Starting Server ($IPERF_PORTS iperf port(s))..."
 ssm_bg "$SERVER_ID" \
-    "setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+    "IPERF_PORTS=$IPERF_PORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
 sleep 3
 
 LISTEN_CHECK=$(ssm_stdout "$SERVER_ID" "ss -tlnp | grep $SERVER_PORT && echo LISTENING || echo NOT_LISTENING" 30)
@@ -129,7 +134,7 @@ fi
 
 # ─── Step 4: Run baseline TTFB measurements ──────────────────────────────────
 log "Step 4: Running baseline TTFB ($BASELINE_CONNECTIONS connections)..."
-run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" "$BASELINE_CONNECTIONS" "$REPO_PATH" 120 "Baseline TTFB"
+run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" "$BASELINE_CONNECTIONS" "$REPO_PATH" "${IPERF_TIMEOUT:-1800}" "Baseline TTFB"
 
 # Aggregate client-side latency (no NIC data plane in baseline — kernel forwarding).
 METRICS_SUMMARY=$(

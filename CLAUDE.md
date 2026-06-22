@@ -147,9 +147,9 @@ Scapy provides:
   - `references/forging-and-spoofing.md`: Spoofed SYN-ACK, ISN generation
   - `references/pcap-analysis.md`: rdpcap/wrpcap, manual checksum verification
   - `references/unit-testing.md`: Real packets in tests, mock patterns
-- **`.claude/skills/zero-rtt-integration-tester/SKILL.md`**: Integration tester skill (run tests, diagnose failures)
-- **`.claude/skills/zero-rtt-integration-tester/references/troubleshooting.md`**: Known issues and debugging tips
-- **`.claude/skills/zero-rtt-integration-tester/references/test-scripts.md`**: run_all.sh and analyze_capture.py reference
+- **`.claude/skills/run-experiment/SKILL.md`**: Run-experiment skill (pick mode, run orchestrator, diagnose failures across scapy/dpdk/proxmox/baseline)
+- **`.claude/skills/run-experiment/references/troubleshooting.md`**: Known issues and debugging tips
+- **`.claude/skills/run-experiment/references/test-scripts.md`**: All four runners + run_core.sh, validate_0rtt_capture.py, and analyze_metrics.py reference
 
 ### Integration Testing
 - **`experiments/zero-rtt-clientnic-translate/run_experiment.sh`**: End-to-end orchestrator for the Scapy stack (local → 4 VMs via SSM)
@@ -192,7 +192,7 @@ Specialist agent prompts under `.claude/context/agents-system-prompts/`:
 **AWS EC2 Testing & Experimentation:**
 1. **Scapy stack**: `./experiments/zero-rtt-clientnic-translate/run_experiment.sh`
 2. **DPDK stack**: `./experiments/zero-rtt-dpdk/run_experiment.sh`
-3. Investigate failures using the manual steps in `.claude/skills/zero-rtt-integration-tester/SKILL.md`
+3. Investigate failures using the manual steps in `.claude/skills/run-experiment/SKILL.md`
 4. File findings in `experiments/zero-rtt-clientnic-translate/reports/`
 
 **Change Management (OpenSpec Workflow):**
@@ -217,6 +217,11 @@ Specialist agent prompts under `.claude/context/agents-system-prompts/`:
 - Measure time-to-first-byte with/without 0-RTT
 - Expected improvement: 1-RTT reduction (50-200ms depending on network latency)
 - Test with simulated high-latency networks
+
+### iperf Timeout / Parallelism Balance
+`IPERF_TIMEOUT` and `IPERF_PARALLEL` are coupled — keep them in sync:
+- Default `IPERF_TIMEOUT=1800` is intentional for high-load runs (`IPERF_PARALLEL` at full scale): `ssm_run` will block up to 30 min per round if iperf stalls.
+- For smoke tests with reduced `IPERF_PARALLEL`, **lower `IPERF_TIMEOUT` proportionally** so failures surface fast instead of waiting the full 30 min.
 
 ## Important Constraints
 

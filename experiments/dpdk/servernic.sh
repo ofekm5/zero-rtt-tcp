@@ -30,6 +30,9 @@ REPO_PATH="/home/ec2-user/zero-rtt-demo"
 DPDK_BUILD="$REPO_PATH/servernic/dpdk/builddir"
 BINARY="$DPDK_BUILD/servernic-dpdk"
 SERVER_PORT=8080
+# Number of contiguous app ports to translate (SERVER_PORT .. +PORT_COUNT-1).
+# Must match the iperf load spread (IPERF_PORTS) and the ClientNIC --port-count.
+PORT_COUNT="${PORT_COUNT:-1}"
 REGION="eu-central-1"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -174,10 +177,11 @@ trap cleanup EXIT
 
 # ─── Start servernic-dpdk (foreground) ───────────────────────────────────────
 log "Starting servernic-dpdk — watching for flows. Press Ctrl+C to stop."
-log "  --port=$SERVER_PORT --gw-mac=$CLIENTNIC_GW_MAC --server-gw-mac=$SERVER_GW_MAC"
+log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$CLIENTNIC_GW_MAC --server-gw-mac=$SERVER_GW_MAC"
 echo ""
 exec "$BINARY" -l 0 -- \
     --port="$SERVER_PORT" \
+    --port-count="$PORT_COUNT" \
     --gw-mac="$CLIENTNIC_GW_MAC" \
     --server-gw-mac="$SERVER_GW_MAC" \
     --client-iface=eth1 \
