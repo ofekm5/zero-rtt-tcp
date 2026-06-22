@@ -218,6 +218,11 @@ Specialist agent prompts under `.claude/context/agents-system-prompts/`:
 - Expected improvement: 1-RTT reduction (50-200ms depending on network latency)
 - Test with simulated high-latency networks
 
+### iperf Timeout / Parallelism Balance
+`IPERF_TIMEOUT` and `IPERF_PARALLEL` are coupled — keep them in sync:
+- Default `IPERF_TIMEOUT=1800` is intentional for high-load runs (`IPERF_PARALLEL` at full scale): `ssm_run` will block up to 30 min per round if iperf stalls.
+- For smoke tests with reduced `IPERF_PARALLEL`, **lower `IPERF_TIMEOUT` proportionally** so failures surface fast instead of waiting the full 30 min.
+
 ## Important Constraints
 
 ### Protocol Limitations

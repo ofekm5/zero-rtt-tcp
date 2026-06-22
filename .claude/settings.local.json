@@ -15,7 +15,11 @@
       "Bash(openspec validate *)",
       "Bash(Remove-Item *)",
       "Bash(git mv *)",
-      "Bash(grep -iv \"//\")"
+      "Bash(grep -iv \"//\")",
+      "Workflow(task-runner-sdlc)",
+      "Read(//c/Users/shir/Documents/GitHub/.task-runner-worktrees/endpoint-pcap-measurement/**)",
+      "Bash(rtk git *)",
+      "Bash(rtk ls *)"
     ]
   }
 }
