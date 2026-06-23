@@ -1,59 +1,39 @@
 """
 Unit tests for experiments/utils/analyze_metrics.py
 
-Builds synthetic TCP flows with scapy, writes them to temp pcap files,
-and asserts metric values, key=value output format, guardrail behavior,
-and iperf CSV cross-check.
+The analyzer parses `tcpdump -r <pcap> -nn -tt` text output. These tests feed
+synthetic tcpdump-format text directly via the --client-text / --server-text
+inputs, so they run anywhere (no scapy, no tcpdump binary required). The real
+`tcpdump -r` invocation on the capture hosts is exercised by the live
+integration experiment, not here.
 
 No DPDK or live infrastructure required.
 """
 
 import csv
-import io
 import os
 import subprocess
 import sys
-import tempfile
-import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import pytest
-
-# Scapy imports — the tests construct synthetic packets
-from scapy.all import Ether, IP, TCP, wrpcap
 
 # Locate the analyzer script relative to this test file:
 # tests/ -> utils/ -> analyze_metrics.py
 _UTILS_DIR = Path(__file__).parent.parent
 _ANALYZER = str(_UTILS_DIR / "analyze_metrics.py")
 
-# Suppress WinPcap deprecation warning noise in captured output
+# Allow importing the analyzer module directly for unit-level tests.
+sys.path.insert(0, str(_UTILS_DIR))
+import analyze_metrics  # noqa: E402
+
 _ENV = os.environ.copy()
-_ENV.setdefault("PYTHONWARNINGS", "ignore")
 
 
 # --------------------------------------------------------------------------- #
-# Packet / pcap builders
+# tcpdump-text builders
 # --------------------------------------------------------------------------- #
-
-def _pkt(src_ip: str, src_port: int, dst_ip: str, dst_port: int,
-         flags: str, seq: int = 1000, ack: int = 0, payload: bytes = b"",
-         ts: float = 0.0):
-    """Build an Ethernet/IP/TCP packet with an explicit pcap timestamp."""
-    p = (
-        Ether(src="aa:bb:cc:dd:ee:01", dst="aa:bb:cc:dd:ee:02")
-        / IP(src=src_ip, dst=dst_ip)
-        / TCP(sport=src_port, dport=dst_port, flags=flags, seq=seq, ack=ack)
-        / payload
-    )
-    p.time = ts
-    return p
-
-
-def _write_pcap(pkts, path: str) -> None:
-    wrpcap(path, pkts)
-
 
 CLIENT_IP = "10.0.0.1"
 CLIENT_PORT = 54321
@@ -61,67 +41,66 @@ SERVER_IP = "10.0.0.2"
 SERVER_PORT = 5001
 
 
-def _build_client_flow(
+def _td(ts: float, sip: str, sport: int, dip: str, dport: int,
+        flags: str, length: int = 0) -> str:
+    """One `tcpdump -nn -tt` line. flags is the tcpdump flag string: S, S., P., F., '.'"""
+    return (f"{ts:.6f} IP {sip}.{sport} > {dip}.{dport}: "
+            f"Flags [{flags}], seq 1, ack 1, win 100, length {length}")
+
+
+def _write_text(lines: List[str], path: str) -> None:
+    Path(path).write_text("\n".join(lines) + "\n")
+
+
+def _build_client_text(
     t0: float = 0.0,
     syn_to_payload_ms: float = 100.0,
     payload_to_fin_ms: float = 50.0,
     include_syn: bool = True,
     include_payload: bool = True,
     include_fin: bool = True,
-) -> List:
+) -> List[str]:
     """
-    Build a minimal client-side pcap packet list:
-      t0+0ms     : SYN    (client → server)
-      t0+0ms     : SYN-ACK (server → client, spoofed/real, same timing)
-      t0+syn_to_payload_ms: DATA (client → server, payload>0)
-      t0+syn_to_payload_ms+payload_to_fin_ms: FIN (client → server)
+    Build client-side tcpdump text:
+      t0+0ms                : SYN     (client → server)
+      t0+5ms                : SYN-ACK (server → client)
+      t0+syn_to_payload_ms  : DATA    (client → server, payload>0)
+      t0+..+payload_to_fin  : FIN     (client → server)
     """
-    pkts = []
+    lines = []
     if include_syn:
-        pkts.append(_pkt(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT,
-                         "S", seq=1000, ack=0, ts=t0))
-        # SYN-ACK back (server→client)
-        pkts.append(_pkt(SERVER_IP, SERVER_PORT, CLIENT_IP, CLIENT_PORT,
-                         "SA", seq=2000, ack=1001, ts=t0 + 0.005))
+        lines.append(_td(t0, CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT, "S", 0))
+        lines.append(_td(t0 + 0.005, SERVER_IP, SERVER_PORT, CLIENT_IP, CLIENT_PORT, "S.", 0))
     if include_payload:
         t_payload = t0 + syn_to_payload_ms / 1000.0
-        pkts.append(_pkt(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT,
-                         "PA", seq=1001, ack=2001, payload=b"hello world",
-                         ts=t_payload))
+        lines.append(_td(t_payload, CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT, "P.", 11))
     if include_fin:
         t_fin = t0 + (syn_to_payload_ms + payload_to_fin_ms) / 1000.0
-        pkts.append(_pkt(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT,
-                         "FA", seq=1012, ack=2001, ts=t_fin))
-    return pkts
+        lines.append(_td(t_fin, CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT, "F.", 0))
+    return lines
 
 
-def _build_server_flow(
+def _build_server_text(
     t0: float = 0.0,
     syn_ack_delay_ms: float = 5.0,
     payload_delay_ms: float = 100.0,
     include_syn_ack: bool = True,
     include_inbound_payload: bool = True,
-) -> List:
+) -> List[str]:
     """
-    Build a minimal server-side pcap packet list:
-      t0+0ms            : SYN    (client → server, arrives at server host)
+    Build server-side tcpdump text:
+      t0+0ms            : SYN     (client → server, arrives at server host)
       t0+syn_ack_delay  : SYN-ACK (server → client)
-      t0+payload_delay  : DATA (client → server, payload>0)
+      t0+payload_delay  : DATA    (client → server, payload>0)
     """
-    pkts = []
-    # SYN arrives at server
-    pkts.append(_pkt(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT,
-                     "S", seq=1000, ts=t0))
+    lines = [_td(t0, CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT, "S", 0)]
     if include_syn_ack:
         t_sa = t0 + syn_ack_delay_ms / 1000.0
-        pkts.append(_pkt(SERVER_IP, SERVER_PORT, CLIENT_IP, CLIENT_PORT,
-                         "SA", seq=2000, ack=1001, ts=t_sa))
+        lines.append(_td(t_sa, SERVER_IP, SERVER_PORT, CLIENT_IP, CLIENT_PORT, "S.", 0))
     if include_inbound_payload:
         t_data = t0 + payload_delay_ms / 1000.0
-        pkts.append(_pkt(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT,
-                         "PA", seq=1001, ack=2001, payload=b"hello world",
-                         ts=t_data))
-    return pkts
+        lines.append(_td(t_data, CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT, "P.", 11))
+    return lines
 
 
 # --------------------------------------------------------------------------- #
@@ -129,29 +108,13 @@ def _build_server_flow(
 # --------------------------------------------------------------------------- #
 
 def _run_analyzer(args: List[str]) -> subprocess.CompletedProcess:
-    result = subprocess.run(
+    return subprocess.run(
         [sys.executable, _ANALYZER] + args,
-        capture_output=True,
-        text=True,
-        env=_ENV,
+        capture_output=True, text=True, env=_ENV,
     )
-    # Strip platform noise (WinPcap deprecation warning) from stderr so tests are portable
-    filtered_lines = [
-        line for line in result.stderr.splitlines()
-        if "WinPcap" not in line and "Npcap" not in line
-    ]
-    # Replace stderr with filtered version (CompletedProcess is a simple namedtuple-like object)
-    result = subprocess.CompletedProcess(
-        args=result.args,
-        returncode=result.returncode,
-        stdout=result.stdout,
-        stderr="\n".join(filtered_lines) + ("\n" if filtered_lines else ""),
-    )
-    return result
 
 
 def _parse_metric_lines(stdout: str) -> dict:
-    """Parse all metric=... key=value lines from stdout into a dict keyed by metric name."""
     metrics = {}
     for line in stdout.splitlines():
         line = line.strip()
@@ -168,7 +131,6 @@ def _parse_metric_lines(stdout: str) -> dict:
 
 
 def _parse_missing_lines(stdout: str) -> List[str]:
-    """Return list of missing=<event> values from stdout."""
     missing = []
     for line in stdout.splitlines():
         line = line.strip()
@@ -180,109 +142,112 @@ def _parse_missing_lines(stdout: str) -> List[str]:
 
 
 # --------------------------------------------------------------------------- #
+# parse_line unit tests
+# --------------------------------------------------------------------------- #
+
+class TestParseLine:
+    def test_parse_syn(self):
+        p = analyze_metrics.parse_line(
+            "1000.000000 IP 10.0.0.1.54321 > 10.0.0.2.5001: Flags [S], seq 1, win 100, length 0")
+        assert p is not None
+        assert p.src == "10.0.0.1" and p.sport == 54321
+        assert p.dst == "10.0.0.2" and p.dport == 5001
+        assert p.flags == "S" and p.length == 0
+        assert p.time == 1000.0
+
+    def test_parse_data_with_payload(self):
+        p = analyze_metrics.parse_line(
+            "1000.100000 IP 10.0.0.1.54321 > 10.0.0.2.5001: Flags [P.], seq 1:1461, ack 1, win 211, length 1460")
+        assert p is not None and p.length == 1460 and p.flags == "P."
+
+    def test_parse_non_ip_line_returns_none(self):
+        assert analyze_metrics.parse_line("12:00:00.000 ARP, Request who-has ...") is None
+        assert analyze_metrics.parse_line("") is None
+        assert analyze_metrics.parse_line("garbage line") is None
+
+    def test_flag_classifiers(self):
+        assert analyze_metrics._is_syn("S")
+        assert not analyze_metrics._is_syn("S.")
+        assert analyze_metrics._is_syn_ack("S.")
+        assert not analyze_metrics._is_syn_ack("S")
+        assert analyze_metrics._is_fin("F.")
+        assert not analyze_metrics._is_fin("P.")
+
+
+# --------------------------------------------------------------------------- #
 # output_format tests (C2)
 # --------------------------------------------------------------------------- #
 
 class TestOutputFormat:
-    """Tests for the key=value metric output format (C2)."""
-
     def test_output_format_client_metric_lines(self, tmp_path):
-        """Each metric line matches: metric=<name> value_ms=<v> node=<n> flow=<f>"""
-        pkts = _build_client_flow(t0=0.0, syn_to_payload_ms=100.0, payload_to_fin_ms=50.0)
-        pcap = str(tmp_path / "client.pcap")
-        _write_pcap(pkts, pcap)
-
-        result = _run_analyzer(["--client-pcap", pcap])
+        txt = str(tmp_path / "client.txt")
+        _write_text(_build_client_text(), txt)
+        result = _run_analyzer(["--client-text", txt])
         assert result.returncode == 0, f"stderr: {result.stderr}"
 
         metrics = _parse_metric_lines(result.stdout)
-        assert "fct" in metrics, f"fct not found in output:\n{result.stdout}"
-        assert "send_unlock" in metrics, f"send_unlock not found in output:\n{result.stdout}"
-
+        assert "fct" in metrics, f"fct not found:\n{result.stdout}"
+        assert "send_unlock" in metrics, f"send_unlock not found:\n{result.stdout}"
         for name in ("fct", "send_unlock"):
             m = metrics[name]
-            assert "value_ms" in m, f"value_ms missing for {name}"
-            assert "node" in m, f"node missing for {name}"
-            assert "flow" in m, f"flow missing for {name}"
-            assert m["node"] == "client", f"node should be 'client' for {name}"
-            # value_ms must be parseable as float
+            assert m["node"] == "client"
             float(m["value_ms"])
+            assert "flow" in m
 
     def test_output_format_flow_field(self, tmp_path):
-        """flow field is srcip:sport-dstip:dport format."""
-        pkts = _build_client_flow(t0=0.0)
-        pcap = str(tmp_path / "client.pcap")
-        _write_pcap(pkts, pcap)
-
-        result = _run_analyzer(["--client-pcap", pcap])
-        metrics = _parse_metric_lines(result.stdout)
-        assert "fct" in metrics
-        flow = metrics["fct"]["flow"]
-        # format: srcip:sport-dstip:dport
-        assert "-" in flow, f"expected '-' separator in flow: {flow}"
+        txt = str(tmp_path / "client.txt")
+        _write_text(_build_client_text(), txt)
+        result = _run_analyzer(["--client-text", txt])
+        flow = _parse_metric_lines(result.stdout)["fct"]["flow"]
         left, right = flow.split("-", 1)
-        assert ":" in left, f"expected ':' in flow left part: {left}"
-        assert ":" in right, f"expected ':' in flow right part: {right}"
+        assert ":" in left and ":" in right
 
     def test_output_format_send_unlock_less_than_fct(self, tmp_path):
-        """send_unlock value_ms <= fct value_ms (same client pcap source of truth)."""
-        pkts = _build_client_flow(t0=0.0, syn_to_payload_ms=100.0, payload_to_fin_ms=50.0)
-        pcap = str(tmp_path / "client.pcap")
-        _write_pcap(pkts, pcap)
-
-        result = _run_analyzer(["--client-pcap", pcap])
-        assert result.returncode == 0
-        metrics = _parse_metric_lines(result.stdout)
-        fct_ms = float(metrics["fct"]["value_ms"])
-        su_ms = float(metrics["send_unlock"]["value_ms"])
-        assert su_ms <= fct_ms, f"send_unlock ({su_ms}) should be <= fct ({fct_ms})"
+        txt = str(tmp_path / "client.txt")
+        _write_text(_build_client_text(syn_to_payload_ms=100.0, payload_to_fin_ms=50.0), txt)
+        result = _run_analyzer(["--client-text", txt])
+        m = _parse_metric_lines(result.stdout)
+        assert float(m["send_unlock"]["value_ms"]) <= float(m["fct"]["value_ms"])
 
     def test_output_format_metric_values_correct(self, tmp_path):
-        """Computed metric values are within 1ms of expected synthetic values."""
-        t0 = 1000.0  # arbitrary epoch offset
-        syn_to_payload_ms = 100.0
-        payload_to_fin_ms = 50.0
-        pkts = _build_client_flow(
-            t0=t0,
-            syn_to_payload_ms=syn_to_payload_ms,
-            payload_to_fin_ms=payload_to_fin_ms,
-        )
-        pcap = str(tmp_path / "client.pcap")
-        _write_pcap(pkts, pcap)
-
-        result = _run_analyzer(["--client-pcap", pcap])
+        txt = str(tmp_path / "client.txt")
+        _write_text(_build_client_text(t0=1000.0, syn_to_payload_ms=100.0, payload_to_fin_ms=50.0), txt)
+        result = _run_analyzer(["--client-text", txt])
         assert result.returncode == 0, f"stderr: {result.stderr}"
-        metrics = _parse_metric_lines(result.stdout)
-
-        su_ms = float(metrics["send_unlock"]["value_ms"])
-        fct_ms = float(metrics["fct"]["value_ms"])
-        expected_fct = syn_to_payload_ms + payload_to_fin_ms
-
-        assert abs(su_ms - syn_to_payload_ms) < 1.0, (
-            f"send_unlock expected ~{syn_to_payload_ms}ms, got {su_ms:.3f}ms"
-        )
-        assert abs(fct_ms - expected_fct) < 1.0, (
-            f"fct expected ~{expected_fct}ms, got {fct_ms:.3f}ms"
-        )
+        m = _parse_metric_lines(result.stdout)
+        assert abs(float(m["send_unlock"]["value_ms"]) - 100.0) < 1.0
+        assert abs(float(m["fct"]["value_ms"]) - 150.0) < 1.0
 
     def test_output_format_server_gap(self, tmp_path):
-        """server_gap metric is emitted with node=server when server pcap provided."""
-        cpkts = _build_client_flow(t0=0.0)
-        cpcap = str(tmp_path / "client.pcap")
-        _write_pcap(cpkts, cpcap)
-
-        spkts = _build_server_flow(t0=0.0, syn_ack_delay_ms=5.0, payload_delay_ms=100.0)
-        spcap = str(tmp_path / "server.pcap")
-        _write_pcap(spkts, spcap)
-
-        result = _run_analyzer(["--client-pcap", cpcap, "--server-pcap", spcap])
+        ctxt = str(tmp_path / "client.txt")
+        stxt = str(tmp_path / "server.txt")
+        _write_text(_build_client_text(), ctxt)
+        _write_text(_build_server_text(syn_ack_delay_ms=5.0, payload_delay_ms=100.0), stxt)
+        result = _run_analyzer(["--client-text", ctxt, "--server-text", stxt])
         assert result.returncode == 0, f"stderr: {result.stderr}"
-        metrics = _parse_metric_lines(result.stdout)
-        assert "server_gap" in metrics, f"server_gap not in output:\n{result.stdout}"
-        assert metrics["server_gap"]["node"] == "server"
-        sg_ms = float(metrics["server_gap"]["value_ms"])
+        m = _parse_metric_lines(result.stdout)
+        assert "server_gap" in m, f"server_gap not in output:\n{result.stdout}"
+        assert m["server_gap"]["node"] == "server"
         # server_gap = payload_delay - syn_ack_delay = 100 - 5 = 95ms
-        assert abs(sg_ms - 95.0) < 1.0, f"server_gap expected ~95ms, got {sg_ms:.3f}ms"
+        assert abs(float(m["server_gap"]["value_ms"]) - 95.0) < 1.0
+
+    def test_multiple_flows_emit_per_flow(self, tmp_path):
+        lines = _build_client_text(t0=0.0)
+        # second flow on a different client port
+        lines += [
+            _td(0.0, CLIENT_IP, 54322, SERVER_IP, SERVER_PORT, "S", 0),
+            _td(0.005, SERVER_IP, SERVER_PORT, CLIENT_IP, 54322, "S.", 0),
+            _td(0.100, CLIENT_IP, 54322, SERVER_IP, SERVER_PORT, "P.", 11),
+            _td(0.150, CLIENT_IP, 54322, SERVER_IP, SERVER_PORT, "F.", 0),
+        ]
+        txt = str(tmp_path / "two.txt")
+        _write_text(lines, txt)
+        result = _run_analyzer(["--client-text", txt])
+        assert result.returncode == 0
+        # two send_unlock + two fct lines
+        su = [l for l in result.stdout.splitlines() if l.startswith("metric=send_unlock")]
+        fct = [l for l in result.stdout.splitlines() if l.startswith("metric=fct")]
+        assert len(su) == 2 and len(fct) == 2
 
 
 # --------------------------------------------------------------------------- #
@@ -290,89 +255,56 @@ class TestOutputFormat:
 # --------------------------------------------------------------------------- #
 
 class TestGuardrails:
-    """Tests for incomplete-capture validation guardrails (C3)."""
+    def test_guardrails_empty_capture_exits_nonzero(self, tmp_path):
+        txt = str(tmp_path / "empty.txt")
+        Path(txt).write_text("")
+        result = _run_analyzer(["--client-text", txt])
+        assert result.returncode != 0
+        assert "empty_capture" in _parse_missing_lines(result.stdout)
 
-    def test_guardrails_empty_file_exits_nonzero(self, tmp_path):
-        """An empty file causes non-zero exit."""
-        empty = str(tmp_path / "empty.pcap")
-        Path(empty).write_bytes(b"")
-        result = _run_analyzer(["--client-pcap", empty])
-        assert result.returncode != 0, "expected non-zero exit for empty pcap"
+    def test_guardrails_only_garbage_lines_exits_nonzero(self, tmp_path):
+        txt = str(tmp_path / "garbage.txt")
+        Path(txt).write_text("not a packet\nARP foo\n\n")
+        result = _run_analyzer(["--client-text", txt])
+        assert result.returncode != 0
 
     def test_guardrails_no_syn_emits_missing_and_exits_nonzero(self, tmp_path):
-        """A pcap with no SYN emits missing=SYN and exits non-zero."""
-        # Only a SYN-ACK, no SYN
-        pkts = [_pkt(SERVER_IP, SERVER_PORT, CLIENT_IP, CLIENT_PORT,
-                     "SA", seq=2000, ack=1001, ts=0.0)]
-        pcap = str(tmp_path / "no_syn.pcap")
-        _write_pcap(pkts, pcap)
-
-        result = _run_analyzer(["--client-pcap", pcap])
-        assert result.returncode != 0, "expected non-zero exit when no SYN"
-        missing = _parse_missing_lines(result.stdout)
-        assert "SYN" in missing, f"expected missing=SYN in output:\n{result.stdout}"
-
-    def test_guardrails_no_payload_emits_missing_and_exits_nonzero(self, tmp_path):
-        """A pcap with SYN but no payload segment emits missing flag and exits non-zero."""
-        pkts = _build_client_flow(include_payload=False, include_fin=False)
-        pcap = str(tmp_path / "no_payload.pcap")
-        _write_pcap(pkts, pcap)
-
-        result = _run_analyzer(["--client-pcap", pcap])
-        assert result.returncode != 0, "expected non-zero exit when no payload"
-        missing = _parse_missing_lines(result.stdout)
-        assert len(missing) > 0, f"expected at least one missing= line:\n{result.stdout}"
-
-    def test_guardrails_no_fin_no_data_exits_nonzero(self, tmp_path):
-        """SYN-only capture (no data, no FIN) exits non-zero."""
-        pkts = _build_client_flow(include_payload=False, include_fin=False)
-        pcap = str(tmp_path / "syn_only.pcap")
-        _write_pcap(pkts, pcap)
-
-        result = _run_analyzer(["--client-pcap", pcap])
+        txt = str(tmp_path / "no_syn.txt")
+        # only a SYN-ACK, no SYN
+        _write_text([_td(0.0, SERVER_IP, SERVER_PORT, CLIENT_IP, CLIENT_PORT, "S.", 0)], txt)
+        result = _run_analyzer(["--client-text", txt])
         assert result.returncode != 0
+        assert "SYN" in _parse_missing_lines(result.stdout)
+
+    def test_guardrails_no_payload_emits_missing(self, tmp_path):
+        txt = str(tmp_path / "no_payload.txt")
+        _write_text(_build_client_text(include_payload=False, include_fin=False), txt)
+        result = _run_analyzer(["--client-text", txt])
+        assert result.returncode != 0
+        assert len(_parse_missing_lines(result.stdout)) > 0
 
     def test_guardrails_server_no_syn_ack_exits_nonzero(self, tmp_path):
-        """Server pcap missing SYN-ACK emits missing=SYN-ACK and exits non-zero."""
-        cpkts = _build_client_flow()
-        cpcap = str(tmp_path / "client.pcap")
-        _write_pcap(cpkts, cpcap)
-
-        # Server pcap with only inbound data, no SYN-ACK
-        spkts = [_pkt(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT,
-                      "PA", seq=1001, payload=b"hello", ts=0.1)]
-        spcap = str(tmp_path / "server.pcap")
-        _write_pcap(spkts, spcap)
-
-        result = _run_analyzer(["--client-pcap", cpcap, "--server-pcap", spcap])
+        ctxt = str(tmp_path / "client.txt")
+        stxt = str(tmp_path / "server.txt")
+        _write_text(_build_client_text(), ctxt)
+        # server pcap with only inbound data, no SYN-ACK
+        _write_text([_td(0.1, CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT, "P.", 11)], stxt)
+        result = _run_analyzer(["--client-text", ctxt, "--server-text", stxt])
         assert result.returncode != 0
-        missing = _parse_missing_lines(result.stdout)
-        assert "SYN-ACK" in missing, f"expected missing=SYN-ACK:\n{result.stdout}"
+        assert "SYN-ACK" in _parse_missing_lines(result.stdout)
 
     def test_guardrails_server_no_inbound_payload_exits_nonzero(self, tmp_path):
-        """Server pcap with SYN-ACK but no inbound payload exits non-zero."""
-        cpkts = _build_client_flow()
-        cpcap = str(tmp_path / "client.pcap")
-        _write_pcap(cpkts, cpcap)
-
-        spkts = _build_server_flow(include_inbound_payload=False)
-        spcap = str(tmp_path / "server_no_data.pcap")
-        _write_pcap(spkts, spcap)
-
-        result = _run_analyzer(["--client-pcap", cpcap, "--server-pcap", spcap])
+        ctxt = str(tmp_path / "client.txt")
+        stxt = str(tmp_path / "server.txt")
+        _write_text(_build_client_text(), ctxt)
+        _write_text(_build_server_text(include_inbound_payload=False), stxt)
+        result = _run_analyzer(["--client-text", ctxt, "--server-text", stxt])
         assert result.returncode != 0
-        missing = _parse_missing_lines(result.stdout)
-        assert "first_inbound_payload" in missing, (
-            f"expected missing=first_inbound_payload:\n{result.stdout}"
-        )
+        assert "first_inbound_payload" in _parse_missing_lines(result.stdout)
 
-    def test_guardrails_truncated_pcap_exits_nonzero(self, tmp_path):
-        """A truncated (corrupted) pcap file causes non-zero exit."""
-        # Write a valid pcap header then truncate it with garbage
-        truncated = str(tmp_path / "truncated.pcap")
-        Path(truncated).write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 4)  # partial header
-        result = _run_analyzer(["--client-pcap", truncated])
-        assert result.returncode != 0, "expected non-zero exit for truncated pcap"
+    def test_guardrails_no_input_exits_nonzero(self):
+        result = _run_analyzer([])
+        assert result.returncode != 0
 
 
 # --------------------------------------------------------------------------- #
@@ -380,104 +312,59 @@ class TestGuardrails:
 # --------------------------------------------------------------------------- #
 
 class TestCrossCheck:
-    """Tests for iperf CSV FCT cross-check (C4)."""
-
     def _write_iperf_csv(self, path: str, duration_s: float) -> None:
-        """Write a minimal iperf2 -yC CSV with given duration."""
         with open(path, "w", newline="") as f:
             writer = csv.writer(f)
-            # Format: timestamp,src_ip,src_port,dst_ip,dst_port,transfer_id,interval,transfer,bandwidth
             writer.writerow([
-                "20230101120000",
-                CLIENT_IP, CLIENT_PORT,
-                SERVER_IP, SERVER_PORT,
-                "1",
-                f"0.0-{duration_s:.3f}",
-                "1048576",
-                "104857600",
+                "20230101120000", CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT,
+                "1", f"0.0-{duration_s:.3f}", "1048576", "104857600",
             ])
 
     def test_cross_check_no_warning_within_threshold(self, tmp_path):
-        """No warning when pcap FCT and iperf CSV agree within 10ms."""
-        # fct = 150ms (syn_to_payload=100 + payload_to_fin=50)
-        pkts = _build_client_flow(t0=0.0, syn_to_payload_ms=100.0, payload_to_fin_ms=50.0)
-        pcap = str(tmp_path / "client.pcap")
-        _write_pcap(pkts, pcap)
-
-        # iperf says 155ms (within 10ms threshold)
+        txt = str(tmp_path / "client.txt")
+        _write_text(_build_client_text(syn_to_payload_ms=100.0, payload_to_fin_ms=50.0), txt)
         csv_path = str(tmp_path / "iperf.csv")
-        self._write_iperf_csv(csv_path, duration_s=0.155)
-
-        result = _run_analyzer(["--client-pcap", pcap, "--iperf-csv", csv_path])
+        self._write_iperf_csv(csv_path, duration_s=0.155)  # within 10ms of 150ms
+        result = _run_analyzer(["--client-text", txt, "--iperf-csv", csv_path])
         assert result.returncode == 0, f"stderr: {result.stderr}"
-        assert "WARNING" not in result.stderr, (
-            f"unexpected warning in stderr:\n{result.stderr}"
-        )
+        assert "WARNING" not in result.stderr
 
     def test_cross_check_warning_when_diverges(self, tmp_path):
-        """Warning is emitted to stderr when divergence > 10ms."""
-        # fct = 150ms
-        pkts = _build_client_flow(t0=0.0, syn_to_payload_ms=100.0, payload_to_fin_ms=50.0)
-        pcap = str(tmp_path / "client.pcap")
-        _write_pcap(pkts, pcap)
-
-        # iperf says 200ms (50ms divergence > 10ms threshold)
+        txt = str(tmp_path / "client.txt")
+        _write_text(_build_client_text(syn_to_payload_ms=100.0, payload_to_fin_ms=50.0), txt)
         csv_path = str(tmp_path / "iperf.csv")
-        self._write_iperf_csv(csv_path, duration_s=0.200)
-
-        result = _run_analyzer(["--client-pcap", pcap, "--iperf-csv", csv_path])
-        # pcap result is still authoritative (non-zero exit only if missing events)
-        assert result.returncode == 0, f"returncode should be 0 (pcap is fine)"
-        assert "WARNING" in result.stderr, (
-            f"expected divergence warning in stderr:\n{result.stderr}"
-        )
-        assert "10 ms" in result.stderr or "threshold" in result.stderr, (
-            f"warning should mention threshold:\n{result.stderr}"
-        )
+        self._write_iperf_csv(csv_path, duration_s=0.200)  # 50ms divergence
+        result = _run_analyzer(["--client-text", txt, "--iperf-csv", csv_path])
+        assert result.returncode == 0
+        assert "WARNING" in result.stderr
+        assert "10 ms" in result.stderr or "threshold" in result.stderr
 
     def test_cross_check_pcap_authoritative(self, tmp_path):
-        """pcap-derived FCT value is the one emitted even when CSV diverges."""
-        # fct = 150ms
-        pkts = _build_client_flow(t0=0.0, syn_to_payload_ms=100.0, payload_to_fin_ms=50.0)
-        pcap = str(tmp_path / "client.pcap")
-        _write_pcap(pkts, pcap)
-
-        # iperf says 500ms (huge divergence)
+        txt = str(tmp_path / "client.txt")
+        _write_text(_build_client_text(syn_to_payload_ms=100.0, payload_to_fin_ms=50.0), txt)
         csv_path = str(tmp_path / "iperf.csv")
         self._write_iperf_csv(csv_path, duration_s=0.500)
-
-        result = _run_analyzer(["--client-pcap", pcap, "--iperf-csv", csv_path])
-        metrics = _parse_metric_lines(result.stdout)
-        assert "fct" in metrics
-        fct_ms = float(metrics["fct"]["value_ms"])
-        # pcap says ~150ms — must not be 500ms
-        assert abs(fct_ms - 150.0) < 1.0, (
-            f"pcap value should be authoritative (~150ms), got {fct_ms:.3f}ms"
-        )
+        result = _run_analyzer(["--client-text", txt, "--iperf-csv", csv_path])
+        fct_ms = float(_parse_metric_lines(result.stdout)["fct"]["value_ms"])
+        assert abs(fct_ms - 150.0) < 1.0
 
     def test_cross_check_no_csv_no_cross_check(self, tmp_path):
-        """When --iperf-csv not provided, analyzer runs fine with no warning."""
-        pkts = _build_client_flow(t0=0.0)
-        pcap = str(tmp_path / "client.pcap")
-        _write_pcap(pkts, pcap)
-
-        result = _run_analyzer(["--client-pcap", pcap])
+        txt = str(tmp_path / "client.txt")
+        _write_text(_build_client_text(), txt)
+        result = _run_analyzer(["--client-text", txt])
         assert result.returncode == 0
         assert "WARNING" not in result.stderr
 
     def test_cross_check_within_boundary(self, tmp_path):
-        """Divergence exactly at threshold boundary: no warning at <=10ms."""
-        # fct = 150ms
-        pkts = _build_client_flow(t0=0.0, syn_to_payload_ms=100.0, payload_to_fin_ms=50.0)
-        pcap = str(tmp_path / "client.pcap")
-        _write_pcap(pkts, pcap)
-
-        # iperf says exactly 160ms (10ms divergence = boundary, should NOT warn)
+        txt = str(tmp_path / "client.txt")
+        _write_text(_build_client_text(syn_to_payload_ms=100.0, payload_to_fin_ms=50.0), txt)
         csv_path = str(tmp_path / "iperf.csv")
-        self._write_iperf_csv(csv_path, duration_s=0.160)
-
-        result = _run_analyzer(["--client-pcap", pcap, "--iperf-csv", csv_path])
+        self._write_iperf_csv(csv_path, duration_s=0.160)  # exactly 10ms
+        result = _run_analyzer(["--client-text", txt, "--iperf-csv", csv_path])
         assert result.returncode == 0
-        assert "WARNING" not in result.stderr, (
-            f"should not warn at exactly 10ms boundary:\n{result.stderr}"
-        )
+        assert "WARNING" not in result.stderr
+
+    def test_parse_iperf_csv_duration_direct(self, tmp_path):
+        csv_path = str(tmp_path / "iperf.csv")
+        self._write_iperf_csv(csv_path, duration_s=0.150)
+        assert abs(analyze_metrics.parse_iperf_csv_duration(csv_path) - 150.0) < 0.001

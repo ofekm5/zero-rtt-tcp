@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
-Offline pcap analyzer for 0-RTT endpoint metrics.
+Offline pcap analyzer for 0-RTT endpoint metrics — tcpdump-based (no scapy).
 
-Computes three metrics from endpoint packet captures:
+Computes three metrics by streaming `tcpdump -r <pcap>` text output. tcpdump is
+a C tool already present on every capture host; parsing its line-oriented output
+one packet at a time keeps memory flat (O(flows), not O(packets)), so it handles
+the 20-40 MB / 200k-packet endpoint captures the experiment produces without the
+multi-GB RAM blow-up of loading a whole pcap into Python objects.
+
   fct         — Flow Completion Time: first SYN out → last data byte or FIN (client pcap)
   send_unlock — Time to first payload: first SYN out → first outbound payload>0 segment (client pcap)
   server_gap  — Server-side gap: first SYN-ACK out → first inbound payload>0 segment (server pcap)
@@ -19,235 +24,227 @@ Usage:
     python3 analyze_metrics.py --client-pcap /tmp/client.pcap
     python3 analyze_metrics.py --client-pcap /tmp/client.pcap --server-pcap /tmp/server.pcap
     python3 analyze_metrics.py --client-pcap /tmp/client.pcap --iperf-csv /tmp/iperf.csv
+
+For testing on hosts without tcpdump, pre-captured `tcpdump -r ... -nn -tt`
+text can be fed directly via --client-text / --server-text.
 """
 
 import argparse
 import csv
+import re
+import subprocess
 import sys
-from typing import Optional, Tuple
+from collections import namedtuple
+from typing import List, Optional, Tuple
 
-try:
-    from scapy.all import rdpcap, IP, TCP
-except ImportError:
-    print("ERROR: scapy not found. Install with: pip3 install scapy", file=sys.stderr)
-    sys.exit(2)
+# A single parsed TCP/IP packet from tcpdump output.
+Pkt = namedtuple("Pkt", "time src sport dst dport flags length")
 
-
-# --------------------------------------------------------------------------- #
-# Helpers
-# --------------------------------------------------------------------------- #
-
-def _flow_str(src_ip: str, src_port: int, dst_ip: str, dst_port: int) -> str:
-    return f"{src_ip}:{src_port}-{dst_ip}:{dst_port}"
-
-
-def _has_payload(pkt) -> bool:
-    """True if TCP packet carries application payload (payload length > 0)."""
-    if not pkt.haslayer(TCP):
-        return False
-    tcp = pkt[TCP]
-    # Raw payload = everything after IP/TCP headers
-    if not pkt.haslayer(IP):
-        return False
-    ip = pkt[IP]
-    ip_total = ip.len
-    ip_hdr_len = ip.ihl * 4
-    tcp_hdr_len = tcp.dataofs * 4
-    payload_len = ip_total - ip_hdr_len - tcp_hdr_len
-    return payload_len > 0
-
-
-def _is_syn(pkt) -> bool:
-    return (pkt.haslayer(TCP) and pkt.haslayer(IP)
-            and bool(pkt[TCP].flags.S) and not bool(pkt[TCP].flags.A))
-
-
-def _is_syn_ack(pkt) -> bool:
-    return (pkt.haslayer(TCP) and pkt.haslayer(IP)
-            and bool(pkt[TCP].flags.S) and bool(pkt[TCP].flags.A))
-
-
-def _is_fin(pkt) -> bool:
-    return pkt.haslayer(TCP) and bool(pkt[TCP].flags.F)
+# tcpdump default line for an IPv4 TCP segment, e.g.:
+#   1624363200.123456 IP 10.0.0.1.54321 > 10.0.0.2.5001: Flags [S.], seq 1, ack 1, win 0, length 1460
+_LINE_RE = re.compile(
+    r"^(?P<t>\d+\.\d+)\s+IP\s+"
+    r"(?P<sip>\d{1,3}(?:\.\d{1,3}){3})\.(?P<sport>\d+)\s+>\s+"
+    r"(?P<dip>\d{1,3}(?:\.\d{1,3}){3})\.(?P<dport>\d+):\s+"
+    r"Flags\s+\[(?P<flags>[^\]]*)\]"
+    r".*\blength\s+(?P<length>\d+)"
+)
 
 
 # --------------------------------------------------------------------------- #
-# Client-side analysis
+# Parsing
 # --------------------------------------------------------------------------- #
 
-def _analyze_client_flow(pkts, syn_pkt) -> Tuple[str, list]:
-    """Compute send_unlock and fct for a single client-side flow anchored on syn_pkt."""
-    syn_src_ip = syn_pkt[IP].src
-    syn_src_port = syn_pkt[TCP].sport
-    syn_dst_ip = syn_pkt[IP].dst
-    syn_dst_port = syn_pkt[TCP].dport
-    flow = _flow_str(syn_src_ip, syn_src_port, syn_dst_ip, syn_dst_port)
-    t_syn = float(syn_pkt.time)
+def parse_line(line: str) -> Optional[Pkt]:
+    """Parse one `tcpdump -nn -tt` line into a Pkt, or None if it isn't an IPv4 TCP line."""
+    m = _LINE_RE.match(line)
+    if not m:
+        return None
+    return Pkt(
+        time=float(m.group("t")),
+        src=m.group("sip"),
+        sport=int(m.group("sport")),
+        dst=m.group("dip"),
+        dport=int(m.group("dport")),
+        flags=m.group("flags"),
+        length=int(m.group("length")),
+    )
 
-    flow_pkts = []
-    for pkt in pkts:
-        if not (pkt.haslayer(IP) and pkt.haslayer(TCP)):
+
+def _is_syn(flags: str) -> bool:
+    # tcpdump: SYN = [S], SYN-ACK = [S.]  ('.' denotes ACK)
+    return "S" in flags and "." not in flags
+
+
+def _is_syn_ack(flags: str) -> bool:
+    return "S" in flags and "." in flags
+
+
+def _is_fin(flags: str) -> bool:
+    return "F" in flags
+
+
+def _canon(p: Pkt) -> tuple:
+    """Direction-independent flow key (4-tuple of the two endpoints, sorted)."""
+    a = (p.src, p.sport, p.dst, p.dport)
+    b = (p.dst, p.dport, p.src, p.sport)
+    return a if a <= b else b
+
+
+# --------------------------------------------------------------------------- #
+# Streaming analysis (single pass, O(flows) memory)
+# --------------------------------------------------------------------------- #
+
+def analyze_client(records) -> Tuple[Optional[str], list]:
+    """
+    Compute send_unlock and fct for every client-side flow (one per SYN 4-tuple).
+    Returns (first_flow_str_or_None, flat_list_of_metric_and_error_dicts).
+    """
+    flows: dict = {}
+    order: list = []
+    for p in records:
+        key = _canon(p)
+        if _is_syn(p.flags):
+            if key not in flows:
+                flows[key] = {
+                    "client": (p.src, p.sport),
+                    "t_syn": p.time,
+                    "first_payload": None,
+                    "last_data": None,
+                    "flow": f"{p.src}:{p.sport}-{p.dst}:{p.dport}",
+                }
+                order.append(key)
             continue
-        ip = pkt[IP]
-        tcp = pkt[TCP]
-        c2s = (ip.src == syn_src_ip and tcp.sport == syn_src_port
-               and ip.dst == syn_dst_ip and tcp.dport == syn_dst_port)
-        s2c = (ip.src == syn_dst_ip and tcp.sport == syn_dst_port
-               and ip.dst == syn_src_ip and tcp.dport == syn_src_port)
-        if c2s or s2c:
-            flow_pkts.append((pkt, c2s, s2c))
+        f = flows.get(key)
+        if f is None:
+            continue
+        c2s = (p.src, p.sport) == f["client"]
+        has_payload = p.length > 0
+        if c2s and has_payload and f["first_payload"] is None:
+            f["first_payload"] = p.time
+        if has_payload or _is_fin(p.flags):
+            f["last_data"] = p.time
 
-    results = []
-
-    first_payload_pkt = None
-    for pkt, c2s, _ in flow_pkts:
-        if c2s and _has_payload(pkt):
-            first_payload_pkt = pkt
-            break
-
-    if first_payload_pkt is None:
-        results.append({"kind": "missing", "event": "first_outbound_payload", "flow": flow})
-    else:
-        send_unlock_ms = (float(first_payload_pkt.time) - t_syn) * 1000.0
-        results.append({
-            "kind": "metric",
-            "name": "send_unlock",
-            "value_ms": send_unlock_ms,
-            "node": "client",
-            "flow": flow,
-        })
-
-    last_data_pkt = None
-    for pkt, c2s, s2c in flow_pkts:
-        if _has_payload(pkt) or _is_fin(pkt):
-            last_data_pkt = pkt
-
-    if last_data_pkt is None:
-        results.append({"kind": "missing", "event": "last_data_or_FIN", "flow": flow})
-    else:
-        fct_ms = (float(last_data_pkt.time) - t_syn) * 1000.0
-        results.append({
-            "kind": "metric",
-            "name": "fct",
-            "value_ms": fct_ms,
-            "node": "client",
-            "flow": flow,
-        })
-
-    return flow, results
-
-
-def analyze_client(pkts) -> Tuple[Optional[str], list]:
-    """
-    Find all outbound TCP flows (one per unique SYN 4-tuple) and compute metrics for each.
-    Returns (first_flow_str_or_None, flat_list_of_all_metric_and_error_dicts).
-    """
-    seen: set = set()
-    syns = []
-    for pkt in pkts:
-        if _is_syn(pkt):
-            key = (pkt[IP].src, pkt[TCP].sport, pkt[IP].dst, pkt[TCP].dport)
-            if key not in seen:
-                seen.add(key)
-                syns.append(pkt)
-
-    if not syns:
+    if not order:
         return None, [{"kind": "missing", "event": "SYN", "flow": "unknown"}]
 
-    if len(syns) > 1:
-        print(f"# info: {len(syns)} client flows found; emitting metrics for all",
-              file=sys.stderr)
-
-    all_results: list = []
+    results: list = []
     first_flow: Optional[str] = None
-    for syn in syns:
-        flow, results = _analyze_client_flow(pkts, syn)
+    for key in order:
+        f = flows[key]
         if first_flow is None:
-            first_flow = flow
-        all_results.extend(results)
+            first_flow = f["flow"]
+        if f["first_payload"] is None:
+            results.append({"kind": "missing", "event": "first_outbound_payload", "flow": f["flow"]})
+        else:
+            results.append({
+                "kind": "metric", "name": "send_unlock",
+                "value_ms": (f["first_payload"] - f["t_syn"]) * 1000.0,
+                "node": "client", "flow": f["flow"],
+            })
+        if f["last_data"] is None:
+            results.append({"kind": "missing", "event": "last_data_or_FIN", "flow": f["flow"]})
+        else:
+            results.append({
+                "kind": "metric", "name": "fct",
+                "value_ms": (f["last_data"] - f["t_syn"]) * 1000.0,
+                "node": "client", "flow": f["flow"],
+            })
+    return first_flow, results
 
-    return first_flow, all_results
 
-
-# --------------------------------------------------------------------------- #
-# Server-side analysis
-# --------------------------------------------------------------------------- #
-
-def _analyze_server_flow(pkts, syn_ack_pkt) -> Tuple[str, list]:
-    """Compute server_gap for a single server-side flow anchored on syn_ack_pkt."""
-    server_ip = syn_ack_pkt[IP].src
-    server_port = syn_ack_pkt[TCP].sport
-    client_ip = syn_ack_pkt[IP].dst
-    client_port = syn_ack_pkt[TCP].dport
-    flow = _flow_str(client_ip, client_port, server_ip, server_port)
-    t_syn_ack = float(syn_ack_pkt.time)
-
-    flow_pkts = []
-    for pkt in pkts:
-        if not (pkt.haslayer(IP) and pkt.haslayer(TCP)):
+def analyze_server(records) -> Tuple[Optional[str], list]:
+    """
+    Compute server_gap for every server-side flow (one per SYN-ACK 4-tuple).
+    Returns (first_flow_str_or_None, flat_list_of_results).
+    """
+    flows: dict = {}
+    order: list = []
+    for p in records:
+        key = _canon(p)
+        if _is_syn_ack(p.flags):
+            if key not in flows:
+                flows[key] = {
+                    "server": (p.src, p.sport),
+                    "client": (p.dst, p.dport),
+                    "t_syn_ack": p.time,
+                    "first_inbound": None,
+                    "flow": f"{p.dst}:{p.dport}-{p.src}:{p.sport}",
+                }
+                order.append(key)
             continue
-        ip = pkt[IP]
-        tcp = pkt[TCP]
-        c2s = (ip.src == client_ip and tcp.sport == client_port
-               and ip.dst == server_ip and tcp.dport == server_port)
-        s2c = (ip.src == server_ip and tcp.sport == server_port
-               and ip.dst == client_ip and tcp.dport == client_port)
-        if c2s or s2c:
-            flow_pkts.append((pkt, c2s, s2c))
+        f = flows.get(key)
+        if f is None:
+            continue
+        if ((p.src, p.sport) == f["client"] and p.length > 0
+                and f["first_inbound"] is None and p.time >= f["t_syn_ack"]):
+            f["first_inbound"] = p.time
 
-    results = []
-
-    first_inbound_payload = None
-    for pkt, c2s, _ in flow_pkts:
-        if c2s and _has_payload(pkt) and float(pkt.time) >= t_syn_ack:
-            first_inbound_payload = pkt
-            break
-
-    if first_inbound_payload is None:
-        results.append({"kind": "missing", "event": "first_inbound_payload", "flow": flow})
-    else:
-        server_gap_ms = (float(first_inbound_payload.time) - t_syn_ack) * 1000.0
-        results.append({
-            "kind": "metric",
-            "name": "server_gap",
-            "value_ms": server_gap_ms,
-            "node": "server",
-            "flow": flow,
-        })
-
-    return flow, results
-
-
-def analyze_server(pkts) -> Tuple[Optional[str], list]:
-    """
-    Find all server-side TCP flows (one per unique SYN-ACK 4-tuple) and compute
-    server_gap for each. Returns (first_flow_str_or_None, flat_list_of_results).
-    """
-    seen: set = set()
-    syn_acks = []
-    for pkt in pkts:
-        if _is_syn_ack(pkt):
-            key = (pkt[IP].src, pkt[TCP].sport, pkt[IP].dst, pkt[TCP].dport)
-            if key not in seen:
-                seen.add(key)
-                syn_acks.append(pkt)
-
-    if not syn_acks:
+    if not order:
         return None, [{"kind": "missing", "event": "SYN-ACK", "flow": "unknown"}]
 
-    if len(syn_acks) > 1:
-        print(f"# info: {len(syn_acks)} server flows found; emitting metrics for all",
-              file=sys.stderr)
-
-    all_results: list = []
+    results: list = []
     first_flow: Optional[str] = None
-    for syn_ack in syn_acks:
-        flow, results = _analyze_server_flow(pkts, syn_ack)
+    for key in order:
+        f = flows[key]
         if first_flow is None:
-            first_flow = flow
-        all_results.extend(results)
+            first_flow = f["flow"]
+        if f["first_inbound"] is None:
+            results.append({"kind": "missing", "event": "first_inbound_payload", "flow": f["flow"]})
+        else:
+            results.append({
+                "kind": "metric", "name": "server_gap",
+                "value_ms": (f["first_inbound"] - f["t_syn_ack"]) * 1000.0,
+                "node": "server", "flow": f["flow"],
+            })
+    return first_flow, results
 
-    return first_flow, all_results
+
+# --------------------------------------------------------------------------- #
+# Record sources
+# --------------------------------------------------------------------------- #
+
+def _records_from_pcap(path: str, counter: list):
+    """Stream Pkt records by running tcpdump on a pcap. Raises RuntimeError on read failure."""
+    argv = ["tcpdump", "-r", path, "-nn", "-tt", "-K"]
+    try:
+        proc = subprocess.Popen(
+            argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+    except FileNotFoundError:
+        raise RuntimeError("tcpdump not found in PATH")
+
+    for line in proc.stdout:
+        p = parse_line(line)
+        if p is not None:
+            counter[0] += 1
+            yield p
+    proc.stdout.close()
+    rc = proc.wait()
+    err = proc.stderr.read()
+    proc.stderr.close()
+    # Only treat a non-zero exit as fatal when nothing parsed — tcpdump can exit
+    # non-zero on a truncated tail after already emitting valid packets.
+    if rc not in (0,) and counter[0] == 0:
+        raise RuntimeError(err.strip() or f"tcpdump exited {rc}")
+
+
+def _records_from_text(path: str, counter: list):
+    """Stream Pkt records from a file of pre-captured `tcpdump -nn -tt` text (testing)."""
+    with open(path) as f:
+        for line in f:
+            p = parse_line(line)
+            if p is not None:
+                counter[0] += 1
+                yield p
+
+
+def _make_source(pcap: Optional[str], text: Optional[str]):
+    """Return (record_generator, counter_list) for whichever input was given."""
+    counter = [0]
+    if text is not None:
+        return _records_from_text(text, counter), counter
+    return _records_from_pcap(pcap, counter), counter
 
 
 # --------------------------------------------------------------------------- #
@@ -260,7 +257,6 @@ def parse_iperf_csv_duration(csv_path: str) -> Optional[float]:
     iperf2 CSV format (comma-separated):
       timestamp,src_ip,src_port,dst_ip,dst_port,transfer_id,interval,transfer,bandwidth
     The interval field is like "0.0-10.0" — duration = end - start.
-    We find the 'SUM' row (transfer_id == -1) or the last data row for total duration.
     """
     try:
         with open(csv_path, newline="") as f:
@@ -326,6 +322,16 @@ def main() -> int:
         help="Server-host pcap file (optional). Yields server_gap metric.",
     )
     parser.add_argument(
+        "--client-text",
+        default=None,
+        help=argparse.SUPPRESS,  # pre-captured `tcpdump -nn -tt` text (testing)
+    )
+    parser.add_argument(
+        "--server-text",
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--iperf-csv",
         default=None,
         help="iperf2 -yC CSV file (optional). Cross-checks pcap-derived FCT. "
@@ -333,7 +339,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if args.client_pcap is None and args.server_pcap is None:
+    have_client = args.client_pcap is not None or args.client_text is not None
+    have_server = args.server_pcap is not None or args.server_text is not None
+    if not have_client and not have_server:
         print("ERROR: at least one of --client-pcap or --server-pcap is required",
               file=sys.stderr)
         return 2
@@ -342,39 +350,40 @@ def main() -> int:
     fct_ms: Optional[float] = None
 
     # --- Client pcap (optional) ---
-    if args.client_pcap is not None:
+    if have_client:
+        records, counter = _make_source(args.client_pcap, args.client_text)
+        src = args.client_text or args.client_pcap
         try:
-            client_pkts = rdpcap(args.client_pcap)
-        except Exception as exc:
-            print(f"ERROR: cannot read {args.client_pcap}: {exc}", file=sys.stderr)
+            _flow, client_results = analyze_client(records)
+        except RuntimeError as exc:
+            print(f"ERROR: cannot read {src}: {exc}", file=sys.stderr)
             return 1
 
-        if len(client_pkts) == 0:
-            print(f"missing=empty_capture flow=unknown", flush=True)
+        if counter[0] == 0:
+            print("missing=empty_capture flow=unknown", flush=True)
             return 1
-
-        _flow, client_results = analyze_client(client_pkts)
 
         for result in client_results:
             emit(result)
             if result["kind"] == "missing":
                 exit_code = 1
-            elif result["kind"] == "metric" and result["name"] == "fct":
+            elif result["name"] == "fct":
                 fct_ms = result["value_ms"]
 
     # --- Server pcap (optional) ---
-    if args.server_pcap is not None:
+    if have_server:
+        records, counter = _make_source(args.server_pcap, args.server_text)
+        src = args.server_text or args.server_pcap
         try:
-            server_pkts = rdpcap(args.server_pcap)
-        except Exception as exc:
-            print(f"ERROR: cannot read {args.server_pcap}: {exc}", file=sys.stderr)
+            _sflow, server_results = analyze_server(records)
+        except RuntimeError as exc:
+            print(f"ERROR: cannot read {src}: {exc}", file=sys.stderr)
             return 1
 
-        if len(server_pkts) == 0:
-            print(f"missing=empty_server_capture flow=unknown", flush=True)
+        if counter[0] == 0:
+            print("missing=empty_server_capture flow=unknown", flush=True)
             exit_code = 1
         else:
-            _sflow, server_results = analyze_server(server_pkts)
             for result in server_results:
                 emit(result)
                 if result["kind"] == "missing":

@@ -241,9 +241,9 @@ run_experiment() {
     # ─── Step 3b: Start endpoint captures ────────────────────────────────────
     log "Step 3b: Starting endpoint tcpdump captures (Client host + Server host)..."
     remote_run "$CLIENT_ID" \
-        "pkill tcpdump 2>/dev/null || true; rm -f /tmp/client_side.pcap" 15 > /dev/null
+        "pkill tcpdump 2>/dev/null || true; rm -f /tmp/client_side.pcap" 30 > /dev/null
     remote_run "$SERVER_ID" \
-        "pkill tcpdump 2>/dev/null || true; rm -f /tmp/server_side.pcap" 15 > /dev/null
+        "pkill tcpdump 2>/dev/null || true; rm -f /tmp/server_side.pcap" 30 > /dev/null
 
     _hiprec_start() {
         local iid="$1" iface="$2" filter="$3" outfile="$4"
@@ -335,17 +335,20 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
 
     # ─── Option A: analyze each large pcap on its own host ────────────────────
     # SSM caps StandardOutputContent at 24 KB and inline command params at 8 KB,
-    # so the 1–2 MB endpoint pcaps cannot be shipped between hosts. Instead, run
-    # analyze_metrics.py locally on the host that owns each pcap and collect only
-    # the small (~100 byte) key=value text output:
-    #   • ClientNIC eth0 capture (/tmp/client_side.pcap) → fct + send_unlock
-    #   • Server host capture     (/tmp/server_side.pcap) → server_gap
-    log "Packet analysis: Running client-side analysis on ClientNIC eth0 capture..."
+    # so the 20–40 MB endpoint pcaps cannot be shipped between hosts. Instead, run
+    # analyze_metrics.py locally on the endpoint host that owns each capture and
+    # collect only the small (~100 byte) key=value text output:
+    #   • Client host eth0 capture (/tmp/client_side.pcap) → fct + send_unlock
+    #   • Server host eth0 capture (/tmp/server_side.pcap) → server_gap
+    # analyze_metrics.py streams `tcpdump -r` output (tcpdump already wrote these
+    # captures, so it is always present) — O(flows) memory, parses 100k+ packets
+    # in seconds, no heavy in-RAM pcap load.
+    log "Packet analysis: Running client-side analysis on Client host capture..."
     local CLIENT_ANALYSIS_RESULT CLIENT_ANALYSIS_STATUS CLIENT_ANALYSIS_STDOUT CLIENT_ANALYSIS_STDERR
-    CLIENT_ANALYSIS_RESULT=$(remote_run "$CLIENTNIC_ID" \
+    CLIENT_ANALYSIS_RESULT=$(remote_run "$CLIENT_ID" \
         "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
             --client-pcap /tmp/client_side.pcap" \
-        60)
+        120)
     CLIENT_ANALYSIS_STATUS=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 0)
     CLIENT_ANALYSIS_STDOUT=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 1)
     CLIENT_ANALYSIS_STDERR=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 2)
@@ -353,8 +356,7 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     log "Packet analysis: Running server-side analysis on Server host capture..."
     local SERVER_ANALYSIS_RESULT SERVER_ANALYSIS_STATUS SERVER_ANALYSIS_STDOUT SERVER_ANALYSIS_STDERR
     SERVER_ANALYSIS_RESULT=$(remote_run "$SERVER_ID" \
-        "pip3 install scapy -q 2>/dev/null || true; \
-         python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
+        "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
             --server-pcap /tmp/server_side.pcap" \
         120)
     SERVER_ANALYSIS_STATUS=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 0)
