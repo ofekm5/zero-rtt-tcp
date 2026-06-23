@@ -317,8 +317,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--client-pcap",
-        required=True,
-        help="Client-host pcap file. Yields fct and send_unlock metrics.",
+        default=None,
+        help="Client-host pcap file (optional). Yields fct and send_unlock metrics.",
     )
     parser.add_argument(
         "--server-pcap",
@@ -333,28 +333,34 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.client_pcap is None and args.server_pcap is None:
+        print("ERROR: at least one of --client-pcap or --server-pcap is required",
+              file=sys.stderr)
+        return 2
+
     exit_code = 0
-
-    # --- Client pcap ---
-    try:
-        client_pkts = rdpcap(args.client_pcap)
-    except Exception as exc:
-        print(f"ERROR: cannot read {args.client_pcap}: {exc}", file=sys.stderr)
-        return 1
-
-    if len(client_pkts) == 0:
-        print(f"missing=empty_capture flow=unknown", flush=True)
-        return 1
-
-    _flow, client_results = analyze_client(client_pkts)
-
     fct_ms: Optional[float] = None
-    for result in client_results:
-        emit(result)
-        if result["kind"] == "missing":
-            exit_code = 1
-        elif result["kind"] == "metric" and result["name"] == "fct":
-            fct_ms = result["value_ms"]
+
+    # --- Client pcap (optional) ---
+    if args.client_pcap is not None:
+        try:
+            client_pkts = rdpcap(args.client_pcap)
+        except Exception as exc:
+            print(f"ERROR: cannot read {args.client_pcap}: {exc}", file=sys.stderr)
+            return 1
+
+        if len(client_pkts) == 0:
+            print(f"missing=empty_capture flow=unknown", flush=True)
+            return 1
+
+        _flow, client_results = analyze_client(client_pkts)
+
+        for result in client_results:
+            emit(result)
+            if result["kind"] == "missing":
+                exit_code = 1
+            elif result["kind"] == "metric" and result["name"] == "fct":
+                fct_ms = result["value_ms"]
 
     # --- Server pcap (optional) ---
     if args.server_pcap is not None:

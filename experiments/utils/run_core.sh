@@ -324,50 +324,54 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     echo "  client_side.pcap: $CLIENT_PCAP_SIZE"
     echo "  server_side.pcap: $SERVER_PCAP_SIZE"
 
-    log "Packet analysis: Fetching server_side.pcap from Server host to ClientNIC..."
-    local SERVER_PCAP_B64
-    SERVER_PCAP_B64=$(remote_stdout "$SERVER_ID" \
-        "base64 /tmp/server_side.pcap 2>/dev/null || echo ''" 30)
-    if [[ -n "$SERVER_PCAP_B64" ]]; then
-        remote_bg "$CLIENTNIC_ID" \
-            "echo '$SERVER_PCAP_B64' | base64 -d > /tmp/server_side.pcap"
-        sleep 1
-    fi
-
-    log "Packet analysis: Fetching client_side.pcap from Client host to ClientNIC..."
-    local CLIENT_PCAP_B64
-    CLIENT_PCAP_B64=$(remote_stdout "$CLIENT_ID" \
-        "base64 /tmp/client_side.pcap 2>/dev/null || echo ''" 30)
-    if [[ -n "$CLIENT_PCAP_B64" ]]; then
-        remote_bg "$CLIENTNIC_ID" \
-            "echo '$CLIENT_PCAP_B64' | base64 -d > /tmp/client_side_endpoint.pcap"
-        sleep 1
-    fi
-
-    log "Packet analysis: Running analyze_metrics.py on endpoint pcaps..."
-    local ANALYSIS_RESULT ANALYSIS_STATUS ANALYSIS_STDOUT ANALYSIS_STDERR
-    ANALYSIS_RESULT=$(remote_run "$CLIENTNIC_ID" \
+    # ─── Option A: analyze each large pcap on its own host ────────────────────
+    # SSM caps StandardOutputContent at 24 KB and inline command params at 8 KB,
+    # so the 1–2 MB endpoint pcaps cannot be shipped between hosts. Instead, run
+    # analyze_metrics.py locally on the host that owns each pcap and collect only
+    # the small (~100 byte) key=value text output:
+    #   • ClientNIC eth0 capture (/tmp/client_side.pcap) → fct + send_unlock
+    #   • Server host capture     (/tmp/server_side.pcap) → server_gap
+    log "Packet analysis: Running client-side analysis on ClientNIC eth0 capture..."
+    local CLIENT_ANALYSIS_RESULT CLIENT_ANALYSIS_STATUS CLIENT_ANALYSIS_STDOUT CLIENT_ANALYSIS_STDERR
+    CLIENT_ANALYSIS_RESULT=$(remote_run "$CLIENTNIC_ID" \
         "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
-            --client-pcap /tmp/client_side_endpoint.pcap \
-            --server-pcap /tmp/server_side.pcap" \
+            --client-pcap /tmp/client_side.pcap" \
         60)
+    CLIENT_ANALYSIS_STATUS=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 0)
+    CLIENT_ANALYSIS_STDOUT=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 1)
+    CLIENT_ANALYSIS_STDERR=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 2)
 
-    ANALYSIS_STATUS=$(echo "$ANALYSIS_RESULT" | json_idx 0)
-    ANALYSIS_STDOUT=$(echo "$ANALYSIS_RESULT" | json_idx 1)
-    ANALYSIS_STDERR=$(echo "$ANALYSIS_RESULT" | json_idx 2)
+    log "Packet analysis: Running server-side analysis on Server host capture..."
+    local SERVER_ANALYSIS_RESULT SERVER_ANALYSIS_STATUS SERVER_ANALYSIS_STDOUT SERVER_ANALYSIS_STDERR
+    SERVER_ANALYSIS_RESULT=$(remote_run "$SERVER_ID" \
+        "pip3 install scapy -q 2>/dev/null || true; \
+         python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
+            --server-pcap /tmp/server_side.pcap" \
+        120)
+    SERVER_ANALYSIS_STATUS=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 0)
+    SERVER_ANALYSIS_STDOUT=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 1)
+    SERVER_ANALYSIS_STDERR=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 2)
 
-    echo "--- Endpoint metric analysis (status: $ANALYSIS_STATUS) ---"
-    echo "$ANALYSIS_STDOUT"
-    [[ -n "$ANALYSIS_STDERR" ]] && echo "stderr: $ANALYSIS_STDERR"
-    echo "------------------------------------------------------------"
+    # Merge the two key=value outputs into one block for downstream summarizing.
+    local ANALYSIS_STDOUT
+    ANALYSIS_STDOUT=$(printf '%s\n%s' "$CLIENT_ANALYSIS_STDOUT" "$SERVER_ANALYSIS_STDOUT")
 
-    if [[ "$ANALYSIS_STATUS" == "Success" ]] && \
+    echo "--- Endpoint metric analysis ---"
+    echo "client (status: $CLIENT_ANALYSIS_STATUS):"
+    echo "$CLIENT_ANALYSIS_STDOUT"
+    [[ -n "$CLIENT_ANALYSIS_STDERR" ]] && echo "  stderr: $CLIENT_ANALYSIS_STDERR"
+    echo "server (status: $SERVER_ANALYSIS_STATUS):"
+    echo "$SERVER_ANALYSIS_STDOUT"
+    [[ -n "$SERVER_ANALYSIS_STDERR" ]] && echo "  stderr: $SERVER_ANALYSIS_STDERR"
+    echo "--------------------------------"
+
+    if [[ "$CLIENT_ANALYSIS_STATUS" == "Success" && "$SERVER_ANALYSIS_STATUS" == "Success" ]] && \
        ! echo "$ANALYSIS_STDOUT" | grep -q "^missing="; then
         pass "Packet analysis: all endpoint metrics computed"
     else
         local NMISSING
         NMISSING=$(printf '%s' "$ANALYSIS_STDOUT" | grep -c '^missing=' || true)
-        fail "Packet analysis: $NMISSING missing metric event(s) (status=$ANALYSIS_STATUS)"
+        fail "Packet analysis: $NMISSING missing metric event(s) (client=$CLIENT_ANALYSIS_STATUS server=$SERVER_ANALYSIS_STATUS)"
     fi
 
     local ENDPOINT_METRICS="$ANALYSIS_STDOUT"
