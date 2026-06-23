@@ -42,14 +42,23 @@ run_experiment() {
     local BPF_PORTS="portrange ${SERVER_PORT}-${PORT_HI}"
     log "Load/port plan: $NPORTS port(s) [${SERVER_PORT}-${PORT_HI}], IPERF_PARALLEL=${IPERF_PARALLEL:-100000}"
 
-    # ─── Pull latest code ─────────────────────────────────────────────────────
-    log "Pulling latest code on all VMs..."
+    # ─── Pull latest code (clone if missing) ──────────────────────────────────
+    # On a fresh stack the CDK user-data clone can fail (e.g. expired token),
+    # leaving VMs with no repo. Clone-on-demand here using the GitHub PAT from
+    # Secrets Manager (nanoclaw/github-token) so the run is self-healing.
+    log "Pulling latest code on all VMs (cloning if missing)..."
     for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
         remote_bg "$iid" \
             "git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; \
-             sudo -u ec2-user git -C $REPO_PATH pull origin main 2>&1 || true"
+             if [ -d $REPO_PATH/.git ]; then \
+                 sudo -u ec2-user git -C $REPO_PATH pull origin main 2>&1 || true; \
+             else \
+                 GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"'); \
+                 sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git\" $REPO_PATH 2>&1 || true; \
+                 chown -R ec2-user:ec2-user $REPO_PATH 2>/dev/null || true; \
+             fi"
     done
-    sleep 8
+    sleep 20
 
     # ─── Disable TCP options on Client + Server ───────────────────────────────
     log "Disabling TCP timestamps/window-scaling/SACK on Client and Server..."
