@@ -12,6 +12,13 @@
 #include <rte_ethdev.h>
 #include <rte_pause.h>
 
+/* MSS advertised in the spoofed SYN-ACK. This caps the CLIENT's send segment
+ * size. Without it, the client (on a 9001-MTU subnet) emits jumbo frames that
+ * exceed the 2048-byte data-plane copy buffers / mbuf dataroom and are silently
+ * dropped -> first-data loss -> ~200ms TCP RTO (the bimodal server_gap). 1460
+ * keeps every client frame (<=1514B) well within those buffers. */
+#define SPOOFED_MSS 1460
+
 void proc_init(struct packet_processor *proc, struct flow_table *ft,
                struct eth0_io *eth0, struct eth1_io *eth1)
 {
@@ -55,20 +62,21 @@ void proc_handle_syn(struct packet_processor *proc,
             return;
         }
 
-        /* ── Build and send spoofed SYN-ACK (54 bytes) on eth0 ─────────── */
-        uint8_t sa_buf[54];
+        /* ── Build and send spoofed SYN-ACK (58 bytes incl. MSS option) ── */
+        uint8_t sa_buf[58];
         memset(sa_buf, 0, sizeof(sa_buf));
 
         struct rte_ether_hdr *sa_eth = (struct rte_ether_hdr *)sa_buf;
         struct rte_ipv4_hdr  *sa_ip  = (struct rte_ipv4_hdr *)(sa_buf + 14);
         struct rte_tcp_hdr   *sa_tcp = (struct rte_tcp_hdr *)(sa_buf + 34);
+        uint8_t              *sa_opt = sa_buf + 54;   /* TCP options area */
 
         memcpy(sa_eth->dst_addr.addr_bytes, eth->src_addr.addr_bytes, 6);
         memcpy(sa_eth->src_addr.addr_bytes, eth->dst_addr.addr_bytes, 6);
         sa_eth->ether_type = htons(RTE_ETHER_TYPE_IPV4);
 
         sa_ip->version_ihl   = 0x45;
-        sa_ip->total_length  = htons(40);
+        sa_ip->total_length  = htons(44);             /* 20 IP + 24 TCP(+MSS) */
         sa_ip->time_to_live  = 64;
         sa_ip->next_proto_id = IPPROTO_TCP;
         sa_ip->src_addr      = ip->dst_addr;
@@ -78,14 +86,20 @@ void proc_handle_syn(struct packet_processor *proc,
         sa_tcp->dst_port  = tcp->src_port;
         sa_tcp->sent_seq  = htonl(spoofed_isn);
         sa_tcp->recv_ack  = htonl((ntohl(tcp->sent_seq) + 1) & 0xFFFFFFFF);
-        sa_tcp->data_off  = (5 << 4);
+        sa_tcp->data_off  = (6 << 4);                 /* 24-byte TCP header */
         sa_tcp->tcp_flags = RTE_TCP_SYN_FLAG | RTE_TCP_ACK_FLAG;
         sa_tcp->rx_win    = htons(65535);
+
+        /* TCP MSS option: kind=2, len=4, value=SPOOFED_MSS */
+        sa_opt[0] = 2;
+        sa_opt[1] = 4;
+        sa_opt[2] = (uint8_t)(SPOOFED_MSS >> 8);
+        sa_opt[3] = (uint8_t)(SPOOFED_MSS & 0xFF);
 
         recalc_ip_checksum(sa_ip);
         recalc_tcp_checksum(sa_ip, sa_tcp);
 
-        eth0_send(proc->eth0, sa_buf, 54);
+        eth0_send(proc->eth0, sa_buf, 58);
     }
 
     /* ── Forward original SYN on eth1 with V stamped in ack-num ─────────── */
