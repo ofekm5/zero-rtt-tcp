@@ -133,7 +133,7 @@ void proc_handle_syn(struct packet_processor *proc,
 
     /* A dropped SYN costs a ~1s connect RTO; retry briefly if the ring is full. */
     uint16_t sent = 0;
-    for (int attempt = 0; attempt < 1000; attempt++) {
+    for (int attempt = 0; attempt < 8; attempt++) {
         sent = rte_eth_tx_burst(proc->eth1->port_id, 0, &m, 1);
         if (sent)
             break;

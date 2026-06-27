@@ -18,8 +18,10 @@
  * enters the chain here; the default ~208KB rcvbuf silently tail-drops the
  * synchronized 100-flow startup burst. */
 #define AF_PACKET_BUF_BYTES (16 * 1024 * 1024)
-/* Bounded sendto retries on transient backpressure (EAGAIN/ENOBUFS). */
-#define AF_PACKET_TX_RETRIES 1000
+/* Bounded sendto retries on transient backpressure (EAGAIN/ENOBUFS). Kept small:
+ * on the single-threaded poll loop a long spin causes head-of-line blocking that
+ * collapses throughput under load. Drop after a few and let TCP retransmit. */
+#define AF_PACKET_TX_RETRIES 8
 
 /* ── eth0: AF_PACKET raw socket ──────────────────────────────────────────── */
 

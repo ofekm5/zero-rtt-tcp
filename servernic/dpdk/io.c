@@ -17,10 +17,11 @@
 /* AF_PACKET socket buffer target (bytes). Large enough to absorb the
  * synchronized 100-flow startup microburst without kernel tail-drop. */
 #define AF_PACKET_BUF_BYTES (16 * 1024 * 1024)
-/* Bounded sendto retries on transient backpressure (EAGAIN/ENOBUFS). Keeps
- * the single-threaded poll loop from blocking forever while still riding out
- * a momentarily full qdisc/sndbuf instead of silently dropping the frame. */
-#define AF_PACKET_TX_RETRIES 1000
+/* Bounded sendto retries on transient backpressure (EAGAIN/ENOBUFS). Kept small:
+ * on the single-threaded poll loop a long spin causes head-of-line blocking that
+ * collapses throughput under load. A few retries ride out a momentary qdisc/
+ * sndbuf full; beyond that, drop and let TCP retransmit. */
+#define AF_PACKET_TX_RETRIES 8
 
 /* ── eth1: DPDK ENA PMD (ClientNIC-facing) ───────────────────────────────── */
 

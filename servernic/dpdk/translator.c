@@ -169,7 +169,7 @@ void trans_s2c(struct translator *t, struct rte_mbuf *mbuf)
     /* Retry briefly if the TX ring is momentarily full instead of dropping
      * (a dropped s2c segment also stalls the flow on a TCP RTO). */
     uint16_t sent = 0;
-    for (int attempt = 0; attempt < 1000; attempt++) {
+    for (int attempt = 0; attempt < 8; attempt++) {
         sent = rte_eth_tx_burst(t->eth1->port_id, 0, &m, 1);
         if (sent)
             break;
