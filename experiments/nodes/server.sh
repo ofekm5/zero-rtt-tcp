@@ -40,8 +40,10 @@ ulimit -n 1048576 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
 log "Open-file limit (ulimit -n): $(ulimit -n)"
 
 # ─── Pull latest code ─────────────────────────────────────────────────────────
-log "Pulling latest code..."
-sudo -u ec2-user git -C "$REPO_PATH" pull origin main 2>&1 || true
+log "Syncing code to origin/main (hard reset — discards VM-local drift)..."
+sudo -u ec2-user git -C "$REPO_PATH" fetch origin main 2>&1 \
+    && sudo -u ec2-user git -C "$REPO_PATH" reset --hard origin/main 2>&1 \
+    || log "WARNING: git sync failed — using current checkout"
 
 # ─── Pre-flight ───────────────────────────────────────────────────────────────
 MY_IP=$(hostname -I | awk '{print $1}')

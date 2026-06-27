@@ -51,7 +51,8 @@ run_experiment() {
         remote_bg "$iid" \
             "git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; \
              if [ -d $REPO_PATH/.git ]; then \
-                 sudo -u ec2-user git -C $REPO_PATH pull origin main 2>&1 || true; \
+                 sudo -u ec2-user git -C $REPO_PATH fetch origin main 2>&1 && \
+                 sudo -u ec2-user git -C $REPO_PATH reset --hard origin/main 2>&1 || true; \
              else \
                  GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"'); \
                  sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git\" $REPO_PATH 2>&1 || true; \
