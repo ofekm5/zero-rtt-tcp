@@ -10,6 +10,7 @@
 #include <rte_mbuf.h>
 #include <rte_ethdev.h>
 #include <rte_cycles.h>
+#include <rte_pause.h>
 
 /* TCP application payload length of an IPv4/TCP packet at `l3` (start of IP hdr). */
 static uint16_t tcp_payload_len(const struct rte_ipv4_hdr *ip,
@@ -88,7 +89,15 @@ void forward_c2s(struct forwarder *f, const uint8_t *pkt, uint16_t len)
     }
     memcpy(data, buf, len);
 
-    uint16_t sent = rte_eth_tx_burst(f->eth1->port_id, 0, &m, 1);
+    /* Bulk c2s egress: retry briefly if the TX ring is momentarily full
+     * instead of silently dropping (a drop here -> client TCP RTO). */
+    uint16_t sent = 0;
+    for (int attempt = 0; attempt < 1000; attempt++) {
+        sent = rte_eth_tx_burst(f->eth1->port_id, 0, &m, 1);
+        if (sent)
+            break;
+        rte_pause();
+    }
     if (sent == 0)
         rte_pktmbuf_free(m);
 }

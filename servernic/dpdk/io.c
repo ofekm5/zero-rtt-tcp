@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
@@ -11,6 +12,15 @@
 #include <linux/if_ether.h>
 
 #include <rte_ethdev.h>
+#include <rte_pause.h>
+
+/* AF_PACKET socket buffer target (bytes). Large enough to absorb the
+ * synchronized 100-flow startup microburst without kernel tail-drop. */
+#define AF_PACKET_BUF_BYTES (16 * 1024 * 1024)
+/* Bounded sendto retries on transient backpressure (EAGAIN/ENOBUFS). Keeps
+ * the single-threaded poll loop from blocking forever while still riding out
+ * a momentarily full qdisc/sndbuf instead of silently dropping the frame. */
+#define AF_PACKET_TX_RETRIES 1000
 
 /* ── eth1: DPDK ENA PMD (ClientNIC-facing) ───────────────────────────────── */
 
@@ -110,6 +120,15 @@ int eth2_init(struct eth2_io *io, const char *iface, const uint8_t *gw_mac)
     int flags = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
+    /* Enlarge socket buffers so the synchronized 100-flow flush/bulk burst is
+     * absorbed rather than tail-dropped (default ~208KB holds only ~90 frames).
+     * SO_*BUFFORCE bypasses net.core.{r,w}mem_max (we run as root for DPDK). */
+    int bufsz = AF_PACKET_BUF_BYTES;
+    if (setsockopt(fd, SOL_SOCKET, SO_SNDBUFFORCE, &bufsz, sizeof(bufsz)) < 0)
+        setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &bufsz, sizeof(bufsz));
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, &bufsz, sizeof(bufsz)) < 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &bufsz, sizeof(bufsz));
+
     if (ioctl(fd, SIOCGIFHWADDR, &ifr) < 0) {
         LOG_ERR("eth2: SIOCGIFHWADDR failed");
         close(fd);
@@ -118,7 +137,8 @@ int eth2_init(struct eth2_io *io, const char *iface, const uint8_t *gw_mac)
     memcpy(io->mac, ifr.ifr_hwaddr.sa_data, 6);
     memcpy(io->gw_mac, gw_mac, 6);
 
-    io->sock_fd = fd;
+    io->sock_fd  = fd;
+    io->tx_drops = 0;
     LOG_INFO("eth2: initialized on %s (ifindex=%d, MAC=%02x:%02x:%02x:%02x:%02x:%02x)",
              iface, io->ifindex,
              io->mac[0], io->mac[1], io->mac[2],
@@ -143,7 +163,21 @@ int eth2_send(struct eth2_io *io, const uint8_t *buf, uint16_t len)
     sll.sll_halen   = 6;
     memcpy(sll.sll_addr, buf, 6); /* destination MAC from frame */
 
-    ssize_t n = sendto(io->sock_fd, buf, len, 0,
-                       (struct sockaddr *)&sll, sizeof(sll));
-    return (n == len) ? 0 : -1;
+    /* The socket is non-blocking: a full qdisc/sndbuf makes sendto return
+     * EAGAIN/ENOBUFS. Retry briefly instead of dropping the data segment —
+     * a silent drop here costs the client a ~200ms TCP RTO. */
+    for (int attempt = 0; attempt < AF_PACKET_TX_RETRIES; attempt++) {
+        ssize_t n = sendto(io->sock_fd, buf, len, 0,
+                           (struct sockaddr *)&sll, sizeof(sll));
+        if (n == (ssize_t)len)
+            return 0;
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
+                      errno == ENOBUFS)) {
+            rte_pause();
+            continue;
+        }
+        break; /* hard error or short write */
+    }
+    io->tx_drops++;
+    return -1;
 }

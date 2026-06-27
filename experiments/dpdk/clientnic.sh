@@ -109,6 +109,10 @@ if [ "$FWRD" != "1" ]; then
 fi
 log "IP forwarding: enabled"
 
+# Raise the eth0 egress qdisc depth so the spoofed SYN-ACK / s2c burst is queued
+# rather than tail-dropped under the 100-flow load (default txqueuelen 1000).
+sudo ip link set eth0 txqueuelen 100000 2>/dev/null || true
+
 # ─── Start packet capture on eth0 (background) ───────────────────────────────
 # eth1 is DPDK-controlled; the binary captures it directly via --server-pcap.
 log "Starting tcpdump on eth0 → /tmp/client_side.pcap (ports ${SERVER_PORT}-${PORT_HI}) ..."

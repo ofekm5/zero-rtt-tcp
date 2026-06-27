@@ -9,6 +9,7 @@ struct eth0_io {
     int      sock_fd;
     int      ifindex;
     uint8_t  mac[6];
+    uint64_t tx_drops;    /* frames dropped after exhausting send retries */
 };
 
 /* eth1: DPDK ENA PMD (server-facing) */

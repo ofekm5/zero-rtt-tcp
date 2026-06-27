@@ -11,6 +11,7 @@
 #include <rte_mbuf.h>
 #include <rte_ethdev.h>
 #include <rte_cycles.h>
+#include <rte_pause.h>
 
 /* TCP application payload length of an IPv4/TCP packet. */
 static uint16_t tcp_payload_len(const struct rte_ipv4_hdr *ip,
@@ -93,7 +94,9 @@ void trans_c2s(struct translator *t, const uint8_t *pkt, uint16_t len)
     memcpy(eth->src_addr.addr_bytes, t->eth2->mac, 6);
     memcpy(eth->dst_addr.addr_bytes, entry->server_mac, 6);
 
-    eth2_send(t->eth2, buf, len);
+    if (eth2_send(t->eth2, buf, len) < 0)
+        LOG_WARN("c2s: eth2_send dropped data segment (tx_drops=%lu)",
+                 (unsigned long)t->eth2->tx_drops);
 }
 
 /* ── Server→Client (eth2 AF_PACKET raw buf → eth1 DPDK) ─────────────────── */
@@ -163,7 +166,15 @@ void trans_s2c(struct translator *t, struct rte_mbuf *mbuf)
     }
     memcpy(d, buf, len);
 
-    uint16_t sent = rte_eth_tx_burst(t->eth1->port_id, 0, &m, 1);
+    /* Retry briefly if the TX ring is momentarily full instead of dropping
+     * (a dropped s2c segment also stalls the flow on a TCP RTO). */
+    uint16_t sent = 0;
+    for (int attempt = 0; attempt < 1000; attempt++) {
+        sent = rte_eth_tx_burst(t->eth1->port_id, 0, &m, 1);
+        if (sent)
+            break;
+        rte_pause();
+    }
     if (sent == 0)
         rte_pktmbuf_free(m);
 }

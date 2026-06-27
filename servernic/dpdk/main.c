@@ -195,9 +195,11 @@ int main(int argc, char *argv[])
             rte_pktmbuf_free(rx_bufs[i]);
         }
 
-        /* Poll eth2 (AF_PACKET non-blocking recvfrom, from Server) */
-        int n = eth2_recv(&eth2, eth2_buf, sizeof(eth2_buf));
-        if (n > 0)
+        /* Poll eth2 (AF_PACKET, from Server): drain until empty (bounded) so the
+         * socket RX buffer cannot back up and tail-drop returning ACKs. */
+        int n;
+        for (int k = 0; k < 64 &&
+             (n = eth2_recv(&eth2, eth2_buf, sizeof(eth2_buf))) > 0; k++)
             pipeline_feed_eth2(&pipeline, eth2_buf, (uint16_t)n);
     }
 

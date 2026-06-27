@@ -18,6 +18,7 @@ struct eth2_io {
     int      ifindex;
     uint8_t  mac[6];
     uint8_t  gw_mac[6];   /* Server-side next-hop MAC (from --server-gw-mac) */
+    uint64_t tx_drops;    /* frames dropped after exhausting send retries */
 };
 
 int  eth1_init(struct eth1_io *io, uint16_t port_id, struct rte_mempool *pool,

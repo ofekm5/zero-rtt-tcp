@@ -181,8 +181,14 @@ int main(int argc, char *argv[])
     struct rte_mbuf *rx_bufs[RX_BURST_SIZE];
 
     while (running) {
-        int n = eth0_recv(&eth0, eth0_buf, sizeof(eth0_buf));
-        if (n > 0)
+        /* Drain eth0 (AF_PACKET) until empty (bounded) per pass. The bulk
+         * client->server upload arrives here; a single recv per loop lets the
+         * socket RX buffer overflow under the 100-flow burst -> dropped DATA
+         * -> ~200ms TCP RTO. The 64 bound keeps eth1/ACK servicing from
+         * starving. */
+        int n;
+        for (int k = 0; k < 64 &&
+             (n = eth0_recv(&eth0, eth0_buf, sizeof(eth0_buf))) > 0; k++)
             pipeline_feed_eth0(&pipeline, eth0_buf, (uint16_t)n);
 
         uint16_t nb_rx = rte_eth_rx_burst(eth1.port_id, 0, rx_bufs, RX_BURST_SIZE);

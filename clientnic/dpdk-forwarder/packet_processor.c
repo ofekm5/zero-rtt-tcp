@@ -10,6 +10,7 @@
 #include <rte_tcp.h>
 #include <rte_mbuf.h>
 #include <rte_ethdev.h>
+#include <rte_pause.h>
 
 void proc_init(struct packet_processor *proc, struct flow_table *ft,
                struct eth0_io *eth0, struct eth1_io *eth1)
@@ -116,7 +117,14 @@ void proc_handle_syn(struct packet_processor *proc,
     fwd_tcp->recv_ack = htonl(spoofed_isn);
     recalc_tcp_checksum(fwd_ip, fwd_tcp);
 
-    uint16_t sent = rte_eth_tx_burst(proc->eth1->port_id, 0, &m, 1);
+    /* A dropped SYN costs a ~1s connect RTO; retry briefly if the ring is full. */
+    uint16_t sent = 0;
+    for (int attempt = 0; attempt < 1000; attempt++) {
+        sent = rte_eth_tx_burst(proc->eth1->port_id, 0, &m, 1);
+        if (sent)
+            break;
+        rte_pause();
+    }
     if (sent == 0)
         rte_pktmbuf_free(m);
 

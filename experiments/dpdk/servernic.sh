@@ -157,6 +157,10 @@ for _iface in eth1 eth2 eth3; do
 done
 log "Server-facing interface (AF_PACKET): $SERVER_IFACE"
 
+# Raise the egress qdisc depth so the synchronized 100-flow flush/bulk burst is
+# queued rather than tail-dropped (default txqueuelen 1000 -> ENOBUFS under load).
+sudo ip link set "$SERVER_IFACE" txqueuelen 100000 2>/dev/null || true
+
 # ─── IP forwarding check ──────────────────────────────────────────────────────
 FWRD=$(cat /proc/sys/net/ipv4/ip_forward)
 if [ "$FWRD" != "1" ]; then

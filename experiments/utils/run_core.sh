@@ -76,12 +76,15 @@ run_experiment() {
         "ethtool -K eth0 gro off lro off tso off gso off 2>/dev/null || true"
 
     log "Accuracy knobs: applying tc netem 50ms delay on Client and Server egress..."
+    # netem default queue limit is 1000 pkts; at ~100ms RTT a window's worth of
+    # 100 parallel flows exceeds that and tail-drops, manufacturing loss. Raise
+    # the limit so netem emulates pure delay, not delay+loss.
     remote_bg "$CLIENT_ID" \
         "tc qdisc del dev eth0 root 2>/dev/null || true; \
-         tc qdisc add dev eth0 root netem delay 50ms 2>/dev/null || true"
+         tc qdisc add dev eth0 root netem delay 50ms limit 1000000 2>/dev/null || true"
     remote_bg "$SERVER_ID" \
         "tc qdisc del dev eth0 root 2>/dev/null || true; \
-         tc qdisc add dev eth0 root netem delay 50ms 2>/dev/null || true"
+         tc qdisc add dev eth0 root netem delay 50ms limit 1000000 2>/dev/null || true"
     sleep 2
 
     # ─── Cleanup any leftover processes ───────────────────────────────────────

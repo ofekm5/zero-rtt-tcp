@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
@@ -11,6 +12,14 @@
 #include <linux/if_ether.h>
 
 #include <rte_ethdev.h>
+#include <rte_pause.h>
+
+/* AF_PACKET socket buffer target (bytes). The bulk client->server upload
+ * enters the chain here; the default ~208KB rcvbuf silently tail-drops the
+ * synchronized 100-flow startup burst. */
+#define AF_PACKET_BUF_BYTES (16 * 1024 * 1024)
+/* Bounded sendto retries on transient backpressure (EAGAIN/ENOBUFS). */
+#define AF_PACKET_TX_RETRIES 1000
 
 /* ── eth0: AF_PACKET raw socket ──────────────────────────────────────────── */
 
@@ -49,6 +58,15 @@ int eth0_init(struct eth0_io *io, const char *iface)
     int flags = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
+    /* Enlarge socket buffers so the synchronized 100-flow bulk-upload burst is
+     * absorbed rather than tail-dropped (default ~208KB holds only ~90 frames).
+     * SO_*BUFFORCE bypasses net.core.{r,w}mem_max (we run as root for DPDK). */
+    int bufsz = AF_PACKET_BUF_BYTES;
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, &bufsz, sizeof(bufsz)) < 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &bufsz, sizeof(bufsz));
+    if (setsockopt(fd, SOL_SOCKET, SO_SNDBUFFORCE, &bufsz, sizeof(bufsz)) < 0)
+        setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &bufsz, sizeof(bufsz));
+
     /* Read MAC address */
     if (ioctl(fd, SIOCGIFHWADDR, &ifr) < 0) {
         LOG_ERR("eth0: SIOCGIFHWADDR failed");
@@ -57,7 +75,8 @@ int eth0_init(struct eth0_io *io, const char *iface)
     }
     memcpy(io->mac, ifr.ifr_hwaddr.sa_data, 6);
 
-    io->sock_fd = fd;
+    io->sock_fd  = fd;
+    io->tx_drops = 0;
     LOG_INFO("eth0: initialized on %s (ifindex=%d, MAC=%02x:%02x:%02x:%02x:%02x:%02x)",
              iface, io->ifindex,
              io->mac[0], io->mac[1], io->mac[2],
@@ -82,9 +101,22 @@ int eth0_send(struct eth0_io *io, const uint8_t *buf, uint16_t len)
     sll.sll_halen   = 6;
     memcpy(sll.sll_addr, buf, 6); /* destination MAC from frame */
 
-    ssize_t n = sendto(io->sock_fd, buf, len, 0,
-                       (struct sockaddr *)&sll, sizeof(sll));
-    return (n == len) ? 0 : -1;
+    /* Non-blocking socket: retry briefly on EAGAIN/ENOBUFS instead of dropping
+     * (the spoofed SYN-ACK and s2c data exit here; a drop costs a TCP RTO). */
+    for (int attempt = 0; attempt < AF_PACKET_TX_RETRIES; attempt++) {
+        ssize_t n = sendto(io->sock_fd, buf, len, 0,
+                           (struct sockaddr *)&sll, sizeof(sll));
+        if (n == (ssize_t)len)
+            return 0;
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK ||
+                      errno == ENOBUFS)) {
+            rte_pause();
+            continue;
+        }
+        break; /* hard error or short write */
+    }
+    io->tx_drops++;
+    return -1;
 }
 
 /* ── eth1: DPDK ENA PMD ─────────────────────────────────────────────────── */
