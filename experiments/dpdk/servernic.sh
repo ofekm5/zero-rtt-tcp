@@ -159,6 +159,11 @@ for _iface in eth1 eth2 eth3; do
 done
 log "Server-facing interface (AF_PACKET): $SERVER_IFACE"
 
+# Disable GRO/LRO on the server-facing AF_PACKET interface so the kernel does
+# not coalesce received segments into >2048-byte super-frames before the raw
+# socket reads them (the data plane's 2048-byte buffers would drop those).
+sudo ethtool -K "$SERVER_IFACE" gro off lro off 2>/dev/null || true
+
 # Raise the egress qdisc depth so the synchronized 100-flow flush/bulk burst is
 # queued rather than tail-dropped (default txqueuelen 1000 -> ENOBUFS under load).
 sudo ip link set "$SERVER_IFACE" txqueuelen 100000 2>/dev/null || true

@@ -111,6 +111,14 @@ if [ "$FWRD" != "1" ]; then
 fi
 log "IP forwarding: enabled"
 
+# Disable GRO/LRO on the client-facing AF_PACKET ingress. Otherwise the kernel
+# coalesces the client's TCP segments into >2048-byte super-frames BEFORE the
+# raw socket reads them; the data plane's 2048-byte buffers then drop them,
+# causing first-data loss -> ~200ms TCP RTO (the bimodal server_gap). This is
+# the NIC-side analogue of the offload-off knobs run_core.sh applies to the
+# Client/Server endpoints.
+sudo ethtool -K eth0 gro off lro off 2>/dev/null || true
+
 # Raise the eth0 egress qdisc depth so the spoofed SYN-ACK / s2c burst is queued
 # rather than tail-dropped under the 100-flow load (default txqueuelen 1000).
 sudo ip link set eth0 txqueuelen 100000 2>/dev/null || true
