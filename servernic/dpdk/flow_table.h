@@ -4,7 +4,11 @@
 #include <stdint.h>
 #include <string.h>
 
-#define FT_SIZE       1024
+/* Open-addressing table (mask = FT_SIZE-1, must stay a power of two). Sized to
+ * hold the 100k-connection benchmark at a ~0.4 load factor so linear-probe
+ * chains on the per-packet lookup path stay short. The entries[] array is BSS
+ * and lazily committed, so only touched flows consume RAM. */
+#define FT_SIZE       262144
 #define FT_MAX_BUFFER 64
 
 #define FLOW_STATE_PENDING 0

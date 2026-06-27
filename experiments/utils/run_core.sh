@@ -63,10 +63,17 @@ run_experiment() {
 
     # ─── Disable TCP options on Client + Server ───────────────────────────────
     log "Disabling TCP timestamps/window-scaling/SACK on Client and Server..."
+    # Client: also widen the ephemeral port range and allow TIME_WAIT reuse so a
+    # single source IP can open up to 100k connections across the app ports
+    # (default range ~28k ports x N dst ports was the prior 100k bottleneck).
     remote_bg "$CLIENT_ID" \
-        "sysctl -w net.ipv4.tcp_timestamps=0 net.ipv4.tcp_window_scaling=0 net.ipv4.tcp_sack=0"
+        "sysctl -w net.ipv4.tcp_timestamps=0 net.ipv4.tcp_window_scaling=0 net.ipv4.tcp_sack=0; \
+         sysctl -w net.ipv4.ip_local_port_range='1024 65535'; \
+         sysctl -w net.ipv4.tcp_tw_reuse=1"
+    # Server: raise the accept/SYN backlog so a 100k SYN burst is not dropped.
     remote_bg "$SERVER_ID" \
-        "sysctl -w net.ipv4.tcp_timestamps=0 net.ipv4.tcp_window_scaling=0 net.ipv4.tcp_sack=0"
+        "sysctl -w net.ipv4.tcp_timestamps=0 net.ipv4.tcp_window_scaling=0 net.ipv4.tcp_sack=0; \
+         sysctl -w net.core.somaxconn=131072 net.ipv4.tcp_max_syn_backlog=131072"
     sleep 2
 
     # ─── Accuracy knobs: offload-off + netem on endpoint NICs ─────────────────

@@ -4,7 +4,9 @@
 #include <stdint.h>
 #include <string.h>
 
-#define FT_SIZE 1024
+/* Open-addressing table (mask = FT_SIZE-1, must stay a power of two). Sized for
+ * the 100k-connection benchmark at a ~0.4 load factor. */
+#define FT_SIZE 262144
 
 /* Flow identification: 4-tuple in network byte order */
 struct flow_key {
