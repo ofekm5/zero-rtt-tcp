@@ -1,16 +1,16 @@
 {
   "version": "52.0.0",
   "files": {
-    "6608c76fc7566a9f25c89cc4d3c24f8af863c25b4819e65e975f13ad7fdad474": {
+    "5a64ceff26506fba5f3e67ccfef3f2ba21b8f96779108255dace5fc02d81e768": {
       "displayName": "BaselineStack Template",
       "source": {
         "path": "BaselineStack.template.json",
         "packaging": "file"
       },
       "destinations": {
-        "191106064063-eu-central-1-9222f110": {
+        "191106064063-eu-central-1-160e1441": {
           "bucketName": "cdk-hnb659fds-assets-191106064063-eu-central-1",
-          "objectKey": "6608c76fc7566a9f25c89cc4d3c24f8af863c25b4819e65e975f13ad7fdad474.json",
+          "objectKey": "5a64ceff26506fba5f3e67ccfef3f2ba21b8f96779108255dace5fc02d81e768.json",
           "region": "eu-central-1",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::191106064063:role/cdk-hnb659fds-file-publishing-role-191106064063-eu-central-1"
         }

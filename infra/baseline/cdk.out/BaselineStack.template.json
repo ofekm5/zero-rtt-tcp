@@ -215,7 +215,7 @@
      }
     ],
     "UserData": {
-     "Fn::Base64": "#!/bin/bash\nyum update -y\nyum install -y git python3 python3-pip\nGITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token --with-decryption --query Parameter.Value --output text --region eu-central-1)\ngit clone \"https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git\" /home/ec2-user/zero-rtt-demo\nchown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo\nchmod -R 755 /home/ec2-user/zero-rtt-demo"
+     "Fn::Base64": "#!/bin/bash\nyum update -y\namazon-linux-extras install -y epel\nyum install -y git python3 python3-pip iperf\nGITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token --with-decryption --query Parameter.Value --output text --region eu-central-1)\ngit clone \"https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git\" /home/ec2-user/zero-rtt-demo\nchown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo\nchmod -R 755 /home/ec2-user/zero-rtt-demo"
     }
    },
    "DependsOn": [
@@ -278,7 +278,7 @@
      }
     ],
     "UserData": {
-     "Fn::Base64": "#!/bin/bash\nyum update -y\nyum install -y git python3 python3-pip\nGITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token --with-decryption --query Parameter.Value --output text --region eu-central-1)\ngit clone \"https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git\" /home/ec2-user/zero-rtt-demo\nchown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo\nchmod -R 755 /home/ec2-user/zero-rtt-demo"
+     "Fn::Base64": "#!/bin/bash\nyum update -y\namazon-linux-extras install -y epel\nyum install -y git python3 python3-pip iperf\nGITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token --with-decryption --query Parameter.Value --output text --region eu-central-1)\ngit clone \"https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git\" /home/ec2-user/zero-rtt-demo\nchown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo\nchmod -R 755 /home/ec2-user/zero-rtt-demo"
     }
    },
    "DependsOn": [
