@@ -1,7 +1,5 @@
 #!/bin/bash
-# DPDK Virtual PMD Tests for ClientNIC Forwarder variant
-# Same smoke-test suite as clientnic/dpdk/tests/run_dpdk_tests.sh but
-# targeting the clientnic-dpdk-forwarder binary.
+# DPDK virtual-PMD smoke-test suite targeting the clientnic-dpdk-forwarder binary.
 #
 # Usage:
 #   ./run_dpdk_tests.sh <path-to-binary>

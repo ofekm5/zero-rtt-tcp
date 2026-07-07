@@ -7,7 +7,7 @@
 # Startup order: server.sh → servernic.sh → clientnic.sh → [start this] → client.sh
 #
 # Usage (on Client or Server VM via SSM):
-#   cd /home/ec2-user/zero-rtt-demo/experiments/zero-rtt-dpdk/nodes
+#   cd /home/ec2-user/zero-rtt-demo/experiments/nodes
 #   ./ebpf-trace.sh [port]
 #     port  TCP port to filter (default: 8080)
 #

@@ -1,7 +1,7 @@
 # ClientNIC DPDK Forwarder Tests
 
-Same DPDK virtual PMD smoke-test suite as `clientnic/dpdk/tests/` but targeting
-the `clientnic-dpdk-forwarder` binary.
+DPDK virtual PMD smoke-test suite targeting the `clientnic-dpdk-forwarder` binary
+(no ENA hardware required).
 
 ## Usage
 

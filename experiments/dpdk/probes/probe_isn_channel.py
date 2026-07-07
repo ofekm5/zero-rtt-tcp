@@ -43,7 +43,7 @@ def main():
         else int(args.probe_val)
 
     try:
-        from scapy.all import Ether, IP, TCP, get_if_hwaddr, get_if_addr, sendp, conf
+        from scapy.all import Ether, IP, TCP, get_if_hwaddr, sendp, conf
         conf.verb = 0
     except ImportError:
         print("ERROR: scapy is required.  Install with: pip install scapy", file=sys.stderr)

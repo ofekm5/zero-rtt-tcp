@@ -13,7 +13,7 @@ Blocking access to the RUNS testbed; address before running BF3 experiments.
 Full spec in `openspec/changes/phase-1b-iperf3-stress-testing/`
 
 - [ ] Add `iperf3` install to CDK user data in `infra/dpdk/cdk/smartnics_stack.py` and `infra/scapy/cdk/smartnics_stack.py`
-- [ ] Add `iperf3-server.sh` / `iperf3-client.sh` to `experiments/zero-rtt-dpdk/nodes/` and `experiments/zero-rtt-clientnic-translate/nodes/`
+- [ ] Add `iperf3-server.sh` / `iperf3-client.sh` to `experiments/nodes/`
 - [ ] Build `run_iperf3_experiment.sh` orchestrator: single-stream, 4 parallel streams, reverse, bidirectional; output JSON + pcap
 - [ ] Validate via SSM: confirm JSON output, test under load with ClientNIC DPDK on port 5201
 

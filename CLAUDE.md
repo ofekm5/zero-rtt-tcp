@@ -57,8 +57,7 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 ### Component Responsibilities
 
 1. **Client VM** (`client-app/`): Standard unmodified TCP client application
-2. **ClientNIC VM** (`clientnic/`): **Core 0-RTT logic** — intercepts SYN packets, sends spoofed SYN-ACK, forwards SYN toward Server. Two DPDK variants:
-   - `clientnic/dpdk/` — **full-owner**: spoof SYN-ACK + manage all seq/ack translation (original implementation)
+2. **ClientNIC VM** (`clientnic/`): **Core 0-RTT logic** — intercepts SYN packets, sends spoofed SYN-ACK, forwards SYN toward Server. DPDK implementation:
    - `clientnic/dpdk-forwarder/` — **T8 forwarder**: spoof SYN-ACK + stamp V in SYN ack-num + transparent forward (translation shifted to ServerNIC)
 3. **ServerNIC VM** (`servernic/`): In T8 mode — **sole stateful translator**: reads V from SYN ack-num, computes delta, drops real SYN-ACK, rewrites all packets. In legacy mode — stateless Scapy forwarder.
 4. **Server VM** (`server-app/`): Standard unmodified TCP server application
@@ -101,7 +100,7 @@ del packet[TCP].chksum
 
 **AWS EC2 Platform:**
 - **Python 3.8+**: Scapy implementation and all supporting tools
-- **C11 + DPDK 23.11**: DPDK implementation (`clientnic/dpdk/`)
+- **C11 + DPDK 23.11**: DPDK implementation (`clientnic/dpdk-forwarder/` + `servernic/dpdk/`)
 - **Scapy**: Packet manipulation library (wraps AF_PACKET raw sockets)
 - **Linux**: Required for raw socket support and DPDK vfio-pci
 - **AWS**: EC2, ENIs, CDK for infrastructure
@@ -123,56 +122,37 @@ Scapy provides:
 ## Key Documentation
 
 ### Architecture & Design
-- **`.claude/context/architecture.md`**: Complete system architecture, requirements, protocol flow
 - **`clientnic/README.md`**: Detailed ClientNIC implementation (0-RTT core logic)
 - **`servernic/README.md`**: ServerNIC forwarding implementation
-- **`todos/tech-improvements.md`**: T8 ISN-passing technique (ack-num field piggybacking) — recommended for current AWS VPC topology
 - **`observability/`**: eBPF observability implementation (currently disabled) — packet tracing and performance monitoring
 
 ### OpenSpec Change Tracking
 - **`openspec/changes/`**: Experimental spec-driven workflow for tracking development phases
-  - **`t8-isn-ack-num-translation-shift/`**: T8 ISN-passing — implementation complete in `clientnic/dpdk-forwarder/` + `servernic/dpdk/`; pending probe verification on live AWS
   - **`aws-to-onprem-full-dpdk-migration/`**: Migration planning from AWS to on-prem Bluefield
   - **`phase-1b-iperf3-stress-testing/`**: Performance validation with stress testing
-  - Archived changes in `openspec/changes/archive/`
+  - **`endpoint-pcap-measurement/`**: Endpoint-based pcap measurement model
+  - Archived changes in `openspec/changes/archive/` (includes the completed T8 ISN-ack-num translation shift)
 
 ### Reference
-- **`.claude/skills/scapy-development/SKILL.md`**: Scapy skill routing index — points to modular reference files:
-  - `references/parse-decide-modify.md`: Core architectural pattern (always read alongside others)
-  - `references/sending.md`: `sendp()` vs `send()`, cross-subnet forwarding
-  - `references/kernel-integration.md`: AF_PACKET, RST suppression, re-capture loop
-  - `references/seq-rewriting-and-checksums.md`: Delta math, checksums, 32-bit wraparound
-  - `references/packet-construction.md`: Packet building, field access, flags
-  - `references/sniffing.md`: `sniff()` params, BPF filters, multi-interface threading
-  - `references/forging-and-spoofing.md`: Spoofed SYN-ACK, ISN generation
-  - `references/pcap-analysis.md`: rdpcap/wrpcap, manual checksum verification
-  - `references/unit-testing.md`: Real packets in tests, mock patterns
 - **`.claude/skills/run-experiment/SKILL.md`**: Run-experiment skill (pick mode, run orchestrator, diagnose failures across scapy/dpdk/proxmox/baseline)
 - **`.claude/skills/run-experiment/references/troubleshooting.md`**: Known issues and debugging tips
 - **`.claude/skills/run-experiment/references/test-scripts.md`**: All four runners + run_core.sh, validate_0rtt_capture.py, and analyze_metrics.py reference
 
 ### Integration Testing
-- **`experiments/zero-rtt-clientnic-translate/run_experiment.sh`**: End-to-end orchestrator for the Scapy stack (local → 4 VMs via SSM)
-- **`experiments/zero-rtt-dpdk/run_experiment.sh`**: End-to-end orchestrator for the DPDK stack — builds binary, passes `--server-pcap` so the validator has a real eth1 capture
+- **`experiments/scapy/run_experiment.sh`**: End-to-end orchestrator for the Scapy stack (local → 4 VMs via SSM)
+- **`experiments/dpdk/run_experiment.sh`**: End-to-end orchestrator for the DPDK stack — builds binary, passes `--server-pcap` so the validator has a real eth1 capture
 - **`clientnic/validate_0rtt_capture.py`**: pcap analysis — validates spoofed SYN-ACK, ISN delta, timing, checksums (runs on ClientNIC VM); copy to `/tmp/` before running to avoid `clientnic/scapy/` shadowing the `scapy` package
-- **`experiments/zero-rtt-clientnic-translate/reports/`**: Test run reports
+- **`experiments/dpdk/reports/`** and **`experiments/scapy/reports/`**: Test run reports
 
 Startup order: **Server → ServerNIC → ClientNIC → Client**
-
-### Agent System Prompts
-Specialist agent prompts under `.claude/context/agents-system-prompts/`:
-- **`clientnic-developer.md`**: ClientNIC 0-RTT logic developer agent
-- **`servernic-developer.md`**: ServerNIC forwarder developer agent
-- **`integration-tester.md`**: Integration testing agent
 
 ## Development Status
 
 **AWS EC2 Platform:**
 - [x] ServerNIC stateless forwarder (`servernic/scapy/main.py`)
-- [x] Client TCP application (`client-app/client.py`)
-- [x] Server TCP application (`server-app/server.py`)
+- [x] Client iperf traffic generator (`client-app/iperf_client.sh`)
+- [x] Server iperf listener (`server-app/iperf_server.sh`)
 - [x] ClientNIC Scapy implementation (`clientnic/scapy/`)
-- [x] ClientNIC DPDK implementation (`clientnic/dpdk/`) — C11, DPDK 23.11 ENA PMD, all checks pass
 - [x] ClientNIC DPDK forwarder (`clientnic/dpdk-forwarder/`) — T8 variant: spoof + stamp V + transparent forward
 - [x] ServerNIC DPDK implementation (`servernic/dpdk/`) — T8 sole translator: V extraction, delta, buffering, seq/ack rewrite
 - [x] Integration test suites (`experiments/`)
@@ -190,10 +170,10 @@ Specialist agent prompts under `.claude/context/agents-system-prompts/`:
 ## Development Workflow
 
 **AWS EC2 Testing & Experimentation:**
-1. **Scapy stack**: `./experiments/zero-rtt-clientnic-translate/run_experiment.sh`
-2. **DPDK stack**: `./experiments/zero-rtt-dpdk/run_experiment.sh`
+1. **Scapy stack**: `./experiments/scapy/run_experiment.sh`
+2. **DPDK stack**: `./experiments/dpdk/run_experiment.sh`
 3. Investigate failures using the manual steps in `.claude/skills/run-experiment/SKILL.md`
-4. File findings in `experiments/zero-rtt-clientnic-translate/reports/`
+4. Reports are written automatically to `experiments/<mode>/reports/`
 
 **Change Management (OpenSpec Workflow):**
 - Active changes tracked in `openspec/changes/` with spec-driven proposals, designs, and task lists
@@ -246,53 +226,45 @@ Specialist agent prompts under `.claude/context/agents-system-prompts/`:
 
 ```
 client-app/
-├── client.py           # Standard TCP client
-├── README.md
-└── tests/
-    └── test_client.py  # Client unit tests
+├── iperf_client.sh     # iperf2 test-scenario suite (client side)
+└── README.md
 
 clientnic/
 ├── validate_0rtt_capture.py  # pcap analysis: spoofed SYN-ACK, ISN delta, checksums
 ├── README.md
 ├── scapy/                    # Scapy-based implementation (complete)
 │   ├── main.py               # Entry point, sniffers on eth0/eth1
-│   └── src/
-│       ├── handlers.py       # SYN interception, 0-RTT logic
-│       ├── flow_table.py     # Connection state and seq delta tracking
-│       ├── rewriter.py       # Seq/ack modification, checksum recalc
-│       ├── spoofer.py        # Spoofed SYN-ACK generation
-│       └── logger.py         # Packet logging
-├── dpdk/                     # DPDK full-owner implementation (complete) — spoof + translate
-│   ├── main.c                # EAL init, CLI, busy-poll loop
-│   ├── flow_table.c/h        # Connection state, ISN delta, packet buffer
-│   ├── io.c/h                # eth0 AF_PACKET + eth1 DPDK ENA port
-│   ├── packet_processor.c/h  # SYN spoof+forward, SYN-ACK delta+flush
-│   ├── translator.c/h        # Per-packet seq/ack rewriting
-│   ├── pipeline.c/h          # Parse Ethernet/IP/TCP, classify, dispatch
-│   ├── checksum.c/h          # IP + TCP checksum recalc via DPDK helpers
-│   ├── capture.c/h           # --server-pcap pcap writer for eth1 RX
-│   ├── log.c/h               # RTE_LOG wrappers
-│   ├── meson.build           # Build definition
-│   └── README.md
-└── dpdk-forwarder/           # DPDK T8 forwarder variant (complete) — spoof + stamp V + transparent forward
+│   ├── src/
+│   │   ├── pipeline.py       # Parse → classify → dispatch
+│   │   └── utils/
+│   │       ├── flow_table.py         # Connection state and seq delta tracking
+│   │       ├── packet_processor.py   # SYN interception, spoofed SYN-ACK, delta
+│   │       ├── translator.py         # Seq/ack modification, checksum recalc
+│   │       └── logger.py             # Packet logging
+│   └── tests/                # Python unit tests
+└── dpdk-forwarder/           # DPDK T8 forwarder (complete) — spoof + stamp V + transparent forward
+    ├── main.c                # EAL init, CLI, busy-poll loop
     ├── flow_table.c/h        # Slim flow table: {V, client_mac, state} — no delta or buffer
     ├── io.c/h                # eth0 AF_PACKET + eth1 DPDK ENA port
     ├── packet_processor.c/h  # proc_handle_syn: spoof SYN-ACK + stamp V in ack-num
     ├── forwarder.c/h         # forward_c2s / forward_s2c: Ethernet rewrite only
     ├── pipeline.c/h          # Parse → classify → dispatch
     ├── checksum.c/h          # IP + TCP checksum recalc
+    ├── capture.c/h           # --server-pcap pcap writer for eth1 RX
     ├── log.c/h               # RTE_LOG wrappers
     ├── meson.build           # Build definition (binary: clientnic-dpdk-forwarder)
     ├── README.md
-    └── tests/                # Python unit tests (no DPDK required)
+    └── tests/                # Python unit tests + virtual-PMD smoke tests
 
 servernic/
 ├── README.md
 ├── scapy/                    # Scapy-based implementation (complete, legacy)
 │   ├── main.py               # Simple packet forwarder
-│   └── src/
-│       ├── forwarder.py      # Forwarding logic
-│       └── logger.py         # Packet logging
+│   ├── src/
+│   │   ├── pipeline.py       # Forwarding logic
+│   │   └── utils/
+│   │       └── logger.py     # Packet logging
+│   └── tests/
 └── dpdk/                     # DPDK T8 translator implementation (complete)
     ├── flow_table.c/h        # Hash table: {V, real_isn, delta, buffer}
     ├── syn_handler.c/h       # SYN: extract V, zero ack, forward; SYN-ACK: set delta, flush, drop
@@ -306,19 +278,20 @@ servernic/
     └── tests/                # Python unit tests (no DPDK required)
 
 experiments/
-├── zero-rtt-clientnic-translate/
-│   ├── run_experiment.sh       # Scapy stack end-to-end orchestrator (local → 4 VMs via SSM)
-│   └── reports/                # Test run reports (e.g. integration-test-report-YYYY-MM-DD.md)
-└── zero-rtt-dpdk/
-    └── run_experiment.sh       # DPDK stack end-to-end orchestrator
+├── scapy/              # Scapy stack: run_experiment.sh + clientnic.sh/servernic.sh node scripts
+├── dpdk/               # DPDK stack: run_experiment.sh, node scripts, probes/, reports/
+├── baseline-tcp/       # Plain-TCP baseline: run_experiment.sh + reports/
+├── proxmox/            # RUNS lab (Proxmox) orchestrator
+├── nodes/              # Shared node scripts: server.sh, client.sh, ebpf-trace.sh
+├── utils/              # run_core.sh, measure.sh, analyze_metrics.py, ssm.sh, ssh_lab.sh + tests/
+└── archive/            # Historical test reports
 
 server-app/
-├── server.py           # Standard TCP server
-├── README.md
-└── tests/
-    └── test_server.py  # Server unit tests
+├── iperf_server.sh     # iperf2 listener (server side)
+└── README.md
 
 infra/
+├── baseline/           # AWS CDK stack: plain-TCP baseline (kernel-routed NIC VMs)
 ├── scapy/              # AWS CDK stack: Scapy data plane (Python on ClientNIC)
 │   ├── deploy.ps1 / destroy.ps1
 │   └── cdk/
@@ -339,15 +312,12 @@ observability/                # eBPF observability implementation (currently dis
 ├── ...                        # Packet tracing and performance monitoring
 
 openspec/
+├── specs/              # Current-truth capability specs
 ├── changes/            # Experimental spec-driven change tracking
-│   ├── t8-isn-ack-num-translation-shift/    # Active: ISN passing for ServerNIC
 │   ├── aws-to-onprem-full-dpdk-migration/   # Migration planning to Bluefield
 │   ├── phase-1b-iperf3-stress-testing/      # Performance validation with stress testing
-│   └── archive/        # Completed changes (DPDK port, SSM tests, node integration)
-
-todos/
-├── urgents.md          # Critical items (RUNS lab, ServerNIC stability)
-└── tech-improvements.md  # Architecture work (T8 ISN-passing, sequence translation)
+│   ├── endpoint-pcap-measurement/           # Endpoint-based pcap measurement model
+│   └── archive/        # Completed changes (DPDK port, SSM tests, T8 translation shift, …)
 
 venv/                   # Shared Python venv for local dev (all components)
 ```

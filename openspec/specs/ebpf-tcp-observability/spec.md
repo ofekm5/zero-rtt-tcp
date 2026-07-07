@@ -32,7 +32,7 @@ The system SHALL provide `observability/ebpf/run_trace.sh` accepting flags `--du
 - **THEN** `tcp_retransmit_trace.bt` runs alongside `tcp_state_trace.bt` and retransmit events appear in the output file
 
 ### Requirement: Experiment orchestrator integration
-Both `experiments/zero-rtt-dpdk/run_experiment.sh` and `experiments/zero-rtt-clientnic-translate/run_experiment.sh` SHALL start `run_trace.sh` on Client and Server VMs before the server starts, collect `/tmp/tcp_trace.jsonl` from both VMs after captures stop, and append an eBPF trace summary (state transitions with timestamps) to the experiment report.
+Both `experiments/dpdk/run_experiment.sh` and `experiments/scapy/run_experiment.sh` SHALL start `run_trace.sh` on Client and Server VMs before the server starts, collect `/tmp/tcp_trace.jsonl` from both VMs after captures stop, and append an eBPF trace summary (state transitions with timestamps) to the experiment report.
 
 #### Scenario: Trace summary appears in report
 - **WHEN** a full experiment run completes
@@ -50,7 +50,7 @@ Both `infra/dpdk/cdk/smartnics_stack.py` and `infra/scapy/cdk/smartnics_stack.py
 - **THEN** `bpftrace --version` succeeds without manual installation
 
 ### Requirement: Manual eBPF trace node scripts
-The system SHALL provide interactive node scripts (`experiments/zero-rtt-dpdk/nodes/ebpf-trace.sh` and `experiments/zero-rtt-clientnic-translate/nodes/ebpf-trace.sh`) that start tracing via `run_trace.sh`, wait for user interrupt (Ctrl+C), and print a summary of captured events.
+The system SHALL provide interactive node scripts (`experiments/nodes/ebpf-trace.sh`) that start tracing via `run_trace.sh`, wait for user interrupt (Ctrl+C), and print a summary of captured events.
 
 #### Scenario: Manual trace started and summarized
 - **WHEN** a developer runs `ebpf-trace.sh` in an SSM session and presses Ctrl+C after the experiment

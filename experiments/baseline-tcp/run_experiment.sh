@@ -212,7 +212,7 @@ if [[ $FAILURES -eq 0 ]]; then OVERALL_RESULT="ALL PASSED ✅"; else OVERALL_RES
     echo "- Traffic path: Client → ClientNIC (kernel forward) → ServerNIC (kernel forward) → Server"
     echo "- ClientNIC: ip_forward=1, static route 10.1.2.0/24 via 10.1.1.1 dev eth1"
     echo "- ServerNIC: ip_forward=1, static route 10.1.0.0/24 via 10.1.1.1 dev eth0"
-    echo "- Compare TTFB min/mean/p99 against experiments/zero-rtt-dpdk/reports/ for 0-RTT benefit"
+    echo "- Compare TTFB min/mean/p99 against experiments/dpdk/reports/ for 0-RTT benefit"
 } > "$REPORT_FILE"
 
 log "Report saved to $REPORT_FILE"
