@@ -103,12 +103,6 @@ The new measurement model captures at the **endpoints**, not on ClientNIC:
 - Both pcaps are base64-shipped to ClientNIC, where `experiments/utils/analyze_metrics.py` computes endpoint-observed metrics: **FCT**, **send_unlock** (client), **server_gap** (server). A `missing=` line in its output = a metric event was not found → counts as a failure.
 - In-binary `[DIAG]` log lines (formerly `[METRIC]`) on ClientNIC/ServerNIC are diagnostic only — the authoritative latency numbers come from the endpoint pcaps.
 
-For DPDK-only unit tests (virtual PMDs, no full 4-VM chain), see
-`references/dpdk-tests.md`:
-```bash
-./experiments/dpdk/run_dpdk_tests_ssm.sh
-```
-
 **DPDK build note**: the CDK user data builds DPDK 23.11 from source at provision
 time (~15-20 min after deploy). The runner rebuilds both binaries from source each
 run (after `git pull`). If a build fails, wait for user data to finish or check the

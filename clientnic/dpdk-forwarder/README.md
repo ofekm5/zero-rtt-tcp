@@ -2,12 +2,13 @@
 
 > **T8 variant** — spoof SYN-ACK + stamp V + transparent forward.
 > Translation responsibility has been shifted to the ServerNIC.
-> See `clientnic/dpdk/` for the original full-owner implementation.
+> (An earlier full-owner implementation, `clientnic/dpdk/`, kept spoofing and
+> translation both on the ClientNIC; it was removed — see git history.)
 
-## How it differs from `clientnic/dpdk/`
+## How it differs from the full-owner design
 
-| Aspect | `clientnic/dpdk/` (full owner) | `clientnic/dpdk-forwarder/` (T8 variant) |
-|--------|-------------------------------|------------------------------------------|
+| Aspect | Full owner (removed `clientnic/dpdk/`) | `clientnic/dpdk-forwarder/` (T8 variant) |
+|--------|----------------------------------------|------------------------------------------|
 | seq/ack rewriting | ClientNIC rewrites all packets | **ServerNIC** rewrites all packets |
 | Flow state | `{V, real_isn, delta, buffer, client_mac}` | `{V, client_mac}` — no delta, no buffer |
 | SYN forwarded | As-is | **V stamped in ack-num field** before TX |
@@ -50,8 +51,8 @@ meson setup builddir
 ninja -C builddir
 ```
 
-Both `clientnic/dpdk/` and `clientnic/dpdk-forwarder/` build independently and can coexist.
-The CDK stack builds both; the active binary is selected via a symlink (`clientnic/dpdk-active`).
+The CDK stack builds this binary at provision time and points the
+`clientnic/dpdk-active` symlink at it.
 
 ## Run
 
@@ -83,9 +84,8 @@ flow, transparent c2s/s2c forwarding (seq/ack/IP-payload unchanged).
 Run the full experiment (drives all 4 VMs via SSM):
 
 ```bash
-./experiments/zero-rtt-dpdk/run_experiment.sh
+./experiments/dpdk/run_experiment.sh
 ```
 
 The experiment uses `clientnic-dpdk-forwarder` on ClientNIC and `servernic-dpdk` on ServerNIC
-together as a matched pair. Do not mix with the `clientnic/dpdk/` full-owner binary — the two
-variants have incompatible translation responsibilities.
+together as a matched pair — the two halves of the T8 translation split.
