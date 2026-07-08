@@ -101,8 +101,7 @@ c2s ACK−delta and s2c SEQ+delta with 32-bit wraparound cases.
 Run the full experiment (drives all 4 VMs via SSM):
 
 ```bash
-./experiments/zero-rtt-dpdk/run_experiment.sh
+./experiments/dpdk/run_experiment.sh
 ```
 
 `servernic-dpdk` and `clientnic-dpdk-forwarder` are a matched pair — deploy together.
-Do not mix with `clientnic/dpdk/` (full-owner), which handles its own translation.

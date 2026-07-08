@@ -23,7 +23,7 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 
 ## Packet Flow
 
-**ClientNIC has two implementations** — Scapy (Python, `clientnic/scapy/`) and DPDK (C, `clientnic/dpdk/`) — both producing identical 0-RTT behavior.
+**ClientNIC has two implementations** — Scapy (Python, `clientnic/scapy/`) and DPDK (C, `clientnic/dpdk-forwarder/`, paired with the `servernic/dpdk/` translator) — both producing identical 0-RTT behavior.
 
 ![Packet Flow](architecture-packetflow.png)
 
@@ -68,26 +68,28 @@ cd infra/dpdk      # or infra/scapy
 
 **Scapy stack** (ClientNIC uses Python/Scapy):
 ```bash
-./experiments/zero-rtt-clientnic-translate/run_experiment.sh
+./experiments/scapy/run_experiment.sh
 ```
 
 **DPDK stack** (ClientNIC uses C/DPDK):
 ```bash
-./experiments/zero-rtt-dpdk/run_experiment.sh
+./experiments/dpdk/run_experiment.sh
 ```
 
 Both scripts discover all 4 VMs via AWS SSM, pull latest code, rebuild if needed, start services in the correct order, run a client connection, capture packets, and validate 0-RTT behavior with `validate_0rtt_capture.py`. Exit code = number of failures.
 
 ### iperf Stress Testing
 
-An iperf (v2) alternative to `client.py` / `server.py` is available for load and stress testing. The 0-RTT translation layer is traffic-agnostic — iperf flows pass through ClientNIC unchanged.
+iperf (v2) is the traffic generator for load and stress testing. The 0-RTT translation layer is traffic-agnostic — iperf flows pass through ClientNIC unchanged.
 
-**Manual run (DPDK stack):** see `experiments/zero-rtt-dpdk/run_manual_steps_iperf.sh` for the 4-terminal reference. Node scripts:
+**Manual run (DPDK stack):** node scripts, in startup order:
 
 | Script | VM | What it does |
 |--------|----|--------------|
-| `experiments/zero-rtt-dpdk/nodes/server_iperf.sh` | Server | Starts persistent `iperf -s` on port 5001 |
-| `experiments/zero-rtt-dpdk/nodes/client_iperf.sh` | Client | Auto-discovers server IP, runs full suite |
+| `experiments/nodes/server.sh` | Server | Starts `iperf -s` listeners on the port range |
+| `experiments/dpdk/servernic.sh` | ServerNIC | Builds + starts `servernic-dpdk` (T8 translator) |
+| `experiments/dpdk/clientnic.sh` | ClientNIC | Builds + starts `clientnic-dpdk-forwarder` |
+| `experiments/nodes/client.sh` | Client | Auto-discovers server IP, drives iperf flows |
 
 **Test scenarios** (`client-app/iperf_client.sh`):
 
@@ -116,22 +118,18 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 
 ```bash
 # 1. Server VM
-setsid python3 server-app/server.py --host 0.0.0.0 --port 8080 --verbose < /dev/null >> /tmp/server.log 2>&1 &
+./experiments/nodes/server.sh
 
-# 2. ServerNIC VM
-setsid python3 servernic/scapy/main.py < /dev/null >> /tmp/servernic.log 2>&1 &
+# 2. ServerNIC VM — Scapy (legacy stateless forwarder) or DPDK (T8 translator)
+setsid python3 servernic/scapy/main.py < /dev/null >> /tmp/servernic.log 2>&1 &   # Scapy
+./experiments/dpdk/servernic.sh                                                   # DPDK
 
-# 3a. ClientNIC VM — Scapy
-setsid python3 clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
-
-# 3b. ClientNIC VM — DPDK (eth1 must already be bound to vfio-pci)
-GW_MAC=$(ssh servernic cat /sys/class/net/eth0/address)
-setsid ./clientnic/dpdk/builddir/clientnic-dpdk -l 0 -- \
-    --port=8080 --gw-mac=$GW_MAC --server-pcap=/tmp/server_side.pcap \
-    < /dev/null >> /tmp/clientnic.log 2>&1 &
+# 3. ClientNIC VM — Scapy or DPDK (eth1 must already be bound to vfio-pci)
+setsid python3 clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &   # Scapy
+./experiments/dpdk/clientnic.sh                                                   # DPDK
 
 # 4. Client VM
-python3 client-app/client.py --host <server-ip> --port 8080 --mode repeated --count 3 --verbose
+./experiments/nodes/client.sh
 ```
 
 > All VMs: connect via `aws ssm start-session --target <instance-id> --region eu-central-1`
@@ -148,7 +146,7 @@ python3 client-app/client.py --host <server-ip> --port 8080 --mode repeated --co
 
 ## eBPF Observability
 
-TCP handshake state transitions happen inside the kernel and are invisible to `client.py` / `server.py`. The `observability/ebpf/` directory provides bpftrace scripts that attach to kernel tracepoints and emit structured JSON-line events.
+TCP handshake state transitions happen inside the kernel and are invisible to the client/server applications. The `observability/ebpf/` directory provides bpftrace scripts that attach to kernel tracepoints and emit structured JSON-line events.
 
 **Files:**
 - `tcp_state_trace.bt` — attaches to `tracepoint:sock:inet_sock_set_state`, emits one JSON line per TCP state transition (with `ts_ns`, `src`, `dst`, `sport`, `dport`, `old_state`, `new_state`)

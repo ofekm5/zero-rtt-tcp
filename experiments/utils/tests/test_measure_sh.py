@@ -11,7 +11,6 @@ No DPDK, no live infrastructure, no bash required.
 import os
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 # The inline Python from measure.sh, extracted verbatim so we test the real logic.

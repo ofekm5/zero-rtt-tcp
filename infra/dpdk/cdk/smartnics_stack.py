@@ -169,18 +169,12 @@ class SmartNicsStack(Stack):
             "    ip link set eth1 down",
             "    dpdk-devbind.py --bind=vfio-pci $SECONDARY_PCI",
             "fi",
-            # Build clientnic-dpdk application (full-owner, reference implementation)
-            "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
-            "cd /home/ec2-user/zero-rtt-demo/clientnic/dpdk",
-            "/usr/local/bin/meson setup builddir",
-            "cd builddir && /usr/local/bin/ninja",
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo/clientnic/dpdk/builddir",
             # Build clientnic-dpdk-forwarder application (T8 variant: stamps V, no translation)
+            "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
             "cd /home/ec2-user/zero-rtt-demo/clientnic/dpdk-forwarder",
             "/usr/local/bin/meson setup builddir",
             "cd builddir && /usr/local/bin/ninja",
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo/clientnic/dpdk-forwarder/builddir",
-            # Default: run the forwarder variant (T8 mode) — change to dpdk/builddir to revert
             "ln -sf /home/ec2-user/zero-rtt-demo/clientnic/dpdk-forwarder/builddir/clientnic-dpdk-forwarder"
             " /home/ec2-user/zero-rtt-demo/clientnic/dpdk-active",
         )

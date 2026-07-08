@@ -38,10 +38,10 @@ Client VM  <-->  ClientNIC VM  <-->  ServerNIC VM  <-->  Server VM
 
 ```bash
 # Requires root (raw sockets)
-sudo python -m clientnic.app.main
+sudo python3 clientnic/scapy/main.py
 
 # Custom interfaces
-sudo python -m clientnic.app.main --client-iface ens5 --server-iface ens6 --verbose
+sudo python3 clientnic/scapy/main.py --client-iface ens5 --server-iface ens6 --verbose
 ```
 
 ## Requirements
@@ -68,56 +68,50 @@ sudo python -m clientnic.app.main --client-iface ens5 --server-iface ens6 --verb
 ```
 clientnic/
 ├── validate_0rtt_capture.py  # pcap analysis tool (runs on this VM post-test)
-├── app/
-│   ├── main.py               # Entry point, wires dependencies, starts sniffers
-│   └── src/
-│       ├── handlers.py       # ClientPacketHandler, ServerPacketHandler, PacketBuffer
-│       ├── flow_table.py     # FlowKey, FlowEntry, FlowTable
-│       ├── rewriter.py       # PacketRewriter (seq/ack rewriting + checksum recalc)
-│       ├── spoofer.py        # SynAckSpoofer
-│       └── logger.py         # Logging setup
-└── tests/
-    ├── test_flow_table.py
-    ├── test_handlers.py
-    └── test_spoofer.py
+├── scapy/                    # Python/Scapy implementation
+│   ├── main.py               # Entry point, sniffers on eth0/eth1
+│   ├── src/
+│   │   ├── pipeline.py       # Parse → classify → dispatch
+│   │   └── utils/
+│   │       ├── flow_table.py         # FlowKey, FlowEntry, FlowTable
+│   │       ├── packet_processor.py   # SYN spoof + delta computation
+│   │       ├── translator.py         # Seq/ack rewriting + checksum recalc
+│   │       └── logger.py             # Logging setup
+│   └── tests/
+└── dpdk-forwarder/           # C/DPDK T8 variant: spoof + stamp V + transparent forward
 ```
 
 ## Tests
 
 ```bash
-# Unit tests (from repo root)
-pytest zero-rtt-clientnic-translate/clientnic/tests/
+# Scapy unit tests (from this directory)
+pytest clientnic/scapy/tests/
 ```
 
 ### DPDK Tests
 
-Two separate test levels exist for the DPDK implementation (`clientnic/dpdk/`):
+Two separate test levels exist for the DPDK implementation (`clientnic/dpdk-forwarder/`):
 
-**Smoke tests** (`clientnic/dpdk/tests/run_dpdk_tests.sh`) — validate the binary using virtual PMDs, no hardware required:
+**Smoke tests** (`clientnic/dpdk-forwarder/tests/run_dpdk_tests.sh`) — validate the binary using virtual PMDs, no hardware required:
 - Binary validation (ELF format + DPDK library linkage)
 - EAL init with null PMD
 - Ring PMD device creation
 - Graceful no-device handling
 - Port enumeration
 
-Run via SSM (recommended — handles build automatically):
-```bash
-./experiments/zero-rtt-dpdk/run_dpdk_tests_ssm.sh
-```
-
 Run manually on the ClientNIC VM:
 ```bash
-cd ~/zero-rtt-demo/clientnic/dpdk
+cd ~/zero-rtt-demo/clientnic/dpdk-forwarder
 meson setup builddir && ninja -C builddir
-sudo ./tests/run_dpdk_tests.sh builddir/clientnic-dpdk
+sudo ./tests/run_dpdk_tests.sh builddir/clientnic-dpdk-forwarder
 ```
 
-**Integration test** (`experiments/zero-rtt-dpdk/run_experiment.sh`) — end-to-end 4-VM test validating actual 0-RTT behavior: starts Server → ServerNIC → ClientNIC → Client via SSM node scripts, then runs `validate_0rtt_capture.py` and writes a report to `experiments/zero-rtt-dpdk/reports/`.
+**Integration test** (`experiments/dpdk/run_experiment.sh`) — end-to-end 4-VM test validating actual 0-RTT behavior: starts Server → ServerNIC → ClientNIC → Client via SSM node scripts, then runs `validate_0rtt_capture.py` and writes a report to `experiments/dpdk/reports/`.
 
 Manual verification with tcpdump:
 ```bash
 # Terminal 1: Run ClientNIC
-sudo python -m clientnic.app.main
+sudo python3 clientnic/scapy/main.py
 
 # Terminal 2: Watch eth0
 sudo tcpdump -i eth0 tcp -nn

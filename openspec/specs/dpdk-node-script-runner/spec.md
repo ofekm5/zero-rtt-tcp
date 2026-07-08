@@ -47,12 +47,12 @@ The orchestrator SHALL fetch `/tmp/server.log`, `/tmp/servernic.log`, `/tmp/clie
 - **WHEN** the client test has completed
 - **THEN** the orchestrator fetches and prints each VM's log before running the validator
 
-### Requirement: Report is saved to experiments/zero-rtt-dpdk/reports/
-After all checks, the orchestrator SHALL write a Markdown report summarising pass/fail results and key log excerpts to `experiments/zero-rtt-dpdk/reports/integration-test-report-<YYYY-MM-DD>.md`.
+### Requirement: Report is saved to experiments/dpdk/reports/
+After all checks, the orchestrator SHALL write a Markdown report summarising pass/fail results and key log excerpts to `experiments/dpdk/reports/integration-test-report-<YYYY-MM-DD>.md`.
 
 #### Scenario: Report written on success
 - **WHEN** all checks pass
-- **THEN** a report file is created in `experiments/zero-rtt-dpdk/reports/`
+- **THEN** a report file is created in `experiments/dpdk/reports/`
 
 #### Scenario: Report written on failure
 - **WHEN** one or more checks fail
