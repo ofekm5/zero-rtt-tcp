@@ -10,20 +10,20 @@ can edit files and `git push` but cannot run local PowerShell or hold AWS creden
 ```
 Claude Code mobile session                GitHub Actions runner            AWS eu-central-1
 ──────────────────────────                ─────────────────────            ────────────────
-edit ops/request.json ──push──►  aws-ops.yml (OIDC → IAM role) ──SSM──►  4× smartnics-* VMs
-read  ops/results/latest.md ◄──commit──  results + report                 CDK → CloudFormation
+edit .claude/skills/deploy-infra/request.json ──push──►  aws-ops.yml (OIDC → IAM role) ──SSM──►  4× smartnics-* VMs
+read  .claude/skills/deploy-infra/results/latest.md ◄──commit──  results + report                 CDK → CloudFormation
 ```
 
 - **Auth**: GitHub OIDC federation to IAM role `zero-rtt-demo-github-actions`
   (repo variable `AWS_ROLE_ARN`). No long-lived AWS keys anywhere.
-- **Trigger A (git-only, works from any Claude session)**: edit `ops/request.json`,
+- **Trigger A (git-only, works from any Claude session)**: edit `.claude/skills/deploy-infra/request.json`,
   commit, push. The workflow runs on the pushed branch and **commits results back to
-  the same branch** under `ops/results/` (stable pointer: `ops/results/latest.md`).
+  the same branch** under `.claude/skills/deploy-infra/results/` (stable pointer: `.claude/skills/deploy-infra/results/latest.md`).
 - **Trigger B (gh CLI, if available)**: `gh workflow run aws-ops.yml -f action=... -f variant=...`
   (requires the workflow file on the default branch; results also land in the
   run's step summary and as artifacts).
 
-## Request file schema (`ops/request.json`)
+## Request file schema (`.claude/skills/deploy-infra/request.json`)
 
 | field | values | notes |
 |---|---|---|
@@ -38,8 +38,8 @@ read  ops/results/latest.md ◄──commit──  results + report             
 ## Playbook from a phone (Claude Code mobile session on this repo)
 
 1. **Check what's running** (costs nothing if stack is down):
-   - Set `ops/request.json` → `{"action": "status", ...}`, bump `nonce`, commit, push.
-   - Wait ~1 min, `git pull`, read `ops/results/latest.md`.
+   - Set `.claude/skills/deploy-infra/request.json` → `{"action": "status", ...}`, bump `nonce`, commit, push.
+   - Wait ~1 min, `git pull`, read `.claude/skills/deploy-infra/results/latest.md`.
 2. **Deploy** the DPDK stack:
    - `{"action": "deploy", "variant": "dpdk"}`, push. Deploy takes ~10 min;
      the ClientNIC then builds DPDK 23.11 from source for **another ~15–20 min** —
@@ -47,7 +47,7 @@ read  ops/results/latest.md ◄──commit──  results + report             
 3. **Run a smoke experiment**:
    - `{"action": "experiment", "variant": "dpdk", "connections": "1", "iperf_parallel": "100", "iperf_ports": "1", "iperf_timeout": "120"}`
    - Full-scale run: leave the iperf fields empty (100k connections, up to ~1 h).
-   - Results: `git pull` → `ops/results/latest.md` (summary + full report + log tail).
+   - Results: `git pull` → `.claude/skills/deploy-infra/results/latest.md` (summary + full report + log tail).
 4. **Tear down when done** (stop the EC2 bill):
    - `{"action": "destroy", "variant": "dpdk"}`, push.
 
@@ -62,7 +62,7 @@ queues behind the first.
 ## One-time setup (desktop, already-provisioned account)
 
 ```bash
-bash ops/setup/aws-oidc-setup.sh   # OIDC provider + IAM role + AWS_ROLE_ARN repo variable
+bash .claude/skills/deploy-infra/scripts/aws-oidc-setup.sh   # OIDC provider + IAM role + AWS_ROLE_ARN repo variable
 ```
 
 The role's permissions are deliberately narrow: assume `cdk-*` bootstrap roles
@@ -74,7 +74,7 @@ The role's permissions are deliberately narrow: assume `cdk-*` bootstrap roles
 - Workflow red at **Configure AWS credentials** → role/variable missing: run the
   one-time setup above from a desktop.
 - **Experiment exit code N** in `latest.md` → N checks failed; the committed
-  `report.md` and `experiment.log` in the same `ops/results/<stamp>-*/` dir contain
+  `report.md` and `experiment.log` in the same `.claude/skills/deploy-infra/results/<stamp>-*/` dir contain
   the per-node logs. Diagnosis guide: `.claude/skills/run-experiment/references/troubleshooting.md`.
 - **Smoke test: EAL init failed (stale DPDK lock?)** → re-run once (the orchestrator
   cleans `/var/run/dpdk` on start); if persistent, reboot the ClientNIC via a `status`

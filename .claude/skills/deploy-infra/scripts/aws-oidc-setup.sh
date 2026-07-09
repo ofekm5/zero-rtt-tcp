@@ -6,8 +6,8 @@
 set -uo pipefail
 
 ACCOUNT_ID=191106064063
-REPO="ofekm5/zero-rtt-demo"
-ROLE_NAME="zero-rtt-demo-github-actions"
+REPO="ofekm5/zero-rtt-tcp"
+ROLE_NAME="zero-rtt-demo-github-actions"  # name predates the repo rename (zero-rtt-demo -> zero-rtt-tcp); left as-is to match the already-deployed role
 REGION="eu-central-1"
 
 TRUST=$(cat <<EOF
