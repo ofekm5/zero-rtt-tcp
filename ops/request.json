@@ -1,10 +1,10 @@
 {
-  "action": "status",
+  "action": "deploy",
   "variant": "dpdk",
   "connections": "",
   "iperf_parallel": "",
   "iperf_ports": "",
   "iperf_timeout": "",
   "note": "Edit + commit + push this file to trigger .github/workflows/aws-ops.yml. Change 'nonce' if re-running the same request.",
-  "nonce": "0"
+  "nonce": "1"
 }
