@@ -6,7 +6,7 @@ DPDK virtual PMD smoke-test suite targeting the `clientnic-dpdk-forwarder` binar
 ## Usage
 
 ```bash
-cd clientnic/dpdk-forwarder
+cd src/clientnic/dpdk-forwarder
 meson setup builddir
 ninja -C builddir
 sudo ./tests/run_dpdk_tests.sh builddir/clientnic-dpdk-forwarder

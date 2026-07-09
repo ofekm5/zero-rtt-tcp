@@ -60,7 +60,7 @@ Requires DPDK 23.11 (provisioned by `infra/dpdk/` CDK stack).
 
 ```bash
 export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig
-cd servernic/dpdk
+cd src/servernic/dpdk
 meson setup builddir
 ninja -C builddir
 ```
@@ -89,7 +89,7 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 ## Tests
 
 ```bash
-python3 -m pytest servernic/dpdk/tests/ -v
+python3 -m pytest src/servernic/dpdk/tests/ -v
 ```
 
 Covers: flow create/lookup/collision, delta computation (including wraparound), idempotent

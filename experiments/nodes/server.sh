@@ -6,14 +6,14 @@
 # Run this first and wait until "Server listening on port 8080" appears.
 #
 # Usage (on the Server VM via SSM or SSH):
-#   cd /home/ec2-user/zero-rtt-demo/experiments/nodes
+#   cd /home/ec2-user/zero-rtt-tcp/experiments/nodes
 #   ./server.sh
 #
 # The script blocks in the foreground. Press Ctrl+C to stop.
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 # Number of contiguous ports to listen on (SERVER_PORT .. SERVER_PORT+IPERF_PORTS-1).
 # The client spreads its parallel connections across these to clear the per-port

@@ -50,10 +50,10 @@ class SmartNicsStack(Stack):
             "yum install -y git python3 python3-pip iperf",
             "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token "
             "--with-decryption --query Parameter.Value --output text --region eu-central-1)",
-            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" '
-            "/home/ec2-user/zero-rtt-demo",
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
-            "chmod -R 755 /home/ec2-user/zero-rtt-demo",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" '
+            "/home/ec2-user/zero-rtt-tcp",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
+            "chmod -R 755 /home/ec2-user/zero-rtt-tcp",
         )
 
         # ── User data: ClientNIC ──────────────────────────────────────────────────
@@ -69,10 +69,10 @@ class SmartNicsStack(Stack):
             "yum install -y git python3 python3-pip",
             "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token "
             "--with-decryption --query Parameter.Value --output text --region eu-central-1)",
-            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" '
-            "/home/ec2-user/zero-rtt-demo",
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
-            "chmod -R 755 /home/ec2-user/zero-rtt-demo",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" '
+            "/home/ec2-user/zero-rtt-tcp",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
+            "chmod -R 755 /home/ec2-user/zero-rtt-tcp",
             # Enable IP forwarding
             "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf",
             "sysctl -p",
@@ -105,10 +105,10 @@ class SmartNicsStack(Stack):
             "yum install -y git python3 python3-pip",
             "GITHUB_TOKEN=$(aws ssm get-parameter --name /zero-rtt/github-token "
             "--with-decryption --query Parameter.Value --output text --region eu-central-1)",
-            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" '
-            "/home/ec2-user/zero-rtt-demo",
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
-            "chmod -R 755 /home/ec2-user/zero-rtt-demo",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" '
+            "/home/ec2-user/zero-rtt-tcp",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
+            "chmod -R 755 /home/ec2-user/zero-rtt-tcp",
             # Enable IP forwarding
             "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf",
             "sysctl -p",

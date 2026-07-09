@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: SYN interception, spoofing, and V stamping
-When a SYN arrives on eth0, the `clientnic/dpdk-forwarder` variant SHALL extract the flow key, generate a random 32-bit ISN (`V`) via `rte_rand()`, create a flow entry (with spoofed_isn and client_mac), send a spoofed SYN-ACK on eth0, and forward the original SYN on eth1 with its ack-num field set to `V` and the TCP checksum recomputed. The forwarded SYN's seq (client ISN) and SYN flag SHALL be unchanged.
+When a SYN arrives on eth0, the `src/clientnic/dpdk-forwarder` variant SHALL extract the flow key, generate a random 32-bit ISN (`V`) via `rte_rand()`, create a flow entry (with spoofed_isn and client_mac), send a spoofed SYN-ACK on eth0, and forward the original SYN on eth1 with its ack-num field set to `V` and the TCP checksum recomputed. The forwarded SYN's seq (client ISN) and SYN flag SHALL be unchanged.
 
 #### Scenario: First SYN from new client
 - **WHEN** a SYN packet arrives on eth0 for a flow key not in the flow table

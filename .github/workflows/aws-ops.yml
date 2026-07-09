@@ -1,0 +1,228 @@
+# AWS ops from anywhere (Claude Code mobile, web, or gh CLI).
+#
+# Two triggers:
+#   1. workflow_dispatch — `gh workflow run aws-ops.yml -f action=... -f variant=...`
+#   2. push touching .claude/skills/deploy-infra/request.json — git-only path for environments without gh:
+#      edit .claude/skills/deploy-infra/request.json, commit, push. The workflow reads the file from the
+#      pushed branch and commits results back to the same branch under .claude/skills/deploy-infra/results/.
+#
+# Auth: OIDC → IAM role zero-rtt-demo-github-actions (repo variable AWS_ROLE_ARN).
+# See .claude/skills/deploy-infra/references/mobile-ops.md for the mobile playbook.
+
+name: aws-ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        required: true
+        options: [status, deploy, experiment, destroy]
+      variant:
+        description: Stack / experiment variant
+        type: choice
+        default: dpdk
+        options: [dpdk, scapy, baseline]
+      connections:
+        description: "experiment: measurement rounds (CONNECTIONS, default 1)"
+        default: ""
+      iperf_parallel:
+        description: "experiment: parallel TCP connections per round (IPERF_PARALLEL, default 100000)"
+        default: ""
+      iperf_ports:
+        description: "experiment: server ports to spread load across (IPERF_PORTS, default 4)"
+        default: ""
+      iperf_timeout:
+        description: "experiment: seconds per round before SSM gives up (IPERF_TIMEOUT, default 1800; lower it when iperf_parallel is small)"
+        default: ""
+  push:
+    paths:
+      - .claude/skills/deploy-infra/request.json
+
+# One AWS operation at a time — deploys and experiments share the same stack.
+concurrency:
+  group: aws-ops
+  cancel-in-progress: false
+
+permissions:
+  id-token: write   # OIDC federation to AWS
+  contents: write   # commit results back to the triggering branch
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  ops:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve request
+        id: req
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ACTION='${{ inputs.action }}'
+            VARIANT='${{ inputs.variant }}'
+            CONNECTIONS='${{ inputs.connections }}'
+            IPERF_PARALLEL='${{ inputs.iperf_parallel }}'
+            IPERF_PORTS='${{ inputs.iperf_ports }}'
+            IPERF_TIMEOUT='${{ inputs.iperf_timeout }}'
+          else
+            ACTION=$(jq -r '.action // "status"' .claude/skills/deploy-infra/request.json)
+            VARIANT=$(jq -r '.variant // "dpdk"' .claude/skills/deploy-infra/request.json)
+            CONNECTIONS=$(jq -r '.connections // ""' .claude/skills/deploy-infra/request.json)
+            IPERF_PARALLEL=$(jq -r '.iperf_parallel // ""' .claude/skills/deploy-infra/request.json)
+            IPERF_PORTS=$(jq -r '.iperf_ports // ""' .claude/skills/deploy-infra/request.json)
+            IPERF_TIMEOUT=$(jq -r '.iperf_timeout // ""' .claude/skills/deploy-infra/request.json)
+          fi
+          case "$ACTION" in status|deploy|experiment|destroy) ;; *)
+            echo "::error::unknown action '$ACTION'"; exit 1 ;; esac
+          case "$VARIANT" in dpdk|scapy|baseline) ;; *)
+            echo "::error::unknown variant '$VARIANT'"; exit 1 ;; esac
+          # experiments/ dir name differs for baseline
+          EXP_DIR="$VARIANT"; [ "$VARIANT" = "baseline" ] && EXP_DIR="baseline-tcp"
+          {
+            echo "action=$ACTION"
+            echo "variant=$VARIANT"
+            echo "exp_dir=$EXP_DIR"
+            echo "connections=$CONNECTIONS"
+            echo "iperf_parallel=$IPERF_PARALLEL"
+            echo "iperf_ports=$IPERF_PORTS"
+            echo "iperf_timeout=$IPERF_TIMEOUT"
+          } >> "$GITHUB_OUTPUT"
+          echo "Request: action=$ACTION variant=$VARIANT connections=$CONNECTIONS parallel=$IPERF_PARALLEL ports=$IPERF_PORTS timeout=$IPERF_TIMEOUT"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 14400
+
+      - name: Set up Python + CDK
+        if: steps.req.outputs.action == 'deploy' || steps.req.outputs.action == 'destroy'
+        run: |
+          npm install -g aws-cdk
+          python3 -m pip install --quiet -r "infra/${{ steps.req.outputs.variant }}/requirements.txt"
+
+      - name: CDK deploy
+        if: steps.req.outputs.action == 'deploy'
+        working-directory: infra/${{ steps.req.outputs.variant }}
+        run: cdk deploy --all --require-approval never
+
+      - name: CDK destroy
+        if: steps.req.outputs.action == 'destroy'
+        working-directory: infra/${{ steps.req.outputs.variant }}
+        run: |
+          cdk destroy SmartNicsStack --force
+          cdk destroy PacketTestStack --force
+
+      - name: Run experiment
+        if: steps.req.outputs.action == 'experiment'
+        id: experiment
+        run: |
+          chmod +x experiments/${{ steps.req.outputs.exp_dir }}/run_experiment.sh
+          if [ -n "${{ steps.req.outputs.connections }}" ];    then export CONNECTIONS='${{ steps.req.outputs.connections }}'; fi
+          if [ -n "${{ steps.req.outputs.iperf_parallel }}" ]; then export IPERF_PARALLEL='${{ steps.req.outputs.iperf_parallel }}'; fi
+          if [ -n "${{ steps.req.outputs.iperf_ports }}" ];    then export IPERF_PORTS='${{ steps.req.outputs.iperf_ports }}'; fi
+          if [ -n "${{ steps.req.outputs.iperf_timeout }}" ];  then export IPERF_TIMEOUT='${{ steps.req.outputs.iperf_timeout }}'; fi
+          set +e
+          ./experiments/${{ steps.req.outputs.exp_dir }}/run_experiment.sh 2>&1 | tee /tmp/experiment.log
+          RC=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$RC" >> "$GITHUB_OUTPUT"
+          # exit code = number of failed checks; report is committed either way
+          exit 0
+
+      - name: Collect status
+        if: steps.req.outputs.action == 'status'
+        run: |
+          {
+            echo "## CloudFormation stacks"
+            for s in PacketTestStack SmartNicsStack; do
+              ST=$(aws cloudformation describe-stacks --stack-name "$s" \
+                     --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "NOT_DEPLOYED")
+              echo "- $s: $ST"
+            done
+            echo ""
+            echo "## smartnics instances"
+            echo '```'
+            aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=smartnics-*" \
+              --query "Reservations[].Instances[].[Tags[?Key=='Name']|[0].Value, InstanceId, State.Name, InstanceType, PrivateIpAddress, LaunchTime]" \
+              --output table
+            echo '```'
+          } > /tmp/status.md
+          cat /tmp/status.md
+
+      - name: Publish results
+        if: always() && steps.req.outputs.action != ''
+        id: publish
+        run: |
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          ACTION='${{ steps.req.outputs.action }}'
+          VARIANT='${{ steps.req.outputs.variant }}'
+          OUT=".claude/skills/deploy-infra/results/$STAMP-$ACTION-$VARIANT"
+          mkdir -p "$OUT"
+          {
+            echo "# aws-ops: $ACTION ($VARIANT)"
+            echo ""
+            echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- Trigger: ${{ github.event_name }} on \`${{ github.ref_name }}\`"
+            echo "- Time (UTC): $STAMP"
+            echo "- Job status so far: ${{ job.status }}"
+          } > "$OUT/summary.md"
+
+          if [ "$ACTION" = "experiment" ]; then
+            RC='${{ steps.experiment.outputs.exit_code }}'
+            echo "- Experiment exit code: ${RC:-not-run} (0 = all checks passed)" >> "$OUT/summary.md"
+            REPORT=$(ls -t experiments/${{ steps.req.outputs.exp_dir }}/reports/*.md 2>/dev/null | head -1 || true)
+            if [ -n "$REPORT" ]; then cp "$REPORT" "$OUT/report.md"; fi
+            if [ -f /tmp/experiment.log ]; then tail -n 400 /tmp/experiment.log > "$OUT/experiment.log"; fi
+          elif [ "$ACTION" = "status" ] && [ -f /tmp/status.md ]; then
+            cat /tmp/status.md >> "$OUT/summary.md"
+          elif [ "$ACTION" = "deploy" ]; then
+            {
+              echo ""
+              echo "## Stack outputs"
+              echo '```'
+              aws cloudformation describe-stacks --stack-name SmartNicsStack \
+                --query "Stacks[0].Outputs[*].[OutputKey,OutputValue]" --output table 2>/dev/null || echo "no outputs"
+              echo '```'
+              echo ""
+              echo "Note: on the dpdk variant, the ClientNIC builds DPDK 23.11 from source in"
+              echo "user data — wait ~15-20 min after deploy before running an experiment."
+            } >> "$OUT/summary.md"
+          fi
+
+          cat "$OUT/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          [ -f "$OUT/report.md" ] && cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+          # Maintain a stable pointer so mobile can always read .claude/skills/deploy-infra/results/latest.md
+          cp "$OUT/summary.md" .claude/skills/deploy-infra/results/latest.md
+          [ -f "$OUT/report.md" ] && { echo ""; cat "$OUT/report.md"; } >> .claude/skills/deploy-infra/results/latest.md || true
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .claude/skills/deploy-infra/results/
+          git commit -m "ops: $ACTION ($VARIANT) results $STAMP [skip ci]"
+          git pull --rebase origin "${{ github.ref_name }}" || true
+          git push origin "HEAD:${{ github.ref_name }}"
+
+      - name: Upload artifacts
+        if: always() && steps.req.outputs.action == 'experiment'
+        uses: actions/upload-artifact@v4
+        with:
+          name: experiment-${{ steps.req.outputs.variant }}-${{ github.run_id }}
+          path: |
+            experiments/*/reports/*.md
+            /tmp/experiment.log
+          if-no-files-found: ignore
+
+      - name: Fail job if experiment had failures
+        if: steps.req.outputs.action == 'experiment' && steps.experiment.outputs.exit_code != '0'
+        run: |
+          echo "::error::experiment finished with ${{ steps.experiment.outputs.exit_code }} failed check(s) — see .claude/skills/deploy-infra/results/latest.md"
+          exit 1

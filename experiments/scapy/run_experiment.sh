@@ -38,7 +38,7 @@ source "$(dirname "$0")/../utils/ssm.sh"
 # shellcheck source=../utils/measure.sh
 source "$(dirname "$0")/../utils/measure.sh"
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 
 # Legacy Scapy data plane: single app port, userspace Python — not suited to the
@@ -145,7 +145,7 @@ ssm_bg "$SERVERNIC_ID" \
 ssm_bg "$SERVERNIC_ID" \
     "iptables -F FORWARD 2>/dev/null; iptables -A FORWARD -p tcp --dport 8080 -j DROP; iptables -A FORWARD -p tcp --sport 8080 -j DROP"
 ssm_bg "$SERVERNIC_ID" \
-    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/servernic.log && setsid python3 -u $REPO_PATH/servernic/scapy/main.py --client-iface eth0 --server-iface eth1 < /dev/null >> /tmp/servernic.log 2>&1 &"
+    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/servernic.log && setsid python3 -u $REPO_PATH/src/servernic/scapy/main.py --client-iface eth0 --server-iface eth1 < /dev/null >> /tmp/servernic.log 2>&1 &"
 sleep 2
 
 # IP forwarding must be enabled at the OS level so the kernel doesn't drop
@@ -191,7 +191,7 @@ ssm_bg "$CLIENTNIC_ID" \
 sleep 1
 
 ssm_bg "$CLIENTNIC_ID" \
-    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/clientnic.log && setsid python3 -u $REPO_PATH/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &"
+    "echo '=== '\$(date -u +%Y-%m-%dT%H:%M:%SZ)' ===' >> /tmp/clientnic.log && setsid python3 -u $REPO_PATH/src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &"
 sleep 2
 
 FWRD=$(ssm_stdout "$CLIENTNIC_ID" "cat /proc/sys/net/ipv4/ip_forward" 30)
@@ -278,7 +278,7 @@ PCAP_SIZES=$(ssm_stdout "$CLIENTNIC_ID" \
 echo "pcap files: $PCAP_SIZES"
 
 ANALYSIS_RESULT=$(ssm_run "$CLIENTNIC_ID" \
-    "python3 $REPO_PATH/clientnic/validate_0rtt_capture.py \
+    "python3 $REPO_PATH/src/clientnic/validate_0rtt_capture.py \
         --client-pcap /tmp/client_side.pcap \
         --server-pcap /tmp/server_side.pcap" \
     45)

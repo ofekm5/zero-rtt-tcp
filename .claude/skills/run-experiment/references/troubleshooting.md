@@ -13,6 +13,7 @@ Consolidated lessons from integration testing sessions (Jan-Feb 2026).
 - [Packet Re-capture Loop (ServerNIC)](#packet-re-capture-loop-servernic)
 - [Swapped SEQ/ACK Rewrite Fields](#swapped-seqack-rewrite-fields)
 - [Baseline Results](#baseline-results)
+- [IPERF_TIMEOUT / IPERF_PARALLEL Balance](#iperf_timeout--iperf_parallel-balance)
 
 ---
 
@@ -146,7 +147,7 @@ fatal: $HOME not set
 
 **Fix**:
 ```bash
-sudo -u ec2-user git -C /home/ec2-user/zero-rtt-demo pull origin main
+sudo -u ec2-user git -C /home/ec2-user/zero-rtt-tcp pull origin main
 ```
 
 ---
@@ -155,12 +156,12 @@ sudo -u ec2-user git -C /home/ec2-user/zero-rtt-demo pull origin main
 
 **Problem**: When SSM runs as root and the repo is owned by `ec2-user`, git refuses to operate:
 ```
-fatal: detected dubious ownership in repository at '/home/ec2-user/zero-rtt-demo'
+fatal: detected dubious ownership in repository at '/home/ec2-user/zero-rtt-tcp'
 ```
 
 **Fix** — add before any git command:
 ```bash
-git config --global --add safe.directory /home/ec2-user/zero-rtt-demo
+git config --global --add safe.directory /home/ec2-user/zero-rtt-tcp
 ```
 
 This is done automatically in `run_experiment.sh`'s pre-pull loop. If you hit this in manual SSM commands, run it first.
@@ -173,7 +174,7 @@ This is done automatically in `run_experiment.sh`'s pre-pull loop. If you hit th
 
 **Fix** — call `client.py` directly for automation:
 ```bash
-python3 /home/ec2-user/zero-rtt-demo/client-app/client.py \
+python3 /home/ec2-user/zero-rtt-tcp/client-app/client.py \
     --host <SERVER_IP> --port 8080 --mode repeated --count 1 --verbose
 ```
 
@@ -325,3 +326,11 @@ After all fixes applied (2026-03-12), 3/3 connections successful with true 0-RTT
 - Server received and responded to all 3 connections through the full rewrite pipeline
 
 **Key prerequisite**: iptables FORWARD DROP for port 8080 on both NIC VMs. Without it, kernel forwarding races Scapy and wins in intra-VPC conditions.
+
+---
+
+## IPERF_TIMEOUT / IPERF_PARALLEL Balance
+
+`IPERF_TIMEOUT` and `IPERF_PARALLEL` are coupled — keep them in sync:
+- Default `IPERF_TIMEOUT=1800` is intentional for high-load runs (`IPERF_PARALLEL` at full scale): `ssm_run` will block up to 30 min per round if iperf stalls.
+- For smoke tests with reduced `IPERF_PARALLEL`, **lower `IPERF_TIMEOUT` proportionally** so failures surface fast instead of waiting the full 30 min.

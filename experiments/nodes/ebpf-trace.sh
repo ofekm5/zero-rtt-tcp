@@ -7,7 +7,7 @@
 # Startup order: server.sh → servernic.sh → clientnic.sh → [start this] → client.sh
 #
 # Usage (on Client or Server VM via SSM):
-#   cd /home/ec2-user/zero-rtt-demo/experiments/nodes
+#   cd /home/ec2-user/zero-rtt-tcp/experiments/nodes
 #   ./ebpf-trace.sh [port]
 #     port  TCP port to filter (default: 8080)
 #
@@ -15,7 +15,7 @@
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 TRACE_SCRIPT="$REPO_PATH/observability/ebpf/run_trace.sh"
 PORT="${1:-8080}"
 OUTPUT="/tmp/ebpf_trace_manual.jsonl"

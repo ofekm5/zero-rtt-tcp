@@ -55,7 +55,7 @@ run_experiment() {
                  sudo -u ec2-user git -C $REPO_PATH reset --hard origin/main 2>&1 || true; \
              else \
                  GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"'); \
-                 sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git\" $REPO_PATH 2>&1 || true; \
+                 sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git\" $REPO_PATH 2>&1 || true; \
                  chown -R ec2-user:ec2-user $REPO_PATH 2>/dev/null || true; \
              fi"
     done
@@ -118,7 +118,7 @@ run_experiment() {
     local BUILD_RESULT BUILD_STATUS BUILD_STDOUT BUILD_STDERR
     BUILD_RESULT=$(remote_run "$CLIENTNIC_ID" \
         "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig; \
-         cd $REPO_PATH/clientnic/dpdk-forwarder; \
+         cd $REPO_PATH/src/clientnic/dpdk-forwarder; \
          rm -rf builddir; \
          /usr/local/bin/meson setup builddir 2>&1 && \
          cd builddir && /usr/local/bin/ninja 2>&1 && \
@@ -148,7 +148,7 @@ run_experiment() {
     local SERVERNIC_BUILD_RESULT SERVERNIC_BUILD_STATUS SERVERNIC_BUILD_STDOUT
     SERVERNIC_BUILD_RESULT=$(remote_run "$SERVERNIC_ID" \
         "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig; \
-         cd $REPO_PATH/servernic/dpdk; \
+         cd $REPO_PATH/src/servernic/dpdk; \
          rm -rf builddir; \
          /usr/local/bin/meson setup builddir 2>&1 && \
          cd builddir && /usr/local/bin/ninja 2>&1 && \

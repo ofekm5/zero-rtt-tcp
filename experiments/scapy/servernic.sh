@@ -7,7 +7,7 @@
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -56,4 +56,4 @@ trap cleanup EXIT
 # ─── Start servernic (foreground) ─────────────────────────────────────────────
 log "Starting servernic/scapy/main.py — press Ctrl+C to stop."
 echo ""
-exec python3 -u "$REPO_PATH/servernic/scapy/main.py" --client-iface eth0 --server-iface eth1
+exec python3 -u "$REPO_PATH/src/servernic/scapy/main.py" --client-iface eth0 --server-iface eth1

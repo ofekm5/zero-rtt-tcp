@@ -7,7 +7,7 @@
 
 ## How it differs from the full-owner design
 
-| Aspect | Full owner (removed `clientnic/dpdk/`) | `clientnic/dpdk-forwarder/` (T8 variant) |
+| Aspect | Full owner (removed `clientnic/dpdk/`) | `src/clientnic/dpdk-forwarder/` (T8 variant) |
 |--------|----------------------------------------|------------------------------------------|
 | seq/ack rewriting | ClientNIC rewrites all packets | **ServerNIC** rewrites all packets |
 | Flow state | `{V, real_isn, delta, buffer, client_mac}` | `{V, client_mac}` — no delta, no buffer |
@@ -46,13 +46,13 @@ Requires DPDK 23.11 (provisioned by `infra/dpdk/` CDK stack).
 
 ```bash
 export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig
-cd clientnic/dpdk-forwarder
+cd src/clientnic/dpdk-forwarder
 meson setup builddir
 ninja -C builddir
 ```
 
 The CDK stack builds this binary at provision time and points the
-`clientnic/dpdk-active` symlink at it.
+`src/clientnic/dpdk-active` symlink at it.
 
 ## Run
 
@@ -73,7 +73,7 @@ aws ec2 describe-instances \
 ## Tests
 
 ```bash
-python3 -m pytest clientnic/dpdk-forwarder/tests/ -v
+python3 -m pytest src/clientnic/dpdk-forwarder/tests/ -v
 ```
 
 Tests cover: V stamping, checksum validity, retransmit re-stamps same V, independent V per

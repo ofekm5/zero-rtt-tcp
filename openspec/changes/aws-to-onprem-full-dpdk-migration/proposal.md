@@ -23,9 +23,9 @@ The current ClientNIC DPDK implementation uses a hybrid I/O model: eth1 (server-
 
 ## Impact
 
-- **`clientnic/dpdk/io.c`**: `eth0_init/recv/send` rewritten from AF_PACKET to DPDK port init; `eth0_io` struct gains `port_id` and `mbuf_pool` fields
-- **`clientnic/dpdk/io.h`**: `eth0_io` struct updated to match `eth1_io` shape
-- **`clientnic/dpdk/main.c`**: Poll loop updated; `install_iptables()` removed; EAL init gains second port; ARP handler wired in
-- **`clientnic/dpdk/pipeline.c`**: ARP packets routed to new handler before TCP processing; RST drop rule added
+- **`src/clientnic/dpdk/io.c`**: `eth0_init/recv/send` rewritten from AF_PACKET to DPDK port init; `eth0_io` struct gains `port_id` and `mbuf_pool` fields
+- **`src/clientnic/dpdk/io.h`**: `eth0_io` struct updated to match `eth1_io` shape
+- **`src/clientnic/dpdk/main.c`**: Poll loop updated; `install_iptables()` removed; EAL init gains second port; ARP handler wired in
+- **`src/clientnic/dpdk/pipeline.c`**: ARP packets routed to new handler before TCP processing; RST drop rule added
 - No changes to `flow_table.c`, `translator.c`, `packet_processor.c`, `checksum.c`, or `pipeline.h`
 - **Infrastructure**: On-prem servers need both NICs bound to vfio-pci before launch; hugepages and DPDK install unchanged

@@ -8,7 +8,7 @@
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -73,7 +73,7 @@ cleanup() {
     ls -lh /tmp/client_side.pcap /tmp/server_side.pcap 2>/dev/null || true
     echo ""
     echo "─── Run validator ───────────────────────────────────────────"
-    echo "  cp $REPO_PATH/clientnic/validate_0rtt_capture.py /tmp/"
+    echo "  cp $REPO_PATH/src/clientnic/validate_0rtt_capture.py /tmp/"
     echo "  python3 /tmp/validate_0rtt_capture.py \\"
     echo "    --client-pcap /tmp/client_side.pcap \\"
     echo "    --server-pcap /tmp/server_side.pcap"
@@ -84,4 +84,4 @@ trap cleanup EXIT
 # ─── Start ClientNIC interceptor (foreground) ─────────────────────────────────
 log "Starting clientnic/scapy/main.py — watching for flows. Press Ctrl+C to stop."
 echo ""
-exec python3 -u "$REPO_PATH/clientnic/scapy/main.py"
+exec python3 -u "$REPO_PATH/src/clientnic/scapy/main.py"

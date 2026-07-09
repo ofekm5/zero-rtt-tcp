@@ -32,8 +32,8 @@ class SmartNicsStack(Stack):
             "amazon-linux-extras install -y BCC",
             "yum install -y bpftrace",
             "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"')",
-            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" /home/ec2-user/zero-rtt-demo',
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" /home/ec2-user/zero-rtt-tcp',
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
         )
 
         # User data for NIC instances (enables IP forwarding)
@@ -43,8 +43,8 @@ class SmartNicsStack(Stack):
             "yum install -y python3-pip git",
             "pip3 install scapy",
             "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"')",
-            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" /home/ec2-user/zero-rtt-demo',
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" /home/ec2-user/zero-rtt-tcp',
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
             # Enable IP forwarding
             "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf",
             "sysctl -p",

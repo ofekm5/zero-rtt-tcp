@@ -39,7 +39,7 @@ source "$(dirname "$0")/../utils/measure.sh"
 # shellcheck source=../utils/run_core.sh
 source "$(dirname "$0")/../utils/run_core.sh"
 
-REPO_PATH="/home/user/zero-rtt-demo"
+REPO_PATH="/home/user/zero-rtt-tcp"
 SERVER_PORT=8080
 # Measurement ROUNDS (each round opens IPERF_PARALLEL conns across IPERF_PORTS
 # ports — see experiments/utils/measure.sh). Default 1 round of 100000.
@@ -124,8 +124,8 @@ fi
     echo ""
     echo "**Implementation**: DPDK (T8 ISN ack-num translation shift)"
     echo "**Infra**: RUNS Proxmox lab — 4 VMs via SSH gateway (${LAB_GATEWAY})"
-    echo "**ClientNIC binary**: \`clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
-    echo "**ServerNIC binary**: \`servernic/dpdk/\` (full translator)"
+    echo "**ClientNIC binary**: \`src/clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
+    echo "**ServerNIC binary**: \`src/servernic/dpdk/\` (full translator)"
     echo "**Experiment script**: \`experiments/proxmox/run_experiment.sh\`"
     echo "**Transport**: SSH jump host via \`experiments/utils/ssh_lab.sh\`"
     echo "**Overall result**: $OVERALL_RESULT"

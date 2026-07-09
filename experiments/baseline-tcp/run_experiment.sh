@@ -29,7 +29,7 @@ source "$(dirname "$0")/../utils/ssm.sh"
 # shellcheck source=../utils/measure.sh
 source "$(dirname "$0")/../utils/measure.sh"
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 # Number of measurement ROUNDS (each round opens IPERF_PARALLEL connections across
 # IPERF_PORTS ports — see measure.sh). Default 1 round of 100000 parallel conns.

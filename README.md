@@ -1,4 +1,4 @@
-# zero-rtt-demo
+# zero-rtt-tcp
 
 Proof-of-concept demonstrating **0-RTT TCP** — eliminating the 3-way handshake latency by using intelligent middleware (ClientNIC) that spoofs server SYN-ACKs, allowing clients to send application data immediately without waiting for the real handshake to complete (~50-200ms saved per connection).
 
@@ -14,16 +14,16 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 
 | Component | Role |
 |-----------|------|
-| `client-app/` | Standard unmodified TCP client |
-| `clientnic/` | Core 0-RTT logic — intercepts SYN, sends spoofed SYN-ACK, rewrites sequence numbers |
-| `servernic/` | Stateless transparent packet forwarder |
+| `src/client-app/` | Standard unmodified TCP client |
+| `src/clientnic/` | Core 0-RTT logic — intercepts SYN, sends spoofed SYN-ACK, stamps ISN in T8 mode |
+| `src/servernic/` | T8 mode: sole stateful translator (rewrites sequence numbers). Legacy Scapy mode: stateless forwarder |
 | `experiments/` | Experiment scripts and test reports |
-| `server-app/` | Standard unmodified TCP server |
+| `src/server-app/` | Standard unmodified TCP server |
 | `infra/` | AWS CDK stacks that provision the 4-VM topology |
 
 ## Packet Flow
 
-**ClientNIC has two implementations** — Scapy (Python, `clientnic/scapy/`) and DPDK (C, `clientnic/dpdk-forwarder/`, paired with the `servernic/dpdk/` translator) — both producing identical 0-RTT behavior.
+**ClientNIC has two implementations** — Scapy (Python, `src/clientnic/scapy/`, deprecated — feasibility PoC only) and DPDK (C, `src/clientnic/dpdk-forwarder/`, paired with the `src/servernic/dpdk/` translator, the live implementation) — both producing identical 0-RTT behavior.
 
 ![Packet Flow](architecture-packetflow.png)
 
@@ -91,7 +91,7 @@ iperf (v2) is the traffic generator for load and stress testing. The 0-RTT trans
 | `experiments/dpdk/clientnic.sh` | ClientNIC | Builds + starts `clientnic-dpdk-forwarder` |
 | `experiments/nodes/client.sh` | Client | Auto-discovers server IP, drives iperf flows |
 
-**Test scenarios** (`client-app/iperf_client.sh`):
+**Test scenarios** (`src/client-app/iperf_client.sh`):
 
 | # | Scenario | Key flags | Purpose |
 |---|----------|-----------|---------|
@@ -120,13 +120,13 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 # 1. Server VM
 ./experiments/nodes/server.sh
 
-# 2. ServerNIC VM — Scapy (legacy stateless forwarder) or DPDK (T8 translator)
-setsid python3 servernic/scapy/main.py < /dev/null >> /tmp/servernic.log 2>&1 &   # Scapy
-./experiments/dpdk/servernic.sh                                                   # DPDK
+# 2. ServerNIC VM — Scapy (deprecated, feasibility PoC only) or DPDK (T8 translator, live)
+setsid python3 src/servernic/scapy/main.py < /dev/null >> /tmp/servernic.log 2>&1 &   # Scapy
+./experiments/dpdk/servernic.sh                                                       # DPDK
 
-# 3. ClientNIC VM — Scapy or DPDK (eth1 must already be bound to vfio-pci)
-setsid python3 clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &   # Scapy
-./experiments/dpdk/clientnic.sh                                                   # DPDK
+# 3. ClientNIC VM — Scapy (deprecated) or DPDK (eth1 must already be bound to vfio-pci)
+setsid python3 src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &   # Scapy
+./experiments/dpdk/clientnic.sh                                                       # DPDK
 
 # 4. Client VM
 ./experiments/nodes/client.sh

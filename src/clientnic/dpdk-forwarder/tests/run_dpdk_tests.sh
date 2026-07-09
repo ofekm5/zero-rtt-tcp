@@ -29,7 +29,7 @@ if [ -z "$BINARY" ]; then
     echo "Usage: $0 <path-to-clientnic-dpdk-forwarder-binary>"
     echo ""
     echo "Build first:"
-    echo "  cd clientnic/dpdk-forwarder && meson setup builddir && ninja -C builddir"
+    echo "  cd src/clientnic/dpdk-forwarder && meson setup builddir && ninja -C builddir"
     echo "  $0 builddir/clientnic-dpdk-forwarder"
     exit 1
 fi

@@ -53,7 +53,7 @@ When `--single-nic` is passed, both "eth0" and "eth1" map to DPDK port 0, queue 
 3. Launch with updated CLI: `--client-port <DPDK port id>` in addition to existing `--port` / `--gw-mac`
 4. For single-NIC mode: configure switch VLAN trunk, pass `--single-nic --client-vlan <id> --server-vlan <id>`
 
-**Rollback**: The Scapy implementation in `clientnic/scapy/` is unaffected and remains a working fallback.
+**Rollback**: The Scapy implementation in `src/clientnic/scapy/` is unaffected and remains a working fallback.
 
 ## Open Questions
 
