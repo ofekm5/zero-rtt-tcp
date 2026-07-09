@@ -2,28 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Response Conciseness Guidelines
-
-**Core Principle**: Keep non-code responses concise and focused on actionable information, push changes directly to main branch.
-
-**Response Length Rules**:
-- Maximum 3-4 paragraphs for non-code responses
-- Code examples, diffs, and technical output are exempt from length limits
-- Focus on key findings with clear next steps
-
-**Avoid Verbosity Patterns**:
-- Repetitive context or background information
-- Phrases like "as I mentioned", "previously", "to recap"
-- Multiple paragraphs when bullet points would be more effective
-- Describing what you'll do instead of just doing it
-- Unnecessary explanations when direct answers suffice
-
-**Preferred Format**:
-- Lead with actionable information and new insights
-- Use bullet points for lists instead of prose
-- Combine related points into fewer paragraphs
-- Focus on "what" and "next steps" rather than lengthy "why" explanations
-
 ## Infrastructure & Platform Support
 
 This project supports **two target platforms**:

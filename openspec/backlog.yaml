@@ -1,0 +1,27 @@
+# openspec/backlog.yaml — spec-delivery backlog
+# Manage with: backlog.sh <subcommand> openspec/backlog.yaml
+# States: backlog | spec-ready | done | blocked
+
+- id: refine-claude-md-stale-refs
+  repo: C:/Users/shir/Documents/GitHub/zero-rtt-demo
+  summary: Refine CLAUDE.md to reflect the stale-file removal done in the latest PR (commit 3f05140 'docs+chore: fix dead references and trim unused imports') -- audit CLAUDE.md's module structure/doc references against current repo state and remove/update any now-dead pointers.
+  change: ""
+  state: backlog
+  size: small
+  validate: 
+
+- id: full-dpdk-endpoint-interfaces
+  repo: C:/Users/shir/Documents/GitHub/zero-rtt-demo
+  summary: Big issue: move both SmartNICs' remaining AF_PACKET endpoint-facing interfaces (ClientNIC client-facing port, ServerNIC eth2 server-facing port) to the DPDK ENA PMD, per the existing proposal at openspec/changes/full-dpdk-endpoint-interfaces/proposal.md -- eliminates kernel socket backpressure/tail-drop, requires CDK ENI topology redeploy (dedicated mgmt ENI + dual DPDK data ports on each SmartNIC).
+  change: full-dpdk-endpoint-interfaces
+  state: spec-ready
+  size: standard
+  validate: integration
+
+- id: claude-code-mobile-compatibility
+  repo: C:/Users/shir/Documents/GitHub/zero-rtt-demo
+  summary: Make this repo workable from Claude Code mobile (limited time, no laptop): enable deploying CDK stacks and running experiments (run_experiment.sh orchestrators) from a phone session -- likely needs a remote/cloud runner or CI-triggerable deploy+experiment path (e.g. GitHub Actions dispatch, or a hosted headless runner) since mobile can't run local PowerShell/AWS CLI directly; investigate what Claude Code mobile can invoke (remote agents, scheduled/triggered workflows) and wire the minimal path for 'deploy stack' + 'run experiment' + 'fetch report' without a desktop session.
+  change: ""
+  state: backlog
+  size: standard
+  validate: 
