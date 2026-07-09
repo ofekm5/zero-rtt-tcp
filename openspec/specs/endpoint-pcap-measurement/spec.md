@@ -93,7 +93,7 @@ The analyzer SHALL flag or reject a flow where a required event is missing (no S
 
 ### Requirement: NIC diagnostics relabeled away from the metric channel
 
-The DPDK middlebox `rdtsc` instrumentation SHALL be retained as middlebox-internal diagnostics but SHALL be relabeled from the `[METRIC]` log tag to `[DIAG]` in `clientnic/dpdk-forwarder/forwarder.c` and `servernic/dpdk/translator.c`, so it no longer masquerades as the experiment metric and is not parsed as a measurement source. The data-plane behavior SHALL be otherwise unchanged.
+The DPDK middlebox `rdtsc` instrumentation SHALL be retained as middlebox-internal diagnostics but SHALL be relabeled from the `[METRIC]` log tag to `[DIAG]` in `src/clientnic/dpdk-forwarder/forwarder.c` and `src/servernic/dpdk/translator.c`, so it no longer masquerades as the experiment metric and is not parsed as a measurement source. The data-plane behavior SHALL be otherwise unchanged.
 
 #### Scenario: Middlebox timing no longer parsed as a metric
 

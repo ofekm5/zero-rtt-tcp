@@ -1,6 +1,9 @@
 # ServerNIC
 
-Stateless packet forwarder that sits between ClientNIC and the Server VM. Transparently forwards TCP packets in both directions using Scapy raw sockets.
+In T8 mode (the live implementation, see `dpdk/`) ServerNIC is the **sole stateful translator**.
+This document describes the legacy Scapy implementation (`scapy/`) — a stateless packet
+forwarder that sits between ClientNIC and the Server VM, used only to demonstrate feasibility
+of the idea and no longer needed in the live path.
 
 ## Role in the Chain
 
@@ -17,11 +20,11 @@ ServerNIC is **completely stateless** — it performs no sequence number rewriti
 ## Usage
 
 ```bash
-# Requires root (raw sockets)
-sudo python -m servernic
+# Requires root (raw sockets). Deprecated — feasibility PoC only.
+sudo python3 src/servernic/scapy/main.py --client-iface eth0 --server-iface eth1
 
 # Custom interfaces
-sudo python -m servernic --client-iface ens5 --server-iface ens6 --verbose
+sudo python3 src/servernic/scapy/main.py --client-iface ens5 --server-iface ens6 --verbose
 ```
 
 ## Options
@@ -67,18 +70,20 @@ From the server's perspective, packets appear to come directly from the client (
 ## Module Structure
 
 ```
-servernic/
-├── main.py          # Entry point, sniffs on both interfaces
-├── src/
-│   ├── forwarder.py # PacketForwarder — routing and send logic
-│   └── logger.py    # Logging setup
-└── tests/
-    └── test_forwarder.py
+src/servernic/
+├── scapy/            # Python/Scapy implementation (deprecated — feasibility PoC only)
+│   ├── main.py        # Entry point, sniffs on both interfaces
+│   ├── src/
+│   │   ├── pipeline.py    # Forwarding logic
+│   │   └── utils/
+│   │       └── logger.py  # Logging setup
+│   └── tests/
+└── dpdk/              # C/DPDK T8 sole translator (live implementation — see dpdk/README.md)
 ```
 
 ## Tests
 
 ```bash
 # From repo root
-pytest servernic/tests/
+pytest src/servernic/scapy/tests/
 ```

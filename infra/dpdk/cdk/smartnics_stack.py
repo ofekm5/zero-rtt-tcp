@@ -31,9 +31,9 @@ class SmartNicsStack(Stack):
             "amazon-linux-extras install -y BCC",
             "yum install -y bpftrace",
             "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"')",
-            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" /home/ec2-user/zero-rtt-demo',
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
-            "chmod -R 755 /home/ec2-user/zero-rtt-demo",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" /home/ec2-user/zero-rtt-tcp',
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
+            "chmod -R 755 /home/ec2-user/zero-rtt-tcp",
         )
 
         # User data for ServerNIC VM: DPDK 23.11 + hugepages + vfio-pci + servernic-dpdk build
@@ -50,10 +50,10 @@ class SmartNicsStack(Stack):
             # Clone repo
             "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token "
             "--query SecretString --output text --region eu-central-1 | tr -d '\"')",
-            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" '
-            "/home/ec2-user/zero-rtt-demo",
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
-            "chmod -R 755 /home/ec2-user/zero-rtt-demo",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" '
+            "/home/ec2-user/zero-rtt-tcp",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
+            "chmod -R 755 /home/ec2-user/zero-rtt-tcp",
             # Enable IP forwarding
             "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf",
             "sysctl -p",
@@ -97,10 +97,10 @@ class SmartNicsStack(Stack):
             "fi",
             # Build servernic-dpdk application
             "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
-            "cd /home/ec2-user/zero-rtt-demo/servernic/dpdk",
+            "cd /home/ec2-user/zero-rtt-tcp/src/servernic/dpdk",
             "/usr/local/bin/meson setup builddir",
             "cd builddir && /usr/local/bin/ninja",
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo/servernic/dpdk/builddir",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp/src/servernic/dpdk/builddir",
         )
 
         # User data for ClientNIC VM: DPDK 23.11 + hugepages + vfio-pci + clientnic-dpdk build
@@ -123,10 +123,10 @@ class SmartNicsStack(Stack):
             # Clone repo
             "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token "
             "--query SecretString --output text --region eu-central-1 | tr -d '\"')",
-            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-demo.git" '
-            "/home/ec2-user/zero-rtt-demo",
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo",
-            "chmod -R 755 /home/ec2-user/zero-rtt-demo",
+            'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" '
+            "/home/ec2-user/zero-rtt-tcp",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
+            "chmod -R 755 /home/ec2-user/zero-rtt-tcp",
             # Enable IP forwarding
             "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf",
             "sysctl -p",
@@ -171,12 +171,12 @@ class SmartNicsStack(Stack):
             "fi",
             # Build clientnic-dpdk-forwarder application (T8 variant: stamps V, no translation)
             "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
-            "cd /home/ec2-user/zero-rtt-demo/clientnic/dpdk-forwarder",
+            "cd /home/ec2-user/zero-rtt-tcp/src/clientnic/dpdk-forwarder",
             "/usr/local/bin/meson setup builddir",
             "cd builddir && /usr/local/bin/ninja",
-            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-demo/clientnic/dpdk-forwarder/builddir",
-            "ln -sf /home/ec2-user/zero-rtt-demo/clientnic/dpdk-forwarder/builddir/clientnic-dpdk-forwarder"
-            " /home/ec2-user/zero-rtt-demo/clientnic/dpdk-active",
+            "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp/src/clientnic/dpdk-forwarder/builddir",
+            "ln -sf /home/ec2-user/zero-rtt-tcp/src/clientnic/dpdk-forwarder/builddir/clientnic-dpdk-forwarder"
+            " /home/ec2-user/zero-rtt-tcp/src/clientnic/dpdk-active",
         )
 
         # Create IAM role for SSM access

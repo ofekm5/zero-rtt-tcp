@@ -34,7 +34,7 @@ The orchestrator SHALL run the client test by calling `client.py --mode repeated
 - **THEN** the orchestrator records a failure and includes client stdout in the report
 
 ### Requirement: Git safe.directory is configured before git pull on each VM
-Before running `git pull` on any VM, the orchestrator SHALL execute `git config --global --add safe.directory /home/ec2-user/zero-rtt-demo` to prevent ownership errors when running as root via SSM.
+Before running `git pull` on any VM, the orchestrator SHALL execute `git config --global --add safe.directory /home/ec2-user/zero-rtt-tcp` to prevent ownership errors when running as root via SSM.
 
 #### Scenario: Pull succeeds as root
 - **WHEN** the orchestrator runs git pull on a VM

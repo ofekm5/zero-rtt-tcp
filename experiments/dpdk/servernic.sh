@@ -26,8 +26,8 @@
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
-DPDK_BUILD="$REPO_PATH/servernic/dpdk/builddir"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
+DPDK_BUILD="$REPO_PATH/src/servernic/dpdk/builddir"
 BINARY="$DPDK_BUILD/servernic-dpdk"
 SERVER_PORT=8080
 # Number of contiguous app ports to translate (SERVER_PORT .. +PORT_COUNT-1).
@@ -64,7 +64,7 @@ else
     log "Building servernic-dpdk (set SKIP_BUILD=1 to skip)..."
     export PATH=/usr/local/bin:$PATH
     export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig
-    cd "$REPO_PATH/servernic/dpdk"
+    cd "$REPO_PATH/src/servernic/dpdk"
     rm -rf builddir
     /usr/local/bin/meson setup builddir 2>&1 \
         && cd builddir && /usr/local/bin/ninja 2>&1 \

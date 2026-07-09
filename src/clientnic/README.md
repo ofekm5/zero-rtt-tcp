@@ -37,11 +37,11 @@ Client VM  <-->  ClientNIC VM  <-->  ServerNIC VM  <-->  Server VM
 ## Usage
 
 ```bash
-# Requires root (raw sockets)
-sudo python3 clientnic/scapy/main.py
+# Requires root (raw sockets). Deprecated — feasibility PoC only, superseded by dpdk-forwarder/ in the live path.
+sudo python3 src/clientnic/scapy/main.py
 
 # Custom interfaces
-sudo python3 clientnic/scapy/main.py --client-iface ens5 --server-iface ens6 --verbose
+sudo python3 src/clientnic/scapy/main.py --client-iface ens5 --server-iface ens6 --verbose
 ```
 
 ## Requirements
@@ -66,9 +66,9 @@ sudo python3 clientnic/scapy/main.py --client-iface ens5 --server-iface ens6 --v
 ## Module Structure
 
 ```
-clientnic/
+src/clientnic/
 ├── validate_0rtt_capture.py  # pcap analysis tool (runs on this VM post-test)
-├── scapy/                    # Python/Scapy implementation
+├── scapy/                    # Python/Scapy implementation (deprecated — feasibility PoC only)
 │   ├── main.py               # Entry point, sniffers on eth0/eth1
 │   ├── src/
 │   │   ├── pipeline.py       # Parse → classify → dispatch
@@ -78,21 +78,21 @@ clientnic/
 │   │       ├── translator.py         # Seq/ack rewriting + checksum recalc
 │   │       └── logger.py             # Logging setup
 │   └── tests/
-└── dpdk-forwarder/           # C/DPDK T8 variant: spoof + stamp V + transparent forward
+└── dpdk-forwarder/           # C/DPDK T8 variant: spoof + stamp V + transparent forward (live implementation)
 ```
 
 ## Tests
 
 ```bash
-# Scapy unit tests (from this directory)
-pytest clientnic/scapy/tests/
+# Scapy unit tests (deprecated component, from repo root)
+pytest src/clientnic/scapy/tests/
 ```
 
 ### DPDK Tests
 
-Two separate test levels exist for the DPDK implementation (`clientnic/dpdk-forwarder/`):
+Two separate test levels exist for the DPDK implementation (`src/clientnic/dpdk-forwarder/`):
 
-**Smoke tests** (`clientnic/dpdk-forwarder/tests/run_dpdk_tests.sh`) — validate the binary using virtual PMDs, no hardware required:
+**Smoke tests** (`src/clientnic/dpdk-forwarder/tests/run_dpdk_tests.sh`) — validate the binary using virtual PMDs, no hardware required:
 - Binary validation (ELF format + DPDK library linkage)
 - EAL init with null PMD
 - Ring PMD device creation
@@ -101,7 +101,7 @@ Two separate test levels exist for the DPDK implementation (`clientnic/dpdk-forw
 
 Run manually on the ClientNIC VM:
 ```bash
-cd ~/zero-rtt-demo/clientnic/dpdk-forwarder
+cd ~/zero-rtt-tcp/src/clientnic/dpdk-forwarder
 meson setup builddir && ninja -C builddir
 sudo ./tests/run_dpdk_tests.sh builddir/clientnic-dpdk-forwarder
 ```
@@ -111,7 +111,7 @@ sudo ./tests/run_dpdk_tests.sh builddir/clientnic-dpdk-forwarder
 Manual verification with tcpdump:
 ```bash
 # Terminal 1: Run ClientNIC
-sudo python3 clientnic/scapy/main.py
+sudo python3 src/clientnic/scapy/main.py
 
 # Terminal 2: Watch eth0
 sudo tcpdump -i eth0 tcp -nn

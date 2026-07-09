@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 REGION="eu-central-1"
 

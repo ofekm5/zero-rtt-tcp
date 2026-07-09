@@ -59,7 +59,7 @@ discovery + MAC resolution, defines transport shims, then calls `run_experiment`
 | Shims | `remote_run`/`remote_bg`/`remote_stdout` → SSM | → SSH jump host (`runs-gateway`) |
 | Node discovery | EC2 `describe-instances` by tag | ping lab IPs via gateway |
 | MAC resolution | EC2 API (DeviceIndex query) | `get_lab_mac` reads `/sys/class/net/<if>/address` |
-| Repo path on node | `/home/ec2-user/zero-rtt-demo` | `/home/user/zero-rtt-demo` |
+| Repo path on node | `/home/ec2-user/zero-rtt-tcp` | `/home/user/zero-rtt-tcp` |
 
 Both build **two** binaries each run: `clientnic-dpdk-forwarder` (spoof + stamp V)
 and `servernic-dpdk` (sole translator). Proxmox prerequisites: F5 VPN (HAIFA)
@@ -202,15 +202,15 @@ Always: **Server → ServerNIC → ClientNIC → Client**
 # 1. Server
 setsid bash experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &
 
-# 2a. ServerNIC — Scapy (legacy)
-setsid python3 servernic/scapy/main.py --client-iface eth0 --server-iface eth1 \
+# 2a. ServerNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
+setsid python3 src/servernic/scapy/main.py --client-iface eth0 --server-iface eth1 \
     < /dev/null >> /tmp/servernic.log 2>&1 &
 # 2b. ServerNIC — DPDK T8 translator
 CLIENTNIC_GW_MAC=<cnic-eth1-mac> SERVER_GW_MAC=<server-eth0-mac> MIDDLE_ENI_MAC=<snic-eth1-mac> \
     SKIP_BUILD=1 setsid bash experiments/dpdk/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &
 
-# 3a. ClientNIC — Scapy
-setsid python3 clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
+# 3a. ClientNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
+setsid python3 src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
 # 3b. ClientNIC — DPDK T8 forwarder (GW_MAC = ServerNIC eth1 MAC)
 SKIP_BUILD=1 setsid bash experiments/dpdk/clientnic.sh <GW_MAC> < /dev/null >> /tmp/clientnic.log 2>&1 &
 
@@ -240,8 +240,8 @@ dpdk-devbind.py --status | grep -E "(vfio|eth1)"     # eth1 bound to vfio-pci
 grep HugePages_Total /proc/meminfo                    # expect 512
 # Build (both binaries)
 export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig
-cd clientnic/dpdk-forwarder && meson setup builddir && ninja -C builddir   # clientnic-dpdk-forwarder
-cd servernic/dpdk          && meson setup builddir && ninja -C builddir    # servernic-dpdk
+cd src/clientnic/dpdk-forwarder && meson setup builddir && ninja -C builddir   # clientnic-dpdk-forwarder
+cd src/servernic/dpdk          && meson setup builddir && ninja -C builddir    # servernic-dpdk
 ```
 
 ### Packet capture (endpoint model — DPDK/Proxmox)
@@ -270,10 +270,10 @@ python3 experiments/utils/analyze_metrics.py \
 # Output lines: fct=, send_unlock=, server_gap=  (a "missing=" line = failure)
 ```
 
-**Scapy** — `validate_0rtt_capture.py` (copy to `/tmp/` first so `clientnic/scapy/`
+**Scapy** (deprecated — feasibility PoC only) — `validate_0rtt_capture.py` (copy to `/tmp/` first so `src/clientnic/scapy/`
 doesn't shadow the `scapy` package):
 ```bash
-cp clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py
+cp src/clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py
 python3 /tmp/validate_0rtt.py --client-pcap /tmp/client_side.pcap --server-pcap /tmp/server_side.pcap
 ```
 
@@ -286,4 +286,4 @@ See `references/troubleshooting.md`:
 - Packet re-capture loop on ServerNIC (fix: MAC filter)
 - Swapped SEQ/ACK rewrite fields
 - GW-MAC EC2 API fails from VM (fix: pass MAC as argument)
-- `scapy/` dir shadowing when running the validator from `clientnic/` (fix: copy to `/tmp/`)
+- `scapy/` dir shadowing when running the validator from `src/clientnic/` (fix: copy to `/tmp/`)

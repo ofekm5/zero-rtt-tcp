@@ -9,7 +9,7 @@
 # Run this after servernic.sh is ready.
 #
 # Usage (on the ClientNIC VM via SSM or SSH):
-#   cd /home/ec2-user/zero-rtt-demo/experiments/dpdk
+#   cd /home/ec2-user/zero-rtt-tcp/experiments/dpdk
 #
 #   Full build + run (first time or after source changes):
 #     ./clientnic.sh <gw-mac>
@@ -34,8 +34,8 @@
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
-DPDK_BUILD="$REPO_PATH/clientnic/dpdk-forwarder/builddir"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
+DPDK_BUILD="$REPO_PATH/src/clientnic/dpdk-forwarder/builddir"
 BINARY="$DPDK_BUILD/clientnic-dpdk-forwarder"
 SERVER_PORT=8080
 # Number of contiguous app ports to 0-RTT-process (SERVER_PORT .. +PORT_COUNT-1).
@@ -74,7 +74,7 @@ else
     log "Building clientnic-dpdk-forwarder (set SKIP_BUILD=1 to skip)..."
     export PATH=/usr/local/bin:$PATH
     export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig
-    cd "$REPO_PATH/clientnic/dpdk-forwarder"
+    cd "$REPO_PATH/src/clientnic/dpdk-forwarder"
     rm -rf builddir
     /usr/local/bin/meson setup builddir 2>&1 \
         && cd builddir && /usr/local/bin/ninja 2>&1 \
@@ -146,7 +146,7 @@ cleanup() {
     ls -lh /tmp/client_side.pcap 2>/dev/null || true
     echo ""
     echo "─── Run validator (client-side pcap only in T8 mode) ────────"
-    echo "  cp $REPO_PATH/clientnic/validate_0rtt_capture.py /tmp/"
+    echo "  cp $REPO_PATH/src/clientnic/validate_0rtt_capture.py /tmp/"
     echo "  python3 /tmp/validate_0rtt_capture.py \\"
     echo "    --client-pcap /tmp/client_side.pcap"
     echo "─────────────────────────────────────────────────────────────"

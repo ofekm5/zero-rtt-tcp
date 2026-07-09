@@ -2,7 +2,7 @@
 # run_trace.sh — run bpftrace TCP tracing scripts on this host
 #
 # Deployable via SSM:
-#   bash /home/ec2-user/zero-rtt-demo/observability/ebpf/run_trace.sh \
+#   bash /home/ec2-user/zero-rtt-tcp/observability/ebpf/run_trace.sh \
 #       --duration 30 --port 8080 --output /tmp/tcp_trace.jsonl
 #
 # Usage:

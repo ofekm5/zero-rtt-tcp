@@ -44,7 +44,7 @@ Shared building blocks under `experiments/utils/`:
 | — | `git pull` on all 4 VMs; kill leftovers; clear logs/pcaps | (best-effort) |
 | 1 | Start Server (`experiments/nodes/server.sh`) | `ss -tlnp` shows `:8080` |
 | 2 | Start ServerNIC (Scapy forwarder) + route + iptables DROP | `ip_forward == 1` |
-| 3 | tcpdump eth0+eth1, start `clientnic/scapy/main.py` | `ip_forward == 1` |
+| 3 | tcpdump eth0+eth1, start `src/clientnic/scapy/main.py` | `ip_forward == 1` |
 | 4 | `run_ttfb_measurement` (3 rounds × `IPERF_PARALLEL` parallel streams) | `Success: 3/3` |
 | 5 | Stop tcpdump | (always) |
 | 6 | Read `/tmp/server.log` | Contains `Received`/`bytes` |
@@ -73,7 +73,7 @@ CONNECTIONS=10 ./experiments/proxmox/run_experiment.sh   # RUNS lab via gateway
 | `CLIENTNIC_ETH1_MAC` | EC2 API DeviceIndex==1 | `get_lab_mac CLIENTNIC eth1` |
 | `SERVER_ETH0_MAC` | EC2 API DeviceIndex==0 | `get_lab_mac SERVER eth0` |
 | Smoke test | runs forwarder 3s, greps busy-poll | (in shared core) |
-| Repo path | `/home/ec2-user/zero-rtt-demo` | `/home/user/zero-rtt-demo` |
+| Repo path | `/home/ec2-user/zero-rtt-tcp` | `/home/user/zero-rtt-tcp` |
 | Report | `integration-test-report-YYYY-MM-DD.md` | `proxmox-test-report-YYYY-MM-DD.md` |
 
 ### Shared core steps (`run_core.sh::run_experiment`)
@@ -131,19 +131,19 @@ measurements, and server log — for comparison against the 0-RTT runs.
 
 ---
 
-## clientnic/validate_0rtt_capture.py (Scapy only)
+## src/clientnic/validate_0rtt_capture.py (Scapy only)
 
 Validates 0-RTT from pcaps captured **on ClientNIC** (eth0 client side, eth1 server
 side). Runs on the ClientNIC VM. Exit 0 = all passed.
 
 ```bash
-cp /home/ec2-user/zero-rtt-demo/clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py
+cp /home/ec2-user/zero-rtt-tcp/src/clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py
 python3 /tmp/validate_0rtt.py --client-pcap /tmp/client_side.pcap --server-pcap /tmp/server_side.pcap
 ```
 
 Checks: (A) spoofed SYN-ACK on eth0 with distinct ISN, (B) non-zero ISN delta per
 flow, (C) spoofed-before-real timing (informational), (D) no bad IP/TCP checksums.
-Copy to `/tmp/` first — running from `clientnic/` lets `clientnic/scapy/` shadow the
+Copy to `/tmp/` first — running from `src/clientnic/` lets `src/clientnic/scapy/` shadow the
 real `scapy` package.
 
 ---

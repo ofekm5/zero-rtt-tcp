@@ -40,7 +40,7 @@ source "$(dirname "$0")/../utils/ssm.sh"
 # shellcheck source=../utils/measure.sh
 source "$(dirname "$0")/../utils/measure.sh"
 
-REPO_PATH="/home/ec2-user/zero-rtt-demo"
+REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -126,7 +126,7 @@ else
     log "  Gateway MAC (ServerNIC eth1, DPDK port): $GW_MAC"
 
     # Smoke-test clientnic-dpdk-forwarder: run 3 s, check for busy-poll
-    DPDK_BUILD="$REPO_PATH/clientnic/dpdk-forwarder/builddir"
+    DPDK_BUILD="$REPO_PATH/src/clientnic/dpdk-forwarder/builddir"
     BINARY="$DPDK_BUILD/clientnic-dpdk-forwarder"
 
     ssm_run "$CLIENTNIC_ID" \
@@ -183,8 +183,8 @@ fi
     echo "# Integration Test Report — $(date +%Y-%m-%d)"
     echo ""
     echo "**Implementation**: DPDK (T8 ISN ack-num translation shift)"
-    echo "**ClientNIC binary**: \`clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
-    echo "**ServerNIC binary**: \`servernic/dpdk/\` (full translator)"
+    echo "**ClientNIC binary**: \`src/clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
+    echo "**ServerNIC binary**: \`src/servernic/dpdk/\` (full translator)"
     echo "**Experiment script**: \`experiments/dpdk/run_experiment.sh\`"
     echo "**Node scripts**: \`experiments/dpdk/\` (clientnic/servernic), \`experiments/nodes/\` (client/server)"
     echo "**Overall result**: $OVERALL_RESULT"

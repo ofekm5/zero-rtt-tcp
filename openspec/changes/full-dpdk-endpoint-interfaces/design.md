@@ -11,13 +11,13 @@ The T8 data-plane logic (V stamping, delta computation, seq/ack rewrite, bufferi
 ## Goals / Non-Goals
 
 **Goals:**
-- Zero AF_PACKET in the data path of both `clientnic/dpdk-forwarder` and `servernic/dpdk`.
+- Zero AF_PACKET in the data path of both `src/clientnic/dpdk-forwarder` and `src/servernic/dpdk`.
 - A dedicated kernel management ENI on each SmartNIC so all data-plane ENIs can be vfio-pci bound while SSM stays reachable.
 - Preserve the existing single-core busy-poll model and the T8 translation logic unchanged.
 - Peer (client/server) MAC supplied via CLI, mirroring the existing `--gw-mac` contract.
 
 **Non-Goals:**
-- (Inherit `proposal.md` Non-Goals.) No DPU port, no Scapy stack, no full-owner `clientnic/dpdk/`, no T8 logic changes, no runtime ARP, no in-binary pcap on the endpoint ports, no flow-table/sysctl re-tuning.
+- (Inherit `proposal.md` Non-Goals.) No DPU port, no Scapy stack, no full-owner `src/clientnic/dpdk/`, no T8 logic changes, no runtime ARP, no in-binary pcap on the endpoint ports, no flow-table/sysctl re-tuning.
 
 ## Decisions
 

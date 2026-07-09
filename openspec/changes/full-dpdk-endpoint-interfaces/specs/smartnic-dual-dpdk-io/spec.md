@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Both data-plane interfaces run on the DPDK ENA PMD
-Each SmartNIC binary SHALL drive both of its data-plane interfaces through the DPDK ENA PMD. No `AF_PACKET`/`SOCK_RAW` socket SHALL exist in the data path of either `clientnic/dpdk-forwarder` or `servernic/dpdk`.
+Each SmartNIC binary SHALL drive both of its data-plane interfaces through the DPDK ENA PMD. No `AF_PACKET`/`SOCK_RAW` socket SHALL exist in the data path of either `src/clientnic/dpdk-forwarder` or `src/servernic/dpdk`.
 
 #### Scenario: Both ports are DPDK
 - **WHEN** a SmartNIC binary starts with both data ENIs bound to vfio-pci
