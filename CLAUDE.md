@@ -147,6 +147,12 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 
 ## Development Workflow
 
+**No desktop? (Claude Code mobile/web/cloud session):**
+All AWS operations — deploy/destroy CDK stacks, run experiments, check status — can be
+triggered without local AWS credentials via GitHub Actions (`.github/workflows/aws-ops.yml`):
+edit `ops/request.json`, commit, push; results come back as a commit under `ops/results/`
+(read `ops/results/latest.md` after `git pull`). Full playbook: **`ops/README.md`**.
+
 **AWS EC2 Testing & Experimentation:**
 1. **Scapy stack**: `./experiments/scapy/run_experiment.sh`
 2. **DPDK stack**: `./experiments/dpdk/run_experiment.sh`
