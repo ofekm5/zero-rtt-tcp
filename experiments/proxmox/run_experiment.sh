@@ -77,14 +77,17 @@ log "Resolving Ethernet MACs from lab VMs..."
 GW_MAC=$(get_lab_mac "$SERVERNIC_ID" "eth1")
 # CLIENTNIC_ETH1_MAC: ClientNIC eth1 MAC — ServerNIC needs this as --gw-mac
 CLIENTNIC_ETH1_MAC=$(get_lab_mac "$CLIENTNIC_ID" "eth1")
-# SERVER_ETH0_MAC: Server eth0 MAC — ServerNIC needs this as --server-gw-mac
+# SERVER_ETH0_MAC: Server eth0 MAC — ServerNIC needs this as --server-mac
 SERVER_ETH0_MAC=$(get_lab_mac "$SERVER_ID" "eth0")
+# CLIENT_ETH0_MAC: Client eth0 MAC — ClientNIC needs this as --client-mac
+CLIENT_ETH0_MAC=$(get_lab_mac "$CLIENT_ID" "eth0")
 
 log "  GW_MAC (ServerNIC eth1):      ${GW_MAC:-UNKNOWN}"
 log "  CLIENTNIC_ETH1_MAC:           ${CLIENTNIC_ETH1_MAC:-UNKNOWN}"
 log "  SERVER_ETH0_MAC:              ${SERVER_ETH0_MAC:-UNKNOWN}"
+log "  CLIENT_ETH0_MAC:              ${CLIENT_ETH0_MAC:-UNKNOWN}"
 
-for var_name in GW_MAC CLIENTNIC_ETH1_MAC SERVER_ETH0_MAC; do
+for var_name in GW_MAC CLIENTNIC_ETH1_MAC SERVER_ETH0_MAC CLIENT_ETH0_MAC; do
     val="${!var_name}"
     if [[ -z "$val" || "$val" == "UNKNOWN" ]]; then
         echo -e "${RED}ERROR: could not resolve $var_name${NC}" >&2
@@ -94,7 +97,7 @@ done
 
 
 # ─── Run shared experiment core ───────────────────────────────────────────────
-run_experiment "$GW_MAC" "$CLIENTNIC_ETH1_MAC" "$SERVER_ETH0_MAC"
+run_experiment "$GW_MAC" "$CLIENTNIC_ETH1_MAC" "$SERVER_ETH0_MAC" "$CLIENT_ETH0_MAC"
 
 
 # ─── Summary ──────────────────────────────────────────────────────────────────

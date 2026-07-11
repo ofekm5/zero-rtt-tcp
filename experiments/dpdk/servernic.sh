@@ -4,7 +4,7 @@
 # ENI roles (T8 design, D6):
 #   eth0: kernel/SSM management
 #   eth1: ClientNIC-facing DPDK port (vfio-pci, bound at boot by CDK user data)
-#   eth2: Server-facing AF_PACKET
+#   eth2: Server-facing DPDK port (vfio-pci, bound at boot by CDK user data)
 #
 # The binary handles its own iptables RST suppression and FORWARD drops.
 #
@@ -74,8 +74,8 @@ else
 fi
 
 # ─── Discover gateway MACs ────────────────────────────────────────────────────
-# --gw-mac: ClientNIC-side gateway MAC (ClientNIC eth1 secondary ENI, Middle subnet)
-# --server-gw-mac: Server-side gateway MAC (Server eth0 MAC or subnet gateway)
+# Passed to the binary as --gw-mac: ClientNIC-side gateway MAC (ClientNIC eth1 secondary ENI, Middle subnet)
+# Passed to the binary as --server-mac: Server-side peer MAC (Server eth0 MAC or subnet gateway)
 CLIENTNIC_GW_MAC="${1:-${CLIENTNIC_GW_MAC:-}}"
 SERVER_GW_MAC="${2:-${SERVER_GW_MAC:-}}"
 
@@ -152,21 +152,8 @@ else
     fi
 fi
 
-# Detect server-facing kernel interface: first non-eth0 interface in /sys/class/net
-SERVER_IFACE="eth2"
-for _iface in eth1 eth2 eth3; do
-    [ -d /sys/class/net/$_iface ] && SERVER_IFACE="$_iface" && break
-done
-log "Server-facing interface (AF_PACKET): $SERVER_IFACE"
-
-# Disable GRO/LRO on the server-facing AF_PACKET interface so the kernel does
-# not coalesce received segments into >2048-byte super-frames before the raw
-# socket reads them (the data plane's 2048-byte buffers would drop those).
-sudo ethtool -K "$SERVER_IFACE" gro off lro off 2>/dev/null || true
-
-# Raise the egress qdisc depth so the synchronized 100-flow flush/bulk burst is
-# queued rather than tail-dropped (default txqueuelen 1000 -> ENOBUFS under load).
-sudo ip link set "$SERVER_IFACE" txqueuelen 100000 2>/dev/null || true
+# eth2 (Server-facing) is now a DPDK ENA PMD port (Sprint 2), not a kernel
+# netdev, so there is no server-facing kernel interface to detect or tune here.
 
 # ─── IP forwarding check ──────────────────────────────────────────────────────
 FWRD=$(cat /proc/sys/net/ipv4/ip_forward)
@@ -188,12 +175,10 @@ trap cleanup EXIT
 
 # ─── Start servernic-dpdk (foreground) ───────────────────────────────────────
 log "Starting servernic-dpdk — watching for flows. Press Ctrl+C to stop."
-log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$CLIENTNIC_GW_MAC --server-gw-mac=$SERVER_GW_MAC"
+log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$CLIENTNIC_GW_MAC --server-mac=$SERVER_GW_MAC"
 echo ""
 exec "$BINARY" -l 0 -- \
     --port="$SERVER_PORT" \
     --port-count="$PORT_COUNT" \
     --gw-mac="$CLIENTNIC_GW_MAC" \
-    --server-gw-mac="$SERVER_GW_MAC" \
-    --client-iface=eth1 \
-    --server-iface="$SERVER_IFACE"
+    --server-mac="$SERVER_GW_MAC"

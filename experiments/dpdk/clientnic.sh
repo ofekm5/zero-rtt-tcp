@@ -21,6 +21,11 @@
 #   Get it: aws ec2 describe-instances ... DeviceIndex=1 | jq .MacAddress
 #           or from the CDK deploy output: SmartNicsStack.ServerNicEth1Mac
 #
+#   The Client's own peer MAC (required by the binary as --client-mac, since the
+#   client-facing DPDK port cannot ARP for it) is auto-discovered via the EC2 API
+#   unless passed via the CLIENT_MAC env var:
+#     CLIENT_MAC=aa:bb:cc:dd:ee:ff ./clientnic.sh <gw-mac>
+#
 # Log output explained:
 #   "SYN: flow created, spoofed SYN-ACK sent, SYN forwarded (V=<N>)"
 #     → ClientNIC intercepted the client's SYN, immediately sent a spoofed SYN-ACK
@@ -103,6 +108,24 @@ if [ -z "$GW_MAC" ] || [ "$GW_MAC" = "None" ]; then
 fi
 log "Gateway MAC (ServerNIC eth1, Middle subnet DPDK port): $GW_MAC"
 
+# ─── Discover Client peer MAC ─────────────────────────────────────────────────
+# The client-facing DPDK port cannot ARP for its peer, so the Client VM's own
+# ENI MAC (device_index=0, Client subnet) must be supplied via --client-mac.
+CLIENT_MAC="${CLIENT_MAC:-}"
+if [ -z "$CLIENT_MAC" ]; then
+    log "Discovering Client eth0 MAC via EC2 API..."
+    CLIENT_MAC=$(aws ec2 describe-instances \
+        --filters "Name=tag:Name,Values=smartnics-client" "Name=instance-state-name,Values=running" \
+        --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`0\`].MacAddress" \
+        --output text --region "$REGION" 2>/dev/null | tr -d '[:space:]')
+fi
+if [ -z "$CLIENT_MAC" ] || [ "$CLIENT_MAC" = "None" ]; then
+    echo -e "${RED}ERROR: Could not determine Client peer MAC.${NC}"
+    echo "Get from EC2 API (DeviceIndex=0 of smartnics-client) or pass via CLIENT_MAC env var."
+    exit 1
+fi
+log "Client MAC (client-facing peer): $CLIENT_MAC"
+
 # ─── IP forwarding check ──────────────────────────────────────────────────────
 FWRD=$(cat /proc/sys/net/ipv4/ip_forward)
 if [ "$FWRD" != "1" ]; then
@@ -123,27 +146,18 @@ sudo ethtool -K eth0 gro off lro off 2>/dev/null || true
 # rather than tail-dropped under the 100-flow load (default txqueuelen 1000).
 sudo ip link set eth0 txqueuelen 100000 2>/dev/null || true
 
-# ─── Start packet capture on eth0 (background) ───────────────────────────────
-# eth1 is DPDK-controlled; the binary captures it directly via --server-pcap.
-log "Starting tcpdump on eth0 → /tmp/client_side.pcap (ports ${SERVER_PORT}-${PORT_HI}) ..."
-sudo tcpdump -i eth0 -nn -tttt "tcp portrange ${SERVER_PORT}-${PORT_HI}" -w /tmp/client_side.pcap \
-    </dev/null >/tmp/tcpdump_eth0.log 2>&1 &
-TCPDUMP_PID=$!
-sleep 1
+# eth0 is now the dedicated kernel/SSM management ENI (Sprint 3) and the actual
+# client-facing DPDK port is not kernel-visible, so no tcpdump runs here — the
+# client-side capture is taken on the Client VM's own eth0 (see run_core.sh).
 
 # ─── Cleanup on exit ──────────────────────────────────────────────────────────
 cleanup() {
     echo ""
-    log "Stopping tcpdump and DPDK forwarder binary..."
-    kill "$TCPDUMP_PID" 2>/dev/null || true
-    wait "$TCPDUMP_PID" 2>/dev/null || true
+    log "Stopping DPDK forwarder binary..."
     sudo iptables -F FORWARD 2>/dev/null || true
     sudo iptables -F OUTPUT 2>/dev/null || true
     sleep 1
 
-    echo ""
-    echo "─── Capture saved ───────────────────────────────────────────"
-    ls -lh /tmp/client_side.pcap 2>/dev/null || true
     echo ""
     echo "─── Run validator (client-side pcap only in T8 mode) ────────"
     echo "  cp $REPO_PATH/src/clientnic/validate_0rtt_capture.py /tmp/"
@@ -155,9 +169,10 @@ trap cleanup EXIT
 
 # ─── Start DPDK forwarder binary (foreground) ────────────────────────────────
 log "Starting clientnic-dpdk-forwarder — transparent forwarding with V-stamp. Press Ctrl+C to stop."
-log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$GW_MAC"
+log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$GW_MAC --client-mac=$CLIENT_MAC"
 echo ""
 exec "$BINARY" -l 0 -- \
     --port="$SERVER_PORT" \
     --port-count="$PORT_COUNT" \
-    --gw-mac="$GW_MAC"
+    --gw-mac="$GW_MAC" \
+    --client-mac="$CLIENT_MAC"

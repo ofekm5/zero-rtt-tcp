@@ -24,14 +24,15 @@
 #
 # Usage:
 #   source "$(dirname "$0")/../utils/run_core.sh"
-#   run_experiment  <gw_mac> <clientnic_eth1_mac> <server_eth0_mac>
+#   run_experiment  <gw_mac> <clientnic_eth1_mac> <server_eth0_mac> <client_eth0_mac>
 
-# run_experiment <gw_mac> <clientnic_eth1_mac> <server_eth0_mac>
-# All three MACs must be resolved by the caller (transport-specific) before calling.
+# run_experiment <gw_mac> <clientnic_eth1_mac> <server_eth0_mac> <client_eth0_mac>
+# All four MACs must be resolved by the caller (transport-specific) before calling.
 run_experiment() {
     local GW_MAC="$1"
     local CLIENTNIC_ETH1_MAC="$2"
     local SERVER_ETH0_MAC="$3"
+    local CLIENT_ETH0_MAC="$4"
 
     # Port range the load is spread across (see measure.sh IPERF_PORTS). The data
     # plane (clientnic-dpdk-forwarder + servernic-dpdk) is told to cover the same
@@ -224,7 +225,7 @@ run_experiment() {
     sleep 1
 
     remote_bg "$CLIENTNIC_ID" \
-        "SKIP_BUILD=1 PORT_COUNT=$NPORTS setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC \
+        "SKIP_BUILD=1 PORT_COUNT=$NPORTS CLIENT_MAC=$CLIENT_ETH0_MAC setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC \
          < /dev/null >> /tmp/clientnic.log 2>&1 &"
     sleep 5
 

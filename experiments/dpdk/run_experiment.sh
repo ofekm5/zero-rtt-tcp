@@ -111,14 +111,21 @@ CLIENTNIC_ETH1_MAC=$(aws ec2 describe-instances \
     --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`1\`].MacAddress" \
     --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
 
-# Server eth0 MAC (DeviceIndex=0) → ServerNIC needs this as --server-gw-mac
+# Server eth0 MAC (DeviceIndex=0) → ServerNIC needs this as --server-mac
 SERVER_ETH0_MAC=$(aws ec2 describe-instances \
     --filters "Name=tag:Name,Values=smartnics-server" "Name=instance-state-name,Values=running" \
     --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`0\`].MacAddress" \
     --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
 
-log "  ClientNIC eth1 MAC (ServerNIC --gw-mac):      ${CLIENTNIC_ETH1_MAC:-UNKNOWN}"
-log "  Server eth0 MAC (ServerNIC --server-gw-mac):  ${SERVER_ETH0_MAC:-UNKNOWN}"
+# Client eth0 MAC (DeviceIndex=0) → ClientNIC needs this as --client-mac
+CLIENT_ETH0_MAC=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=smartnics-client" "Name=instance-state-name,Values=running" \
+    --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`0\`].MacAddress" \
+    --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
+
+log "  ClientNIC eth1 MAC (ServerNIC --gw-mac):    ${CLIENTNIC_ETH1_MAC:-UNKNOWN}"
+log "  Server eth0 MAC (ServerNIC --server-mac):   ${SERVER_ETH0_MAC:-UNKNOWN}"
+log "  Client eth0 MAC (ClientNIC --client-mac):   ${CLIENT_ETH0_MAC:-UNKNOWN}"
 
 if [[ -z "$GW_MAC" || "$GW_MAC" == "None" ]]; then
     fail "Smoke test: could not discover ServerNIC eth1 MAC (DeviceIndex=1)"
@@ -131,7 +138,7 @@ else
 
     ssm_run "$CLIENTNIC_ID" \
         "rm -f /tmp/clientnic_smoke.log; \
-         setsid $BINARY -l 0 -- --port=$SERVER_PORT --gw-mac=$GW_MAC \
+         setsid $BINARY -l 0 -- --port=$SERVER_PORT --gw-mac=$GW_MAC --client-mac=$CLIENT_ETH0_MAC \
              < /dev/null > /tmp/clientnic_smoke.log 2>&1 & \
          BPID=\$!; sleep 3; kill \$BPID 2>/dev/null; wait \$BPID 2>/dev/null; true" \
         30 > /dev/null
@@ -154,7 +161,7 @@ fi
 
 
 # ─── Run shared experiment core ───────────────────────────────────────────────
-run_experiment "$GW_MAC" "$CLIENTNIC_ETH1_MAC" "$SERVER_ETH0_MAC"
+run_experiment "$GW_MAC" "$CLIENTNIC_ETH1_MAC" "$SERVER_ETH0_MAC" "$CLIENT_ETH0_MAC"
 
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
