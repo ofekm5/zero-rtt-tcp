@@ -14,7 +14,6 @@
 #define MBUF_POOL_SIZE  8191
 #define MBUF_CACHE_SIZE 250
 #define RX_BURST_SIZE   32
-#define ETH2_BUF_SIZE   2048
 
 static volatile int running = 1;
 
@@ -70,25 +69,21 @@ int main(int argc, char *argv[])
     /* ── CLI arg parsing (post-EAL) ──────────────────────────────────────── */
     uint16_t app_port = 8080;
     uint16_t app_port_count = 1;
-    uint8_t  gw_mac[6]        = {0};  /* ClientNIC-side next-hop */
-    uint8_t  server_gw_mac[6] = {0};  /* Server-side next-hop */
-    int      gw_mac_set        = 0;
-    int      server_gw_mac_set = 0;
-    const char *client_iface = "eth1";  /* ClientNIC-facing DPDK port iface name */
-    const char *server_iface = "eth2";  /* Server-facing AF_PACKET iface */
+    uint8_t  gw_mac[6]     = {0};  /* ClientNIC-side next-hop */
+    uint8_t  server_mac[6] = {0};  /* Server peer MAC */
+    int      gw_mac_set     = 0;
+    int      server_mac_set = 0;
 
     static struct option long_opts[] = {
         {"port",            required_argument, NULL, 'p'},
         {"port-count",      required_argument, NULL, 'n'},
         {"gw-mac",          required_argument, NULL, 'g'},
-        {"server-gw-mac",   required_argument, NULL, 'G'},
-        {"client-iface",    required_argument, NULL, 'c'},
-        {"server-iface",    required_argument, NULL, 's'},
+        {"server-mac",      required_argument, NULL, 'G'},
         {NULL, 0, NULL, 0}
     };
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "p:n:g:G:c:s:", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "p:n:g:G:", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'p':
             app_port = (uint16_t)atoi(optarg);
@@ -106,23 +101,17 @@ int main(int argc, char *argv[])
             gw_mac_set = 1;
             break;
         case 'G':
-            if (parse_mac(optarg, server_gw_mac) < 0) {
-                LOG_ERR("Invalid --server-gw-mac: %s", optarg);
+            if (parse_mac(optarg, server_mac) < 0) {
+                LOG_ERR("Invalid --server-mac: %s", optarg);
                 return 1;
             }
-            server_gw_mac_set = 1;
-            break;
-        case 'c':
-            client_iface = optarg;
-            break;
-        case 's':
-            server_iface = optarg;
+            server_mac_set = 1;
             break;
         default:
             fprintf(stderr,
                     "Usage: %s [EAL opts] -- --port=PORT [--port-count=N]"
                     " --gw-mac=CLIENTNIC_GW_MAC"
-                    " --server-gw-mac=SERVER_GW_MAC\n", argv[0]);
+                    " --server-mac=SERVER_MAC\n", argv[0]);
             return 1;
         }
     }
@@ -131,14 +120,13 @@ int main(int argc, char *argv[])
         LOG_ERR("--gw-mac (ClientNIC-side gateway) is required");
         return 1;
     }
-    if (!server_gw_mac_set) {
-        LOG_ERR("--server-gw-mac (Server-side gateway) is required");
+    if (!server_mac_set) {
+        LOG_ERR("--server-mac (Server peer MAC) is required");
         return 1;
     }
 
-    LOG_INFO("ServerNIC DPDK starting (port=%u..%u, client-iface=%s, server-iface=%s)",
-             app_port, (uint16_t)(app_port + app_port_count - 1),
-             client_iface, server_iface);
+    LOG_INFO("ServerNIC DPDK starting (port=%u..%u)",
+             app_port, (uint16_t)(app_port + app_port_count - 1));
 
     /* ── Mempool ─────────────────────────────────────────────────────────── */
     struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL",
@@ -151,8 +139,9 @@ int main(int argc, char *argv[])
 
     /* ── DPDK port check ─────────────────────────────────────────────────── */
     uint16_t nb_ports = rte_eth_dev_count_avail();
-    if (nb_ports == 0) {
-        LOG_ERR("No DPDK ports available (is eth1 bound to vfio-pci?)");
+    if (nb_ports < 2) {
+        LOG_ERR("Need 2 DPDK ports available (ClientNIC-facing + Server-facing),"
+                " got %u (are both bound to vfio-pci?)", nb_ports);
         return 1;
     }
 
@@ -166,7 +155,7 @@ int main(int argc, char *argv[])
 
     if (eth1_init(&eth1, 0, mbuf_pool, gw_mac) < 0)
         return 1;
-    if (eth2_init(&eth2, server_iface, server_gw_mac) < 0)
+    if (eth2_init(&eth2, 1, mbuf_pool, server_mac) < 0)
         return 1;
 
     ft_init(&ft);
@@ -184,28 +173,30 @@ int main(int argc, char *argv[])
     LOG_INFO("Entering busy-poll loop...");
 
     /* ── Main busy-poll loop ─────────────────────────────────────────────── */
-    uint8_t eth2_buf[ETH2_BUF_SIZE];
-    struct rte_mbuf *rx_bufs[RX_BURST_SIZE];
+    struct rte_mbuf *rx_bufs1[RX_BURST_SIZE];
+    struct rte_mbuf *rx_bufs2[RX_BURST_SIZE];
 
     while (running) {
         /* Poll eth1 (DPDK rx_burst, from ClientNIC) */
-        uint16_t nb_rx = rte_eth_rx_burst(eth1.port_id, 0, rx_bufs, RX_BURST_SIZE);
-        for (uint16_t i = 0; i < nb_rx; i++) {
-            pipeline_feed_eth1(&pipeline, rx_bufs[i]);
-            rte_pktmbuf_free(rx_bufs[i]);
+        uint16_t nb_rx1 = rte_eth_rx_burst(eth1.port_id, 0, rx_bufs1, RX_BURST_SIZE);
+        for (uint16_t i = 0; i < nb_rx1; i++) {
+            pipeline_feed_eth1(&pipeline, rx_bufs1[i]);
+            rte_pktmbuf_free(rx_bufs1[i]);
         }
 
-        /* Poll eth2 (AF_PACKET, from Server): drain until empty (bounded) so the
-         * socket RX buffer cannot back up and tail-drop returning ACKs. */
-        int n;
-        for (int k = 0; k < 64 &&
-             (n = eth2_recv(&eth2, eth2_buf, sizeof(eth2_buf))) > 0; k++)
-            pipeline_feed_eth2(&pipeline, eth2_buf, (uint16_t)n);
+        /* Poll eth2 (DPDK rx_burst, from Server) */
+        uint16_t nb_rx2 = rte_eth_rx_burst(eth2.port_id, 0, rx_bufs2, RX_BURST_SIZE);
+        for (uint16_t i = 0; i < nb_rx2; i++) {
+            pipeline_feed_eth2(&pipeline, rx_bufs2[i]);
+            rte_pktmbuf_free(rx_bufs2[i]);
+        }
     }
 
     LOG_INFO("Shutting down...");
     rte_eth_dev_stop(eth1.port_id);
     rte_eth_dev_close(eth1.port_id);
+    rte_eth_dev_stop(eth2.port_id);
+    rte_eth_dev_close(eth2.port_id);
     rte_eal_cleanup();
     return 0;
 }

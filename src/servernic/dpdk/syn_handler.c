@@ -40,8 +40,8 @@ void syn_handler_handle_syn(struct syn_handler *sh,
     /* Create or refresh PENDING entry */
     struct flow_entry *entry = ft_lookup(sh->ft, &key);
     if (!entry) {
-        /* Server-side next-hop MAC: use eth2's configured gateway MAC */
-        entry = ft_create(sh->ft, &key, V, sh->eth2->gw_mac);
+        /* Server-side next-hop MAC: use eth2's configured server peer MAC */
+        entry = ft_create(sh->ft, &key, V, sh->eth2->server_mac);
         if (!entry) {
             LOG_ERR("SYN: flow table full");
             return;
@@ -67,15 +67,15 @@ void syn_handler_handle_syn(struct syn_handler *sh,
     fwd_tcp->recv_ack = 0;
     recalc_tcp_checksum(fwd_ip, fwd_tcp);
 
-    /* Rewrite Ether: src=eth2 MAC, dst=server gateway MAC */
+    /* Rewrite Ether: src=eth2 MAC, dst=server peer MAC */
     memcpy(fwd_eth->src_addr.addr_bytes, sh->eth2->mac, 6);
-    memcpy(fwd_eth->dst_addr.addr_bytes, sh->eth2->gw_mac, 6);
+    memcpy(fwd_eth->dst_addr.addr_bytes, sh->eth2->server_mac, 6);
 
     eth2_send(sh->eth2, buf, len);
     LOG_DEBUG("SYN forwarded to Server (ack-num zeroed)");
 }
 
-/* ── Real SYN-ACK from Server (eth2 AF_PACKET raw buffer) ───────────────── */
+/* ── Real SYN-ACK from Server (eth2 DPDK mbuf) ───────────────────────────── */
 
 void syn_handler_handle_syn_ack(struct syn_handler *sh, struct rte_mbuf *mbuf)
 {
@@ -140,8 +140,7 @@ void syn_handler_handle_syn_ack(struct syn_handler *sh, struct rte_mbuf *mbuf)
         /* This is the FIRST 0-RTT client data. A drop here is the direct cause
          * of the bimodal ~200ms server_gap, so surface it. */
         if (eth2_send(sh->eth2, bpkt, blen) < 0)
-            LOG_WARN("SYN-ACK: flush dropped first c2s data (tx_drops=%lu)",
-                     (unsigned long)sh->eth2->tx_drops);
+            LOG_WARN("SYN-ACK: flush dropped first c2s data");
         free(bpkt);
     }
 

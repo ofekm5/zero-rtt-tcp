@@ -51,7 +51,7 @@ void trans_init(struct translator *t, struct flow_table *ft,
     t->eth2 = eth2;
 }
 
-/* ── Client→Server (eth1 DPDK mbuf → eth2 AF_PACKET) ────────────────────── */
+/* ── Client→Server (eth1 DPDK mbuf → eth2 DPDK port) ─────────────────────── */
 
 void trans_c2s(struct translator *t, const uint8_t *pkt, uint16_t len)
 {
@@ -95,11 +95,10 @@ void trans_c2s(struct translator *t, const uint8_t *pkt, uint16_t len)
     memcpy(eth->dst_addr.addr_bytes, entry->server_mac, 6);
 
     if (eth2_send(t->eth2, buf, len) < 0)
-        LOG_WARN("c2s: eth2_send dropped data segment (tx_drops=%lu)",
-                 (unsigned long)t->eth2->tx_drops);
+        LOG_WARN("c2s: eth2_send dropped data segment");
 }
 
-/* ── Server→Client (eth2 AF_PACKET raw buf → eth1 DPDK) ─────────────────── */
+/* ── Server→Client (eth2 DPDK mbuf → eth1 DPDK) ───────────────────────────── */
 
 void trans_s2c(struct translator *t, struct rte_mbuf *mbuf)
 {
