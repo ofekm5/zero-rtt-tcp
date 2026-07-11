@@ -5,7 +5,8 @@ description: >
   Use this skill whenever the user mentions connecting to the lab, accessing Proxmox, SSHing into the gateway,
   reaching internal lab IPs, asking about lab credentials, or troubleshooting lab connectivity — even if they
   don't say "RUNS lab" explicitly. Also use when the user asks how to reach dev/production/management network
-  segments or how to connect the lab OpenVPN profile.
+  segments or how to connect the lab OpenVPN profile, or when the user wants to give Claude Code its own
+  key-based SSH access to a lab VM ("bind Claude to", "install the SSH key on", "let Claude reach" a host).
 ---
 
 # RUNS Lab — Connection Reference
@@ -54,6 +55,37 @@ Reachable directly once the VPN is connected:
 
 ---
 
+## Step 4 — Bind Claude Code to a VM (key auth, for automation)
+
+To let **Claude Code** drive a lab VM non-interactively (no password per command), install its durable SSH
+key with the bundled helper:
+
+```bash
+# in a REAL Git Bash window (see the gotcha below):
+./install_claude_ssh_key.sh [user@]<ip> [[user@]<ip> ...]
+# or via lab-connect.sh:
+./lab-connect.sh bind ubuntu@10.13.36.16
+```
+
+What it does: generates a durable key once at `~/.ssh/claude_code_ed25519`, installs the public key into the
+VM's `~/.ssh/authorized_keys`, adds an `~/.ssh/config` entry, and verifies key auth. Default user is `ubuntu`
+(override with `DEFAULT_USER=root` or a `user@` prefix). All lab hosts are Ubuntu.
+
+Afterwards Claude connects with:
+```bash
+ssh -i ~/.ssh/claude_code_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes <user>@<ip>
+```
+
+> **Gotcha — must run in a real Git Bash window.** Not the Claude `!` prefix (no TTY → ssh can't prompt for
+> the password, fails instantly as `Permission denied` with no prompt) and not PowerShell (Windows-native
+> OpenSSH can't do the interactive prompt or ControlMaster multiplexing → `getsockname failed: Not a socket`).
+> Only MSYS/Git Bash `ssh` works, and it shares `$HOME` (`/c/Users/shir`) + `/tmp` with Claude's tools.
+
+> **After a VM is re-imaged** (e.g. a BlueField BFB flash) its host key changes. Clear the stale entry first:
+> `ssh-keygen -R <ip> -f ~/.ssh/known_hosts`, then reconnect (and re-run `bind` — the fresh OS has no key).
+
+---
+
 ## Credentials Reference
 
 | Resource         | IP / URL                    | Username | Password     |
@@ -92,3 +124,5 @@ External credentials (Gmail, GitLab, etc.) → Bitwarden inside the network.
 | SSH `Permission denied` to an internal VM | Verify username/password from the Logins wiki. |
 | Proxmox HTTPS unreachable | Confirm OpenVPN is connected — Proxmox no longer requires F5. |
 | OpenVPN profile missing from client | Re-import `.claude/skills/runs-lab-connect/runs.ovpn`. |
+| `bind` gives `Permission denied` with no password prompt | You're in the `!` prefix or PowerShell — re-run in a real Git Bash window. |
+| Host key changed / `REMOTE HOST IDENTIFICATION HAS CHANGED` after a re-image | `ssh-keygen -R <ip> -f ~/.ssh/known_hosts`, then reconnect and re-run `bind`. |
