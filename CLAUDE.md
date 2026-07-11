@@ -11,6 +11,7 @@ This project supports **two target platforms**:
    - All VMs part of AWS CDK stack called `smartnics_stack`
    - CDK code lives in `infra/scapy/` and `infra/dpdk/`
    - Mirrored from `C:\Users\shir\Documents\GitHub\private-core-cdk-stack` (excluding gitlab runner)
+   - ClientNIC and ServerNIC (`infra/dpdk/`) each run a **dual-DPDK data plane**: both endpoint-facing ports are DPDK ENA PMD (vfio-pci), addressed via explicit `--client-mac`/`--server-mac`/`--gw-mac` peer MACs. Each SmartNIC also carries a dedicated, kernel-driven **management ENI** (primary interface, never bound to vfio-pci) for SSM Session Manager access.
 
 2. **NVIDIA BlueField-3 DPU** (new platform target)
    - Hardware-accelerated SmartNIC with DOCA/DPDK

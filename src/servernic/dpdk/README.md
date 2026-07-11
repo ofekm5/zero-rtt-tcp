@@ -5,19 +5,25 @@ stateful translator** — it reads V from the forwarded SYN's ack-num field, com
 seq/ack delta after the real SYN-ACK arrives, drops the real SYN-ACK, and rewrites all
 subsequent packets in both directions.
 
-## ENI layout (T8 design, D6)
+## ENI layout (T8 design, D6) — dual-DPDK data plane
 
 ```
-Client ──► ClientNIC ──eth1(DPDK)──► [ServerNIC] ──eth2(AF_PACKET)──► Server
+Client ──► ClientNIC ──eth1(DPDK)──► [ServerNIC] ──eth2(DPDK)──► Server
                                        eth0 = kernel (SSM management)
                                        eth1 = DPDK ENA PMD (ClientNIC-facing, vfio-pci)
-                                       eth2 = AF_PACKET (Server-facing, kernel)
+                                       eth2 = DPDK ENA PMD (Server-facing, vfio-pci)
 ```
 
-- **eth1** (Middle subnet, secondary ENI): DPDK ENA port — receives forwarded SYN/data from
+Both data-plane ports run the DPDK ENA PMD (vfio-pci) — the Server-facing port has moved off
+AF_PACKET. A dedicated **management ENI** (`eth0`, primary, kernel-driven) carries SSM Session
+Manager access and is never bound to vfio-pci, keeping the box reachable while both `eth1`/`eth2`
+are DPDK-owned.
+
+- **eth1** (Middle subnet, secondary ENI): DPDK ENA PMD — receives forwarded SYN/data from
   ClientNIC, sends translated server→client frames back
-- **eth2** (Server subnet, tertiary ENI): AF_PACKET raw socket — forwards SYN/data to Server,
-  receives Server responses
+- **eth2** (Server subnet, tertiary ENI): DPDK ENA PMD — forwards SYN/data to Server,
+  receives Server responses. Frames are addressed with the configured `--server-mac` peer MAC
+  rather than kernel ARP, since a DPDK-owned port can't ARP.
 
 ## State machine
 
@@ -49,7 +55,7 @@ Server→Client (eth2, non-SYN-ACK):
 | `syn_handler.c/h` | SYN: extract V, zero ack, forward; SYN-ACK: set delta, flush, drop |
 | `translator.c/h` | `trans_c2s` (ACK -= delta) and `trans_s2c` (SEQ += delta) |
 | `pipeline.c/h` | Parse Ethernet/IP/TCP, classify, dispatch to handlers |
-| `io.c/h` | eth1 DPDK ENA port + eth2 AF_PACKET raw socket |
+| `io.c/h` | Both data-plane ports: DPDK ENA PMD (ClientNIC-facing eth1 + Server-facing eth2) |
 | `checksum.c/h` | IP + TCP checksum via DPDK helpers |
 | `log.c/h` | `RTE_LOG` wrappers |
 | `tests/` | Python unit tests (no DPDK required) |
