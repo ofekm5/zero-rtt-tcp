@@ -43,7 +43,7 @@ static void log_ttfb(struct flow_entry *entry)
 }
 
 void fwd_init(struct forwarder *f, struct flow_table *ft,
-              struct eth0_io *eth0, struct eth1_io *eth1)
+              struct client_io *eth0, struct eth1_io *eth1)
 {
     f->ft   = ft;
     f->eth0 = eth0;
