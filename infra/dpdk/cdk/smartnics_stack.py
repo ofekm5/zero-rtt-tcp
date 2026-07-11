@@ -38,10 +38,10 @@ class SmartNicsStack(Stack):
 
         # User data for ServerNIC VM: DPDK 23.11 + hugepages + vfio-pci + servernic-dpdk build
         #
-        # ENI role pinning (T8 design, D6):
+        # ENI role pinning (T8 design, D1 dual-DPDK):
         #   eth0: primary ENI (Middle subnet, kernel) — SSM management only
         #   eth1: secondary ENI (Middle subnet, DPDK) — ClientNIC-facing data plane (vfio-pci)
-        #   eth2: tertiary ENI (Server subnet, kernel) — Server-facing AF_PACKET
+        #   eth2: tertiary ENI (Server subnet, DPDK)  — Server-facing data plane (vfio-pci)
         servernic_user_data = ec2.UserData.for_linux()
         servernic_user_data.add_commands(
             # System packages
@@ -85,7 +85,7 @@ class SmartNicsStack(Stack):
             "modprobe vfio-pci",
             "echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode",
             "echo 'vfio-pci' > /etc/modules-load.d/vfio.conf",
-            # Wait for eth1 (secondary ENI, device_index=1) and bind to vfio-pci
+            # Wait for eth1 (secondary ENI, device_index=1, ClientNIC-facing) and bind to vfio-pci
             "for i in $(seq 1 30); do",
             "    SECONDARY_PCI=$(basename $(readlink /sys/class/net/eth1/device) 2>/dev/null || true)",
             "    [ -n \"$SECONDARY_PCI\" ] && break",
@@ -94,6 +94,17 @@ class SmartNicsStack(Stack):
             "if [ -n \"$SECONDARY_PCI\" ]; then",
             "    ip link set eth1 down",
             "    dpdk-devbind.py --bind=vfio-pci $SECONDARY_PCI",
+            "fi",
+            # Wait for eth2 (tertiary ENI, device_index=2, Server-facing) and bind to vfio-pci —
+            # eth0 (primary, management/SSM) is intentionally never bound
+            "for i in $(seq 1 30); do",
+            "    SERVER_PCI=$(basename $(readlink /sys/class/net/eth2/device) 2>/dev/null || true)",
+            "    [ -n \"$SERVER_PCI\" ] && break",
+            "    sleep 2",
+            "done",
+            "if [ -n \"$SERVER_PCI\" ]; then",
+            "    ip link set eth2 down",
+            "    dpdk-devbind.py --bind=vfio-pci $SERVER_PCI",
             "fi",
             # Build servernic-dpdk application
             "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
@@ -159,7 +170,7 @@ class SmartNicsStack(Stack):
             "modprobe vfio-pci",
             "echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode",
             "echo 'vfio-pci' > /etc/modules-load.d/vfio.conf",
-            # Bind secondary ENI (eth1) to vfio-pci / DPDK
+            # Bind secondary ENI (eth1, ServerNIC-facing) to vfio-pci / DPDK
             "for i in $(seq 1 30); do",
             "    SECONDARY_PCI=$(basename $(readlink /sys/class/net/eth1/device) 2>/dev/null || true)",
             "    [ -n \"$SECONDARY_PCI\" ] && break",
@@ -168,6 +179,17 @@ class SmartNicsStack(Stack):
             "if [ -n \"$SECONDARY_PCI\" ]; then",
             "    ip link set eth1 down",
             "    dpdk-devbind.py --bind=vfio-pci $SECONDARY_PCI",
+            "fi",
+            # Bind tertiary ENI (eth2, Client-facing) to vfio-pci / DPDK — eth0 (primary,
+            # management/SSM) is intentionally never bound
+            "for i in $(seq 1 30); do",
+            "    CLIENT_PCI=$(basename $(readlink /sys/class/net/eth2/device) 2>/dev/null || true)",
+            "    [ -n \"$CLIENT_PCI\" ] && break",
+            "    sleep 2",
+            "done",
+            "if [ -n \"$CLIENT_PCI\" ]; then",
+            "    ip link set eth2 down",
+            "    dpdk-devbind.py --bind=vfio-pci $CLIENT_PCI",
             "fi",
             # Build clientnic-dpdk-forwarder application (T8 variant: stamps V, no translation)
             "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
@@ -309,8 +331,11 @@ class SmartNicsStack(Stack):
         )
         Tags.of(server_instance).add("Name", "smartnics-server")
 
-        # Create ClientNIC VM with 2 ENIs — c5n.large for DPDK performance
-        # First ENI in Client subnet (eth0 = kernel/SSM, eth1 = DPDK data plane)
+        # Create ClientNIC VM with 3 ENIs — c5n.large for DPDK performance
+        # ENI role pinning (T8 design, D1 dual-DPDK):
+        #   eth0: primary ENI (Client subnet, kernel) — SSM management only
+        #   eth1: secondary ENI (Middle subnet, DPDK)  — ServerNIC-facing data plane (vfio-pci)
+        #   eth2: tertiary ENI (Client subnet, DPDK)   — Client-facing data plane (vfio-pci)
         clientnic_instance = ec2.Instance(
             self,
             "ClientNicInstance",
@@ -337,7 +362,7 @@ class SmartNicsStack(Stack):
         )
         Tags.of(clientnic_instance).add("Name", "smartnics-clientnic")
 
-        # Second ENI for ClientNIC in Middle subnet (bound to vfio-pci / DPDK)
+        # Secondary ENI for ClientNIC in Middle subnet (bound to vfio-pci / DPDK)
         clientnic_middle_eni = ec2.CfnNetworkInterface(
             self,
             "ClientNicMiddleENI",
@@ -346,7 +371,7 @@ class SmartNicsStack(Stack):
             source_dest_check=False,
         )
 
-        # Attach second ENI to ClientNIC
+        # Attach secondary ENI (eth1, device_index=1) to ClientNIC
         ec2.CfnNetworkInterfaceAttachment(
             self,
             "ClientNicMiddleENIAttachment",
@@ -355,11 +380,30 @@ class SmartNicsStack(Stack):
             network_interface_id=clientnic_middle_eni.ref,
         )
 
+        # Tertiary ENI for ClientNIC in Client subnet (eth2 = Client-facing DPDK data
+        # plane, moved off the primary so the primary can stay kernel/SSM-only)
+        clientnic_client_eni = ec2.CfnNetworkInterface(
+            self,
+            "ClientNicClientENI",
+            subnet_id=client_subnets.subnet_ids[0],
+            group_set=[clientnic_sg.security_group_id],
+            source_dest_check=False,
+        )
+
+        # Attach tertiary ENI (eth2, device_index=2) to ClientNIC
+        ec2.CfnNetworkInterfaceAttachment(
+            self,
+            "ClientNicClientENIAttachment",
+            device_index="2",
+            instance_id=clientnic_instance.instance_id,
+            network_interface_id=clientnic_client_eni.ref,
+        )
+
         # Create ServerNIC VM with 3 ENIs — c5n.large for DPDK performance
-        # ENI role pinning (T8 design, D6):
+        # ENI role pinning (T8 design, D1 dual-DPDK):
         #   eth0: primary ENI (Middle subnet, kernel) — SSM management only
         #   eth1: secondary ENI (Middle subnet, DPDK)  — ClientNIC-facing data plane (vfio-pci)
-        #   eth2: tertiary ENI (Server subnet, kernel) — Server-facing AF_PACKET
+        #   eth2: tertiary ENI (Server subnet, DPDK)   — Server-facing data plane (vfio-pci)
         servernic_instance = ec2.Instance(
             self,
             "ServerNicInstance",
@@ -404,7 +448,7 @@ class SmartNicsStack(Stack):
             network_interface_id=servernic_middle_eni.ref,
         )
 
-        # Tertiary ENI for ServerNIC in Server subnet (eth2 = Server-facing AF_PACKET)
+        # Tertiary ENI for ServerNIC in Server subnet (eth2 = Server-facing DPDK data plane)
         servernic_server_eni = ec2.CfnNetworkInterface(
             self,
             "ServerNicServerENI",
@@ -447,13 +491,13 @@ class SmartNicsStack(Stack):
             destination_cidr_block="0.0.0.0/0",
             gateway_id=vpc.internet_gateway_id,
         )
-        # Traffic to server subnet must pass through ClientNIC (eth0, primary ENI)
+        # Traffic to server subnet must pass through ClientNIC (eth2, client-facing DPDK ENI)
         ec2.CfnRoute(
             self,
             "ClientToServerViaNic",
             route_table_id=client_route_table.ref,
             destination_cidr_block="10.1.2.0/24",
-            instance_id=clientnic_instance.instance_id,
+            network_interface_id=clientnic_client_eni.ref,
         )
 
         # --- Middle subnet ---
