@@ -20,6 +20,14 @@ struct eth2_io {
     struct rte_mempool *mbuf_pool;
 };
 
+/* Resolve the DPDK port whose own MAC equals `mac`.
+ *
+ * Port IDs are assigned in PCI-enumeration order, which does NOT reliably track
+ * ENI device_index — the Middle-subnet and Server-subnet ENIs can appear in
+ * either order. Binding a role to a hardcoded port ID therefore silently swaps
+ * the two links. Callers pass the expected local ENI MAC instead. */
+int  io_find_port_by_mac(const uint8_t *mac, uint16_t *port_id);
+
 int  eth1_init(struct eth1_io *io, uint16_t port_id, struct rte_mempool *pool,
                const uint8_t *gw_mac);
 int  eth2_init(struct eth2_io *io, uint16_t port_id, struct rte_mempool *pool,

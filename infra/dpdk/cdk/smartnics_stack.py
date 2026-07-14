@@ -8,6 +8,56 @@ from aws_cdk import (
 from constructs import Construct
 
 
+def _bind_data_enis_to_vfio(expected_enis: int) -> list:
+    """User-data lines that bind every non-primary ENI to vfio-pci.
+
+    ENIs are identified by MAC via IMDS, not by kernel interface name. Naming is
+    unreliable here on two counts: the Middle-subnet and endpoint-subnet ENIs are
+    not guaranteed to come up as eth1/eth2 in device_index order, and unbinding
+    one ENI frees its name for a later-arriving one. Both make a name-keyed bind
+    loop attach DPDK to the wrong link — or to none, if the name it waits for
+    never appears. IMDS `device-number` is the authoritative role signal, so
+    device-number 0 (primary, kernel/SSM) is skipped and everything else is bound.
+    """
+    return [
+        "TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token"
+        " -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')",
+        "IMDS=http://169.254.169.254/latest/meta-data/network/interfaces/macs",
+        # Wait for every ENI to be attached AND to have a kernel netdev we can
+        # read its PCI address from.
+        "for i in $(seq 1 60); do",
+        "    MACS=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" $IMDS/ | tr -d '/')",
+        "    READY=1",
+        f"    [ $(echo $MACS | wc -w) -ge {expected_enis} ] || READY=0",
+        "    for MAC in $MACS; do",
+        "        grep -qi \"^$MAC$\" /sys/class/net/*/address 2>/dev/null || READY=0",
+        "    done",
+        "    [ \"$READY\" = \"1\" ] && break",
+        "    sleep 2",
+        "done",
+        f"echo \"vfio-bind: expected {expected_enis} ENIs, IMDS reports $(echo $MACS | wc -w)\"",
+        # Bind each non-primary ENI. Resolve name->PCI immediately before the
+        # unbind so a rename in between cannot redirect us to another device.
+        "for MAC in $MACS; do",
+        "    DEV=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" $IMDS/$MAC/device-number)",
+        "    if [ \"$DEV\" = \"0\" ]; then",
+        "        echo \"vfio-bind: skipping primary ENI $MAC (kernel/SSM)\"",
+        "        continue",
+        "    fi",
+        "    IFACE=$(grep -li \"^$MAC$\" /sys/class/net/*/address 2>/dev/null | head -1 | cut -d/ -f5)",
+        "    if [ -z \"$IFACE\" ]; then",
+        "        echo \"vfio-bind: ERROR no netdev for ENI $MAC (device-number $DEV)\"",
+        "        continue",
+        "    fi",
+        "    PCI=$(basename $(readlink /sys/class/net/$IFACE/device))",
+        "    echo \"vfio-bind: ENI $MAC (device-number $DEV) = $IFACE = $PCI -> vfio-pci\"",
+        "    ip link set $IFACE down",
+        "    dpdk-devbind.py --bind=vfio-pci $PCI",
+        "done",
+        "dpdk-devbind.py --status | grep -A5 'Network devices using DPDK'",
+    ]
+
+
 class SmartNicsStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, vpc: ec2.IVpc, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -81,31 +131,10 @@ class SmartNicsStack(Stack):
             "echo '/usr/local/lib64' > /etc/ld.so.conf.d/dpdk.conf",
             "ldconfig",
             "echo 'export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}' > /etc/profile.d/dpdk.sh",
-            # vfio-pci for eth1 (ClientNIC-facing secondary ENI in Middle subnet)
             "modprobe vfio-pci",
             "echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode",
             "echo 'vfio-pci' > /etc/modules-load.d/vfio.conf",
-            # Wait for eth1 (secondary ENI, device_index=1, ClientNIC-facing) and bind to vfio-pci
-            "for i in $(seq 1 30); do",
-            "    SECONDARY_PCI=$(basename $(readlink /sys/class/net/eth1/device) 2>/dev/null || true)",
-            "    [ -n \"$SECONDARY_PCI\" ] && break",
-            "    sleep 2",
-            "done",
-            "if [ -n \"$SECONDARY_PCI\" ]; then",
-            "    ip link set eth1 down",
-            "    dpdk-devbind.py --bind=vfio-pci $SECONDARY_PCI",
-            "fi",
-            # Wait for eth2 (tertiary ENI, device_index=2, Server-facing) and bind to vfio-pci —
-            # eth0 (primary, management/SSM) is intentionally never bound
-            "for i in $(seq 1 30); do",
-            "    SERVER_PCI=$(basename $(readlink /sys/class/net/eth2/device) 2>/dev/null || true)",
-            "    [ -n \"$SERVER_PCI\" ] && break",
-            "    sleep 2",
-            "done",
-            "if [ -n \"$SERVER_PCI\" ]; then",
-            "    ip link set eth2 down",
-            "    dpdk-devbind.py --bind=vfio-pci $SERVER_PCI",
-            "fi",
+            *_bind_data_enis_to_vfio(expected_enis=3),
             # Build servernic-dpdk application
             "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
             "cd /home/ec2-user/zero-rtt-tcp/src/servernic/dpdk",
@@ -170,27 +199,7 @@ class SmartNicsStack(Stack):
             "modprobe vfio-pci",
             "echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode",
             "echo 'vfio-pci' > /etc/modules-load.d/vfio.conf",
-            # Bind secondary ENI (eth1, ServerNIC-facing) to vfio-pci / DPDK
-            "for i in $(seq 1 30); do",
-            "    SECONDARY_PCI=$(basename $(readlink /sys/class/net/eth1/device) 2>/dev/null || true)",
-            "    [ -n \"$SECONDARY_PCI\" ] && break",
-            "    sleep 2",
-            "done",
-            "if [ -n \"$SECONDARY_PCI\" ]; then",
-            "    ip link set eth1 down",
-            "    dpdk-devbind.py --bind=vfio-pci $SECONDARY_PCI",
-            "fi",
-            # Bind tertiary ENI (eth2, Client-facing) to vfio-pci / DPDK — eth0 (primary,
-            # management/SSM) is intentionally never bound
-            "for i in $(seq 1 30); do",
-            "    CLIENT_PCI=$(basename $(readlink /sys/class/net/eth2/device) 2>/dev/null || true)",
-            "    [ -n \"$CLIENT_PCI\" ] && break",
-            "    sleep 2",
-            "done",
-            "if [ -n \"$CLIENT_PCI\" ]; then",
-            "    ip link set eth2 down",
-            "    dpdk-devbind.py --bind=vfio-pci $CLIENT_PCI",
-            "fi",
+            *_bind_data_enis_to_vfio(expected_enis=3),
             # Build clientnic-dpdk-forwarder application (T8 variant: stamps V, no translation)
             "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
             "cd /home/ec2-user/zero-rtt-tcp/src/clientnic/dpdk-forwarder",

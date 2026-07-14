@@ -117,15 +117,29 @@ SERVER_ETH0_MAC=$(aws ec2 describe-instances \
     --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`0\`].MacAddress" \
     --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
 
-# Client eth0 MAC (DeviceIndex=0) → ClientNIC needs this as --client-mac
-CLIENT_ETH0_MAC=$(aws ec2 describe-instances \
-    --filters "Name=tag:Name,Values=smartnics-client" "Name=instance-state-name,Values=running" \
-    --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`0\`].MacAddress" \
+# Each SmartNIC's OWN endpoint-facing ENI (DeviceIndex=2). The binaries match these
+# against each DPDK port's MAC to decide which port is which — port IDs follow PCI
+# enumeration order, which does not reliably track ENI device_index.
+CLIENTNIC_ETH2_MAC=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=smartnics-clientnic" "Name=instance-state-name,Values=running" \
+    --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`2\`].MacAddress" \
     --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
 
-log "  ClientNIC eth1 MAC (ServerNIC --gw-mac):    ${CLIENTNIC_ETH1_MAC:-UNKNOWN}"
-log "  Server eth0 MAC (ServerNIC --server-mac):   ${SERVER_ETH0_MAC:-UNKNOWN}"
-log "  Client eth0 MAC (ClientNIC --client-mac):   ${CLIENT_ETH0_MAC:-UNKNOWN}"
+SERVERNIC_ETH2_MAC=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=smartnics-servernic" "Name=instance-state-name,Values=running" \
+    --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`2\`].MacAddress" \
+    --output text --region eu-central-1 2>/dev/null | tr -d '[:space:]')
+
+log "  ClientNIC eth1 MAC (ServerNIC --gw-mac):          ${CLIENTNIC_ETH1_MAC:-UNKNOWN}"
+log "  Server eth0 MAC (ServerNIC --server-mac):         ${SERVER_ETH0_MAC:-UNKNOWN}"
+log "  ClientNIC eth2 MAC (its own client-facing port):  ${CLIENTNIC_ETH2_MAC:-UNKNOWN}"
+log "  ServerNIC eth2 MAC (its own server-facing port):  ${SERVERNIC_ETH2_MAC:-UNKNOWN}"
+
+for _v in CLIENTNIC_ETH1_MAC SERVER_ETH0_MAC CLIENTNIC_ETH2_MAC SERVERNIC_ETH2_MAC; do
+    if [[ -z "${!_v}" || "${!_v}" == "None" ]]; then
+        fail "Could not resolve $_v from the EC2 API"
+    fi
+done
 
 if [[ -z "$GW_MAC" || "$GW_MAC" == "None" ]]; then
     fail "Smoke test: could not discover ServerNIC eth1 MAC (DeviceIndex=1)"
@@ -138,7 +152,8 @@ else
 
     ssm_run "$CLIENTNIC_ID" \
         "rm -f /tmp/clientnic_smoke.log; \
-         setsid $BINARY -l 0 -- --port=$SERVER_PORT --gw-mac=$GW_MAC --client-mac=$CLIENT_ETH0_MAC \
+         setsid $BINARY -l 0 -- --port=$SERVER_PORT --gw-mac=$GW_MAC \
+             --client-port-mac=$CLIENTNIC_ETH2_MAC --server-port-mac=$CLIENTNIC_ETH1_MAC \
              < /dev/null > /tmp/clientnic_smoke.log 2>&1 & \
          BPID=\$!; sleep 3; kill \$BPID 2>/dev/null; wait \$BPID 2>/dev/null; true" \
         30 > /dev/null
@@ -161,7 +176,8 @@ fi
 
 
 # ─── Run shared experiment core ───────────────────────────────────────────────
-run_experiment "$GW_MAC" "$CLIENTNIC_ETH1_MAC" "$SERVER_ETH0_MAC" "$CLIENT_ETH0_MAC"
+run_experiment "$GW_MAC" "$CLIENTNIC_ETH1_MAC" "$SERVER_ETH0_MAC" \
+               "$CLIENTNIC_ETH2_MAC" "$SERVERNIC_ETH2_MAC"
 
 
 # ─── Summary ──────────────────────────────────────────────────────────────────

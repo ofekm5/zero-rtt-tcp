@@ -19,9 +19,15 @@ eth1 (secondary, DPDK)   → ServerNIC-facing data plane (vfio-pci)
 eth2 (tertiary, DPDK)    → Client-facing data plane (vfio-pci)
 ```
 
-Client- and server-bound frames are addressed with the configured peer MAC
-(`--client-mac` / `--gw-mac`, see [Run](#run)) rather than learned via ARP,
-since DPDK-owned ports don't participate in kernel ARP.
+DPDK port IDs are assigned in PCI-enumeration order, which does **not** reliably
+track ENI `device_index` — so the binary never assumes port 0 is the client link.
+`--client-port-mac` and `--server-port-mac` carry the MACs of ClientNIC's *own*
+two ENIs, and each port is matched to its role by comparing its MAC against them.
+Getting this wrong swaps the two links silently, so a mismatch is a startup error.
+
+Server-bound frames are addressed with the configured peer MAC (`--gw-mac`), since
+a DPDK-owned port can't ARP. Client-bound frames need no configured peer: the
+client's MAC is learned per-flow from the SYN and stored in the flow entry.
 
 ## How it differs from the full-owner design
 
@@ -76,13 +82,22 @@ The CDK stack builds this binary at provision time and points the
 
 ```bash
 sudo ./builddir/clientnic-dpdk-forwarder -l 0 -- \
-    --port=8080 --gw-mac=<ServerNIC-eth1-MAC> --client-mac=<Client-eth0-MAC>
+    --port=8080 \
+    --gw-mac=<ServerNIC-eth1-MAC> \
+    --client-port-mac=<our-own-eth2-MAC> \
+    --server-port-mac=<our-own-eth1-MAC>
 ```
 
-`--gw-mac` is the **ServerNIC's eth1 MAC** (Middle-subnet DPDK port) and `--client-mac` is the
-**Client VM's MAC** (Client-subnet peer). Both are DPDK-controlled or otherwise unreachable by
-kernel ARP, so both peer MACs must be supplied explicitly. Retrieve the ServerNIC MAC from the
-EC2 API:
+| Flag | Whose MAC | Why |
+|------|-----------|-----|
+| `--gw-mac` | ServerNIC's eth1 (**peer**) | TX destination for server-bound frames; a DPDK port can't ARP for it |
+| `--client-port-mac` | ClientNIC's own eth2 (**local**) | Identifies which DPDK port is the client link |
+| `--server-port-mac` | ClientNIC's own eth1 (**local**) | Identifies which DPDK port is the ServerNIC link |
+
+The client's MAC is *not* a flag — it's learned per-flow from the incoming SYN.
+
+All three come from the EC2 API (`DeviceIndex` 1 of `smartnics-servernic`, then 2 and 1
+of `smartnics-clientnic`); the run scripts resolve them automatically:
 
 ```bash
 aws ec2 describe-instances \

@@ -68,23 +68,26 @@ int main(int argc, char *argv[])
 
     uint16_t app_port = 8080;
     uint16_t app_port_count = 1;
-    uint8_t  gw_mac[6] = {0};
+    uint8_t  gw_mac[6] = {0};              /* peer: ServerNIC eth1 (TX destination) */
     int      gw_mac_set = 0;
-    uint8_t  client_mac[6] = {0};
-    int      client_mac_set = 0;
+    uint8_t  client_port_mac[6] = {0};     /* local: our client-facing ENI  */
+    int      client_port_mac_set = 0;
+    uint8_t  server_port_mac[6] = {0};     /* local: our ServerNIC-facing ENI */
+    int      server_port_mac_set = 0;
     const char *server_pcap_path = NULL;
 
     static struct option long_opts[] = {
-        {"port",           required_argument, NULL, 'p'},
-        {"port-count",     required_argument, NULL, 'n'},
-        {"gw-mac",         required_argument, NULL, 'g'},
-        {"client-mac",     required_argument, NULL, 'm'},
-        {"server-pcap",    required_argument, NULL, 'w'},
+        {"port",             required_argument, NULL, 'p'},
+        {"port-count",       required_argument, NULL, 'n'},
+        {"gw-mac",           required_argument, NULL, 'g'},
+        {"client-port-mac",  required_argument, NULL, 'm'},
+        {"server-port-mac",  required_argument, NULL, 'M'},
+        {"server-pcap",      required_argument, NULL, 'w'},
         {NULL, 0, NULL, 0}
     };
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "p:n:g:m:w:", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "p:n:g:m:M:w:", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'p':
             app_port = (uint16_t)atoi(optarg);
@@ -102,11 +105,18 @@ int main(int argc, char *argv[])
             gw_mac_set = 1;
             break;
         case 'm':
-            if (parse_mac(optarg, client_mac) < 0) {
-                LOG_ERR("Invalid --client-mac: %s", optarg);
+            if (parse_mac(optarg, client_port_mac) < 0) {
+                LOG_ERR("Invalid --client-port-mac: %s", optarg);
                 return 1;
             }
-            client_mac_set = 1;
+            client_port_mac_set = 1;
+            break;
+        case 'M':
+            if (parse_mac(optarg, server_port_mac) < 0) {
+                LOG_ERR("Invalid --server-port-mac: %s", optarg);
+                return 1;
+            }
+            server_port_mac_set = 1;
             break;
         case 'w':
             server_pcap_path = optarg;
@@ -114,17 +124,22 @@ int main(int argc, char *argv[])
         default:
             fprintf(stderr,
                     "Usage: %s [EAL opts] -- --port=PORT [--port-count=N]"
-                    " --gw-mac=MAC --client-mac=MAC [--server-pcap=FILE]\n", argv[0]);
+                    " --gw-mac=MAC --client-port-mac=MAC --server-port-mac=MAC"
+                    " [--server-pcap=FILE]\n", argv[0]);
             return 1;
         }
     }
 
     if (!gw_mac_set) {
-        LOG_ERR("--gw-mac is required");
+        LOG_ERR("--gw-mac (ServerNIC eth1 peer MAC) is required");
         return 1;
     }
-    if (!client_mac_set) {
-        LOG_ERR("--client-mac is required");
+    if (!client_port_mac_set) {
+        LOG_ERR("--client-port-mac (our client-facing ENI MAC) is required");
+        return 1;
+    }
+    if (!server_port_mac_set) {
+        LOG_ERR("--server-port-mac (our ServerNIC-facing ENI MAC) is required");
         return 1;
     }
 
@@ -133,9 +148,6 @@ int main(int argc, char *argv[])
     LOG_INFO("Gateway MAC: %02x:%02x:%02x:%02x:%02x:%02x",
              gw_mac[0], gw_mac[1], gw_mac[2],
              gw_mac[3], gw_mac[4], gw_mac[5]);
-    LOG_INFO("Client MAC: %02x:%02x:%02x:%02x:%02x:%02x",
-             client_mac[0], client_mac[1], client_mac[2],
-             client_mac[3], client_mac[4], client_mac[5]);
 
     struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL",
         MBUF_POOL_SIZE, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE,
@@ -152,6 +164,32 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /* Map roles to ports by MAC, never by port ID: DPDK numbers ports in PCI
+     * order, which does not reliably follow ENI device_index, so a hardcoded
+     * 0/1 split can silently swap the client and ServerNIC links. */
+    uint16_t client_port_id, server_port_id;
+    if (io_find_port_by_mac(client_port_mac, &client_port_id) < 0) {
+        LOG_ERR("No DPDK port with --client-port-mac "
+                "%02x:%02x:%02x:%02x:%02x:%02x (is that ENI bound to vfio-pci?)",
+                client_port_mac[0], client_port_mac[1], client_port_mac[2],
+                client_port_mac[3], client_port_mac[4], client_port_mac[5]);
+        return 1;
+    }
+    if (io_find_port_by_mac(server_port_mac, &server_port_id) < 0) {
+        LOG_ERR("No DPDK port with --server-port-mac "
+                "%02x:%02x:%02x:%02x:%02x:%02x (is that ENI bound to vfio-pci?)",
+                server_port_mac[0], server_port_mac[1], server_port_mac[2],
+                server_port_mac[3], server_port_mac[4], server_port_mac[5]);
+        return 1;
+    }
+    if (client_port_id == server_port_id) {
+        LOG_ERR("--client-port-mac and --server-port-mac resolve to the same "
+                "DPDK port %u", client_port_id);
+        return 1;
+    }
+    LOG_INFO("Port map: client-facing=port %u, ServerNIC-facing=port %u",
+             client_port_id, server_port_id);
+
     static struct client_io eth0;
     static struct eth1_io eth1;
     static struct flow_table ft;
@@ -159,9 +197,9 @@ int main(int argc, char *argv[])
     static struct forwarder fwd;
     static struct pipeline_ctx pipeline;
 
-    if (eth0_init(&eth0, 0, mbuf_pool, client_mac) < 0)
+    if (eth0_init(&eth0, client_port_id, mbuf_pool) < 0)
         return 1;
-    if (eth1_init(&eth1, 1, mbuf_pool, gw_mac) < 0)
+    if (eth1_init(&eth1, server_port_id, mbuf_pool, gw_mac) < 0)
         return 1;
 
     ft_init(&ft);

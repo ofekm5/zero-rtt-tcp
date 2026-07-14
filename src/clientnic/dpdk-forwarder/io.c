@@ -12,17 +12,33 @@
  * collapses throughput under load. Drop after a few and let TCP retransmit. */
 #define ETH0_TX_RETRIES 8
 
-/* ── eth0: DPDK ENA PMD (client-facing) ──────────────────────────────────── */
-
 #define RX_RING_SIZE 1024
 #define TX_RING_SIZE 1024
 
-int eth0_init(struct client_io *io, uint16_t port_id, struct rte_mempool *pool,
-              const uint8_t *client_mac)
+/* ── Port lookup by local MAC ────────────────────────────────────────────── */
+
+int io_find_port_by_mac(const uint8_t *mac, uint16_t *port_id)
+{
+    uint16_t pid;
+
+    RTE_ETH_FOREACH_DEV(pid) {
+        struct rte_ether_addr addr;
+        if (rte_eth_macaddr_get(pid, &addr) < 0)
+            continue;
+        if (memcmp(addr.addr_bytes, mac, 6) == 0) {
+            *port_id = pid;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+/* ── eth0: DPDK ENA PMD (client-facing) ──────────────────────────────────── */
+
+int eth0_init(struct client_io *io, uint16_t port_id, struct rte_mempool *pool)
 {
     io->port_id   = port_id;
     io->mbuf_pool = pool;
-    memcpy(io->client_mac, client_mac, 6);
 
     if (!rte_eth_dev_is_valid_port(port_id)) {
         LOG_ERR("eth0: DPDK port %u is not valid", port_id);
@@ -72,13 +88,11 @@ int eth0_init(struct client_io *io, uint16_t port_id, struct rte_mempool *pool,
     rte_eth_macaddr_get(port_id, &addr);
     memcpy(io->mac, addr.addr_bytes, 6);
 
-    LOG_INFO("eth0: DPDK port %u started (MAC=%02x:%02x:%02x:%02x:%02x:%02x, "
-             "client_mac=%02x:%02x:%02x:%02x:%02x:%02x)",
+    LOG_INFO("eth0: DPDK port %u started, client-facing "
+             "(MAC=%02x:%02x:%02x:%02x:%02x:%02x)",
              port_id,
              io->mac[0], io->mac[1], io->mac[2],
-             io->mac[3], io->mac[4], io->mac[5],
-             io->client_mac[0], io->client_mac[1], io->client_mac[2],
-             io->client_mac[3], io->client_mac[4], io->client_mac[5]);
+             io->mac[3], io->mac[4], io->mac[5]);
     return 0;
 }
 
@@ -113,10 +127,7 @@ int eth0_send(struct client_io *io, const uint8_t *buf, uint16_t len)
     return 0;
 }
 
-/* ── eth1: DPDK ENA PMD ─────────────────────────────────────────────────── */
-
-#define RX_RING_SIZE 1024
-#define TX_RING_SIZE 1024
+/* ── eth1: DPDK ENA PMD (ServerNIC-facing) ──────────────────────────────── */
 
 int eth1_init(struct eth1_io *io, uint16_t port_id, struct rte_mempool *pool,
               const uint8_t *gw_mac)
@@ -173,9 +184,12 @@ int eth1_init(struct eth1_io *io, uint16_t port_id, struct rte_mempool *pool,
     rte_eth_macaddr_get(port_id, &addr);
     memcpy(io->mac, addr.addr_bytes, 6);
 
-    LOG_INFO("eth1: DPDK port %u started (MAC=%02x:%02x:%02x:%02x:%02x:%02x)",
+    LOG_INFO("eth1: DPDK port %u started, ServerNIC-facing "
+             "(MAC=%02x:%02x:%02x:%02x:%02x:%02x, gw=%02x:%02x:%02x:%02x:%02x:%02x)",
              port_id,
              io->mac[0], io->mac[1], io->mac[2],
-             io->mac[3], io->mac[4], io->mac[5]);
+             io->mac[3], io->mac[4], io->mac[5],
+             io->gw_mac[0], io->gw_mac[1], io->gw_mac[2],
+             io->gw_mac[3], io->gw_mac[4], io->gw_mac[5]);
     return 0;
 }

@@ -21,10 +21,11 @@
 #   Get it: aws ec2 describe-instances ... DeviceIndex=1 | jq .MacAddress
 #           or from the CDK deploy output: SmartNicsStack.ServerNicEth1Mac
 #
-#   The Client's own peer MAC (required by the binary as --client-mac, since the
-#   client-facing DPDK port cannot ARP for it) is auto-discovered via the EC2 API
-#   unless passed via the CLIENT_MAC env var:
-#     CLIENT_MAC=aa:bb:cc:dd:ee:ff ./clientnic.sh <gw-mac>
+#   The binary also needs the MACs of ClientNIC's OWN two DPDK ports, so it can
+#   tell which DPDK port is which: port IDs follow PCI enumeration order, which
+#   does not reliably track ENI device_index. Both are auto-discovered via the
+#   EC2 API, or passed via env:
+#     CLIENT_PORT_MAC=<our eth2 ENI>  SERVER_PORT_MAC=<our eth1 ENI> ./clientnic.sh <gw-mac>
 #
 # Log output explained:
 #   "SYN: flow created, spoofed SYN-ACK sent, SYN forwarded (V=<N>)"
@@ -108,23 +109,32 @@ if [ -z "$GW_MAC" ] || [ "$GW_MAC" = "None" ]; then
 fi
 log "Gateway MAC (ServerNIC eth1, Middle subnet DPDK port): $GW_MAC"
 
-# ─── Discover Client peer MAC ─────────────────────────────────────────────────
-# The client-facing DPDK port cannot ARP for its peer, so the Client VM's own
-# ENI MAC (device_index=0, Client subnet) must be supplied via --client-mac.
-CLIENT_MAC="${CLIENT_MAC:-}"
-if [ -z "$CLIENT_MAC" ]; then
-    log "Discovering Client eth0 MAC via EC2 API..."
-    CLIENT_MAC=$(aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=smartnics-client" "Name=instance-state-name,Values=running" \
-        --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`0\`].MacAddress" \
-        --output text --region "$REGION" 2>/dev/null | tr -d '[:space:]')
-fi
-if [ -z "$CLIENT_MAC" ] || [ "$CLIENT_MAC" = "None" ]; then
-    echo -e "${RED}ERROR: Could not determine Client peer MAC.${NC}"
-    echo "Get from EC2 API (DeviceIndex=0 of smartnics-client) or pass via CLIENT_MAC env var."
-    exit 1
-fi
-log "Client MAC (client-facing peer): $CLIENT_MAC"
+# ─── Discover our own DPDK port MACs ──────────────────────────────────────────
+# The binary maps roles to DPDK ports by matching each port's MAC against these,
+# because port IDs follow PCI enumeration order rather than ENI device_index.
+#   device_index=2 (Client subnet) → client-facing port
+#   device_index=1 (Middle subnet) → ServerNIC-facing port
+own_eni_mac() {
+    aws ec2 describe-instances \
+        --filters "Name=tag:Name,Values=smartnics-clientnic" "Name=instance-state-name,Values=running" \
+        --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`$1\`].MacAddress" \
+        --output text --region "$REGION" 2>/dev/null | tr -d '[:space:]'
+}
+
+CLIENT_PORT_MAC="${CLIENT_PORT_MAC:-}"
+SERVER_PORT_MAC="${SERVER_PORT_MAC:-}"
+[ -z "$CLIENT_PORT_MAC" ] && { log "Discovering our client-facing ENI MAC (DeviceIndex=2)..."; CLIENT_PORT_MAC=$(own_eni_mac 2); }
+[ -z "$SERVER_PORT_MAC" ] && { log "Discovering our ServerNIC-facing ENI MAC (DeviceIndex=1)..."; SERVER_PORT_MAC=$(own_eni_mac 1); }
+
+for _v in CLIENT_PORT_MAC SERVER_PORT_MAC; do
+    if [ -z "${!_v}" ] || [ "${!_v}" = "None" ]; then
+        echo -e "${RED}ERROR: Could not determine $_v (ClientNIC's own ENI MAC).${NC}"
+        echo "Get it from the EC2 API (DeviceIndex 2 / 1 of smartnics-clientnic) or pass via the $_v env var."
+        exit 1
+    fi
+done
+log "Our client-facing port MAC (eth2):     $CLIENT_PORT_MAC"
+log "Our ServerNIC-facing port MAC (eth1):  $SERVER_PORT_MAC"
 
 # ─── IP forwarding check ──────────────────────────────────────────────────────
 FWRD=$(cat /proc/sys/net/ipv4/ip_forward)
@@ -134,21 +144,11 @@ if [ "$FWRD" != "1" ]; then
 fi
 log "IP forwarding: enabled"
 
-# Disable GRO/LRO on the client-facing AF_PACKET ingress. Otherwise the kernel
-# coalesces the client's TCP segments into >2048-byte super-frames BEFORE the
-# raw socket reads them; the data plane's 2048-byte buffers then drop them,
-# causing first-data loss -> ~200ms TCP RTO (the bimodal server_gap). This is
-# the NIC-side analogue of the offload-off knobs run_core.sh applies to the
-# Client/Server endpoints.
-sudo ethtool -K eth0 gro off lro off 2>/dev/null || true
-
-# Raise the eth0 egress qdisc depth so the spoofed SYN-ACK / s2c burst is queued
-# rather than tail-dropped under the 100-flow load (default txqueuelen 1000).
-sudo ip link set eth0 txqueuelen 100000 2>/dev/null || true
-
-# eth0 is now the dedicated kernel/SSM management ENI (Sprint 3) and the actual
-# client-facing DPDK port is not kernel-visible, so no tcpdump runs here — the
-# client-side capture is taken on the Client VM's own eth0 (see run_core.sh).
+# No kernel-side NIC tuning here: both data-plane ports are DPDK-owned (vfio-pci)
+# and invisible to ethtool/ip, and eth0 is now the kernel/SSM management ENI that
+# carries no data-plane traffic. GRO/LRO coalescing and qdisc depth were AF_PACKET
+# concerns; DPDK bypasses both. No tcpdump either — the client-side capture is
+# taken on the Client VM's own eth0 (see run_core.sh).
 
 # ─── Cleanup on exit ──────────────────────────────────────────────────────────
 cleanup() {
@@ -159,7 +159,8 @@ cleanup() {
     sleep 1
 
     echo ""
-    echo "─── Run validator (client-side pcap only in T8 mode) ────────"
+    echo "─── Run validator (on the CLIENT VM, not here) ──────────────"
+    echo "  The client-side pcap is captured on the Client VM's eth0."
     echo "  cp $REPO_PATH/src/clientnic/validate_0rtt_capture.py /tmp/"
     echo "  python3 /tmp/validate_0rtt_capture.py \\"
     echo "    --client-pcap /tmp/client_side.pcap"
@@ -169,10 +170,12 @@ trap cleanup EXIT
 
 # ─── Start DPDK forwarder binary (foreground) ────────────────────────────────
 log "Starting clientnic-dpdk-forwarder — transparent forwarding with V-stamp. Press Ctrl+C to stop."
-log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$GW_MAC --client-mac=$CLIENT_MAC"
+log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$GW_MAC"
+log "  --client-port-mac=$CLIENT_PORT_MAC --server-port-mac=$SERVER_PORT_MAC"
 echo ""
 exec "$BINARY" -l 0 -- \
     --port="$SERVER_PORT" \
     --port-count="$PORT_COUNT" \
     --gw-mac="$GW_MAC" \
-    --client-mac="$CLIENT_MAC"
+    --client-port-mac="$CLIENT_PORT_MAC" \
+    --server-port-mac="$SERVER_PORT_MAC"

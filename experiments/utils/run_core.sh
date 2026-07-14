@@ -24,15 +24,23 @@
 #
 # Usage:
 #   source "$(dirname "$0")/../utils/run_core.sh"
-#   run_experiment  <gw_mac> <clientnic_eth1_mac> <server_eth0_mac> <client_eth0_mac>
+#   run_experiment <servernic_eth1_mac> <clientnic_eth1_mac> <server_eth0_mac> \
+#                  <clientnic_eth2_mac> <servernic_eth2_mac>
 
-# run_experiment <gw_mac> <clientnic_eth1_mac> <server_eth0_mac> <client_eth0_mac>
-# All four MACs must be resolved by the caller (transport-specific) before calling.
+# run_experiment <servernic_eth1_mac> <clientnic_eth1_mac> <server_eth0_mac>
+#                <clientnic_eth2_mac> <servernic_eth2_mac>
+#
+# All five MACs must be resolved by the caller (transport-specific) before calling.
+# Each SmartNIC needs both its PEER MACs (TX destinations) and its OWN two DPDK
+# port MACs — the binaries map port role by MAC, since DPDK port IDs follow PCI
+# enumeration order rather than ENI device_index. Note the first three double up:
+# each NIC's eth1 MAC is the other's gateway, and its own DPDK port identity.
 run_experiment() {
-    local GW_MAC="$1"
-    local CLIENTNIC_ETH1_MAC="$2"
-    local SERVER_ETH0_MAC="$3"
-    local CLIENT_ETH0_MAC="$4"
+    local GW_MAC="$1"                 # ServerNIC eth1: ClientNIC's --gw-mac, ServerNIC's own client-facing port
+    local CLIENTNIC_ETH1_MAC="$2"     # ClientNIC eth1: ServerNIC's --gw-mac, ClientNIC's own server-facing port
+    local SERVER_ETH0_MAC="$3"        # Server eth0:    ServerNIC's --server-mac
+    local CLIENTNIC_ETH2_MAC="$4"     # ClientNIC eth2: ClientNIC's own client-facing port
+    local SERVERNIC_ETH2_MAC="$5"     # ServerNIC eth2: ServerNIC's own server-facing port
 
     # Port range the load is spread across (see measure.sh IPERF_PORTS). The data
     # plane (clientnic-dpdk-forwarder + servernic-dpdk) is told to cover the same
@@ -191,7 +199,8 @@ run_experiment() {
     log "Step 2: Starting ServerNIC DPDK binary via node script..."
     remote_bg "$SERVERNIC_ID" \
         "SKIP_BUILD=1 PORT_COUNT=$NPORTS CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC \
-         MIDDLE_ENI_MAC=$GW_MAC setsid bash $REPO_PATH/experiments/dpdk/servernic.sh \
+         CLIENT_PORT_MAC=$GW_MAC SERVER_PORT_MAC=$SERVERNIC_ETH2_MAC \
+         setsid bash $REPO_PATH/experiments/dpdk/servernic.sh \
          < /dev/null >> /tmp/servernic.log 2>&1 &"
     sleep 5
 
@@ -225,7 +234,9 @@ run_experiment() {
     sleep 1
 
     remote_bg "$CLIENTNIC_ID" \
-        "SKIP_BUILD=1 PORT_COUNT=$NPORTS CLIENT_MAC=$CLIENT_ETH0_MAC setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC \
+        "SKIP_BUILD=1 PORT_COUNT=$NPORTS \
+         CLIENT_PORT_MAC=$CLIENTNIC_ETH2_MAC SERVER_PORT_MAC=$CLIENTNIC_ETH1_MAC \
+         setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC \
          < /dev/null >> /tmp/clientnic.log 2>&1 &"
     sleep 5
 

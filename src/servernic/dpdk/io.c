@@ -12,10 +12,28 @@
  * collapses throughput under load. Drop after a few and let TCP retransmit. */
 #define ETH2_TX_RETRIES 8
 
-/* ── eth1: DPDK ENA PMD (ClientNIC-facing) ───────────────────────────────── */
-
 #define RX_RING_SIZE 1024
 #define TX_RING_SIZE 1024
+
+/* ── Port lookup by local MAC ────────────────────────────────────────────── */
+
+int io_find_port_by_mac(const uint8_t *mac, uint16_t *port_id)
+{
+    uint16_t pid;
+
+    RTE_ETH_FOREACH_DEV(pid) {
+        struct rte_ether_addr addr;
+        if (rte_eth_macaddr_get(pid, &addr) < 0)
+            continue;
+        if (memcmp(addr.addr_bytes, mac, 6) == 0) {
+            *port_id = pid;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+/* ── eth1: DPDK ENA PMD (ClientNIC-facing) ───────────────────────────────── */
 
 int eth1_init(struct eth1_io *io, uint16_t port_id, struct rte_mempool *pool,
               const uint8_t *gw_mac)
