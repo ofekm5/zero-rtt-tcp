@@ -4,7 +4,7 @@
 # ENI roles (T8 design, D6):
 #   eth0: kernel/SSM management
 #   eth1: ClientNIC-facing DPDK port (vfio-pci, bound at boot by CDK user data)
-#   eth2: Server-facing AF_PACKET
+#   eth2: Server-facing DPDK port (vfio-pci, bound at boot by CDK user data)
 #
 # The binary handles its own iptables RST suppression and FORWARD drops.
 #
@@ -74,8 +74,8 @@ else
 fi
 
 # ─── Discover gateway MACs ────────────────────────────────────────────────────
-# --gw-mac: ClientNIC-side gateway MAC (ClientNIC eth1 secondary ENI, Middle subnet)
-# --server-gw-mac: Server-side gateway MAC (Server eth0 MAC or subnet gateway)
+# Passed to the binary as --gw-mac: ClientNIC-side gateway MAC (ClientNIC eth1 secondary ENI, Middle subnet)
+# Passed to the binary as --server-mac: Server-side peer MAC (Server eth0 MAC or subnet gateway)
 CLIENTNIC_GW_MAC="${1:-${CLIENTNIC_GW_MAC:-}}"
 SERVER_GW_MAC="${2:-${SERVER_GW_MAC:-}}"
 
@@ -103,70 +103,39 @@ if [ -z "$SERVER_GW_MAC" ] || [ "$SERVER_GW_MAC" = "None" ]; then
     exit 1
 fi
 
-log "ClientNIC-side gateway MAC (eth1): $CLIENTNIC_GW_MAC"
-log "Server-side gateway MAC (eth2):    $SERVER_GW_MAC"
+log "ClientNIC-side gateway MAC (peer):  $CLIENTNIC_GW_MAC"
+log "Server-side peer MAC (peer):        $SERVER_GW_MAC"
 
-# ─── Ensure correct DPDK binding ─────────────────────────────────────────────
-# CDK user data binds eth1 (by OS name) to vfio-pci. On some instances the OS
-# assigns the Server-subnet ENI as eth1 and the Middle-subnet ENI as eth2,
-# putting the DPDK on the wrong interface. Detect and fix at startup.
+# ─── Discover our own DPDK port MACs ──────────────────────────────────────────
+# The binary maps roles to DPDK ports by matching each port's MAC against these,
+# because port IDs follow PCI enumeration order rather than ENI device_index.
+#   device_index=1 (Middle subnet) → ClientNIC-facing port
+#   device_index=2 (Server subnet) → Server-facing port
 #
-# Correct: DeviceIndex=1 (Middle subnet, ClientNIC-facing) → vfio-pci
-# Correct: DeviceIndex=2 (Server subnet) → kernel AF_PACKET
-log "Checking DPDK binding (Middle subnet ENI should be vfio-pci)..."
-# Accept MIDDLE_ENI_MAC from caller (run_experiment.sh has IAM access); fall back
-# to EC2 API only if not provided (requires ec2:DescribeInstances on the VM).
-MIDDLE_ENI_MAC="${MIDDLE_ENI_MAC:-}"
-if [ -z "$MIDDLE_ENI_MAC" ] || [ "$MIDDLE_ENI_MAC" = "none" ]; then
-    MIDDLE_ENI_MAC=$(aws ec2 describe-instances \
+# This replaces the old "detect the Middle ENI landed on the wrong kernel name and
+# rebind it" hack: role assignment no longer depends on kernel naming at all, and
+# under dual-DPDK that hack would unbind whichever vfio device it found first.
+own_eni_mac() {
+    aws ec2 describe-instances \
         --filters "Name=tag:Name,Values=smartnics-servernic" "Name=instance-state-name,Values=running" \
-        --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`1\`].MacAddress" \
-        --output text --region "$REGION" 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
-fi
+        --query "Reservations[0].Instances[0].NetworkInterfaces[?Attachment.DeviceIndex==\`$1\`].MacAddress" \
+        --output text --region "$REGION" 2>/dev/null | tr -d '[:space:]'
+}
 
-if [ -z "$MIDDLE_ENI_MAC" ] || [ "$MIDDLE_ENI_MAC" = "none" ]; then
-    log "WARNING: Could not determine Middle subnet ENI MAC — skipping binding check"
-else
-    MIDDLE_KERNEL_IFACE=""
-    for _iface in eth1 eth2 eth3; do
-        [ -d /sys/class/net/$_iface ] || continue
-        _mac=$(cat /sys/class/net/$_iface/address 2>/dev/null | tr '[:upper:]' '[:lower:]')
-        if [ "$_mac" = "$MIDDLE_ENI_MAC" ]; then MIDDLE_KERNEL_IFACE="$_iface"; break; fi
-    done
+CLIENT_PORT_MAC="${CLIENT_PORT_MAC:-}"
+SERVER_PORT_MAC="${SERVER_PORT_MAC:-}"
+[ -z "$CLIENT_PORT_MAC" ] && { log "Discovering our ClientNIC-facing ENI MAC (DeviceIndex=1)..."; CLIENT_PORT_MAC=$(own_eni_mac 1); }
+[ -z "$SERVER_PORT_MAC" ] && { log "Discovering our Server-facing ENI MAC (DeviceIndex=2)..."; SERVER_PORT_MAC=$(own_eni_mac 2); }
 
-    if [ -n "$MIDDLE_KERNEL_IFACE" ]; then
-        log "Middle subnet ENI ($MIDDLE_ENI_MAC) is kernel $MIDDLE_KERNEL_IFACE — rebinding..."
-        CURRENT_DPDK_PCI=$(dpdk-devbind.py --status 2>/dev/null | grep "drv=vfio-pci" | awk '{print $1}' | head -1)
-        if [ -n "$CURRENT_DPDK_PCI" ]; then
-            dpdk-devbind.py --bind=ena "$CURRENT_DPDK_PCI" 2>/dev/null || true
-            sleep 3
-            log "Unbound old DPDK device $CURRENT_DPDK_PCI"
-        fi
-        MIDDLE_PCI=$(basename "$(readlink /sys/class/net/$MIDDLE_KERNEL_IFACE/device)")
-        ip link set "$MIDDLE_KERNEL_IFACE" down
-        dpdk-devbind.py --bind=vfio-pci "$MIDDLE_PCI"
-        sleep 3
-        log "Rebound Middle subnet ENI ($MIDDLE_PCI / $MIDDLE_KERNEL_IFACE) to vfio-pci"
-    else
-        log "Middle subnet ENI ($MIDDLE_ENI_MAC) not in kernel — already DPDK-bound, OK"
+for _v in CLIENT_PORT_MAC SERVER_PORT_MAC; do
+    if [ -z "${!_v}" ] || [ "${!_v}" = "None" ]; then
+        echo -e "${RED}ERROR: Could not determine $_v (ServerNIC's own ENI MAC).${NC}"
+        echo "Get it from the EC2 API (DeviceIndex 1 / 2 of smartnics-servernic) or pass via the $_v env var."
+        exit 1
     fi
-fi
-
-# Detect server-facing kernel interface: first non-eth0 interface in /sys/class/net
-SERVER_IFACE="eth2"
-for _iface in eth1 eth2 eth3; do
-    [ -d /sys/class/net/$_iface ] && SERVER_IFACE="$_iface" && break
 done
-log "Server-facing interface (AF_PACKET): $SERVER_IFACE"
-
-# Disable GRO/LRO on the server-facing AF_PACKET interface so the kernel does
-# not coalesce received segments into >2048-byte super-frames before the raw
-# socket reads them (the data plane's 2048-byte buffers would drop those).
-sudo ethtool -K "$SERVER_IFACE" gro off lro off 2>/dev/null || true
-
-# Raise the egress qdisc depth so the synchronized 100-flow flush/bulk burst is
-# queued rather than tail-dropped (default txqueuelen 1000 -> ENOBUFS under load).
-sudo ip link set "$SERVER_IFACE" txqueuelen 100000 2>/dev/null || true
+log "Our ClientNIC-facing port MAC (eth1): $CLIENT_PORT_MAC"
+log "Our Server-facing port MAC (eth2):    $SERVER_PORT_MAC"
 
 # ─── IP forwarding check ──────────────────────────────────────────────────────
 FWRD=$(cat /proc/sys/net/ipv4/ip_forward)
@@ -188,12 +157,13 @@ trap cleanup EXIT
 
 # ─── Start servernic-dpdk (foreground) ───────────────────────────────────────
 log "Starting servernic-dpdk — watching for flows. Press Ctrl+C to stop."
-log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$CLIENTNIC_GW_MAC --server-gw-mac=$SERVER_GW_MAC"
+log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$CLIENTNIC_GW_MAC --server-mac=$SERVER_GW_MAC"
+log "  --client-port-mac=$CLIENT_PORT_MAC --server-port-mac=$SERVER_PORT_MAC"
 echo ""
 exec "$BINARY" -l 0 -- \
     --port="$SERVER_PORT" \
     --port-count="$PORT_COUNT" \
     --gw-mac="$CLIENTNIC_GW_MAC" \
-    --server-gw-mac="$SERVER_GW_MAC" \
-    --client-iface=eth1 \
-    --server-iface="$SERVER_IFACE"
+    --server-mac="$SERVER_GW_MAC" \
+    --client-port-mac="$CLIENT_PORT_MAC" \
+    --server-port-mac="$SERVER_PORT_MAC"

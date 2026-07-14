@@ -70,14 +70,17 @@ void pipeline_feed_eth1(struct pipeline_ctx *ctx, struct rte_mbuf *mbuf)
         trans_c2s(ctx->trans, data, len);             /* subtract delta from ACK */
 }
 
-/* ── eth2 ingress (AF_PACKET raw buffer from Server) ────────────────────── */
+/* ── eth2 ingress (DPDK mbuf from Server) ────────────────────────────────── */
 
-void pipeline_feed_eth2(struct pipeline_ctx *ctx, uint8_t *pkt, uint16_t len)
+void pipeline_feed_eth2(struct pipeline_ctx *ctx, struct rte_mbuf *mbuf)
 {
+    uint8_t *data = rte_pktmbuf_mtod(mbuf, uint8_t *);
+    uint16_t len  = rte_pktmbuf_data_len(mbuf);
+
     if (len < 54)
         return;
 
-    const struct rte_ether_hdr *eth = (const struct rte_ether_hdr *)pkt;
+    const struct rte_ether_hdr *eth = (const struct rte_ether_hdr *)data;
 
     /* Re-capture loop prevention */
     if (memcmp(eth->src_addr.addr_bytes, ctx->eth2->mac, 6) == 0)
@@ -86,41 +89,21 @@ void pipeline_feed_eth2(struct pipeline_ctx *ctx, uint8_t *pkt, uint16_t len)
     if (eth->ether_type != htons(RTE_ETHER_TYPE_IPV4))
         return;
 
-    const struct rte_ipv4_hdr *ip = (const struct rte_ipv4_hdr *)(pkt + 14);
+    const struct rte_ipv4_hdr *ip = (const struct rte_ipv4_hdr *)(data + 14);
     if (ip->next_proto_id != IPPROTO_TCP)
         return;
 
     const struct rte_tcp_hdr *tcp = (const struct rte_tcp_hdr *)
-                                    (pkt + 14 + ((ip->version_ihl & 0x0F) * 4));
+                                    (data + 14 + ((ip->version_ihl & 0x0F) * 4));
 
     if (!port_in_app_range(ctx, tcp))
         return;
 
-    uint8_t flags     = tcp->tcp_flags;
-    int is_syn_ack    = (flags & RTE_TCP_SYN_FLAG) && (flags & RTE_TCP_ACK_FLAG);
-
-    /* For eth2, we receive raw buffers (AF_PACKET); wrap in a temporary mbuf-like
-     * structure.  Since syn_handler_handle_syn_ack and trans_s2c both take rte_mbuf*,
-     * we allocate a temporary mbuf to carry the packet.  The caller already provides
-     * a raw buffer so we wrap it into a mbuf using the mempool. */
-
-    /* Allocate a temporary mbuf from eth1's pool to pass to handlers */
-    struct rte_mbuf *m = rte_pktmbuf_alloc(ctx->eth1->mbuf_pool);
-    if (!m) {
-        LOG_ERR("eth2 pipeline: mbuf alloc failed");
-        return;
-    }
-    uint8_t *d = rte_pktmbuf_append(m, len);
-    if (!d) {
-        rte_pktmbuf_free(m);
-        return;
-    }
-    memcpy(d, pkt, len);
+    uint8_t flags  = tcp->tcp_flags;
+    int is_syn_ack = (flags & RTE_TCP_SYN_FLAG) && (flags & RTE_TCP_ACK_FLAG);
 
     if (is_syn_ack)
-        syn_handler_handle_syn_ack(ctx->sh, m);  /* compute delta, flush, DROP */
+        syn_handler_handle_syn_ack(ctx->sh, mbuf);  /* compute delta, flush, DROP */
     else
-        trans_s2c(ctx->trans, m);                /* add delta to SEQ, forward */
-
-    rte_pktmbuf_free(m);
+        trans_s2c(ctx->trans, mbuf);                /* add delta to SEQ, forward */
 }

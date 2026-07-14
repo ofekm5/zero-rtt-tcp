@@ -15,7 +15,6 @@
 #define MBUF_POOL_SIZE  8191
 #define MBUF_CACHE_SIZE 250
 #define RX_BURST_SIZE   32
-#define ETH0_BUF_SIZE   2048
 
 static volatile int running = 1;
 
@@ -69,24 +68,26 @@ int main(int argc, char *argv[])
 
     uint16_t app_port = 8080;
     uint16_t app_port_count = 1;
-    uint8_t  gw_mac[6] = {0};
+    uint8_t  gw_mac[6] = {0};              /* peer: ServerNIC eth1 (TX destination) */
     int      gw_mac_set = 0;
-    const char *client_iface = "eth0";
-    const char *server_iface = "eth1";
+    uint8_t  client_port_mac[6] = {0};     /* local: our client-facing ENI  */
+    int      client_port_mac_set = 0;
+    uint8_t  server_port_mac[6] = {0};     /* local: our ServerNIC-facing ENI */
+    int      server_port_mac_set = 0;
     const char *server_pcap_path = NULL;
 
     static struct option long_opts[] = {
-        {"port",           required_argument, NULL, 'p'},
-        {"port-count",     required_argument, NULL, 'n'},
-        {"gw-mac",         required_argument, NULL, 'g'},
-        {"client-iface",   required_argument, NULL, 'c'},
-        {"server-iface",   required_argument, NULL, 's'},
-        {"server-pcap",    required_argument, NULL, 'w'},
+        {"port",             required_argument, NULL, 'p'},
+        {"port-count",       required_argument, NULL, 'n'},
+        {"gw-mac",           required_argument, NULL, 'g'},
+        {"client-port-mac",  required_argument, NULL, 'm'},
+        {"server-port-mac",  required_argument, NULL, 'M'},
+        {"server-pcap",      required_argument, NULL, 'w'},
         {NULL, 0, NULL, 0}
     };
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "p:n:g:c:s:w:", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "p:n:g:m:M:w:", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'p':
             app_port = (uint16_t)atoi(optarg);
@@ -103,11 +104,19 @@ int main(int argc, char *argv[])
             }
             gw_mac_set = 1;
             break;
-        case 'c':
-            client_iface = optarg;
+        case 'm':
+            if (parse_mac(optarg, client_port_mac) < 0) {
+                LOG_ERR("Invalid --client-port-mac: %s", optarg);
+                return 1;
+            }
+            client_port_mac_set = 1;
             break;
-        case 's':
-            server_iface = optarg;
+        case 'M':
+            if (parse_mac(optarg, server_port_mac) < 0) {
+                LOG_ERR("Invalid --server-port-mac: %s", optarg);
+                return 1;
+            }
+            server_port_mac_set = 1;
             break;
         case 'w':
             server_pcap_path = optarg;
@@ -115,19 +124,27 @@ int main(int argc, char *argv[])
         default:
             fprintf(stderr,
                     "Usage: %s [EAL opts] -- --port=PORT [--port-count=N]"
-                    " --gw-mac=MAC [--server-pcap=FILE]\n", argv[0]);
+                    " --gw-mac=MAC --client-port-mac=MAC --server-port-mac=MAC"
+                    " [--server-pcap=FILE]\n", argv[0]);
             return 1;
         }
     }
 
     if (!gw_mac_set) {
-        LOG_ERR("--gw-mac is required");
+        LOG_ERR("--gw-mac (ServerNIC eth1 peer MAC) is required");
+        return 1;
+    }
+    if (!client_port_mac_set) {
+        LOG_ERR("--client-port-mac (our client-facing ENI MAC) is required");
+        return 1;
+    }
+    if (!server_port_mac_set) {
+        LOG_ERR("--server-port-mac (our ServerNIC-facing ENI MAC) is required");
         return 1;
     }
 
-    LOG_INFO("ClientNIC DPDK Forwarder starting (port=%u..%u, client=%s, server=%s)",
-             app_port, (uint16_t)(app_port + app_port_count - 1),
-             client_iface, server_iface);
+    LOG_INFO("ClientNIC DPDK Forwarder starting (port=%u..%u)",
+             app_port, (uint16_t)(app_port + app_port_count - 1));
     LOG_INFO("Gateway MAC: %02x:%02x:%02x:%02x:%02x:%02x",
              gw_mac[0], gw_mac[1], gw_mac[2],
              gw_mac[3], gw_mac[4], gw_mac[5]);
@@ -141,21 +158,48 @@ int main(int argc, char *argv[])
     }
 
     uint16_t nb_ports = rte_eth_dev_count_avail();
-    if (nb_ports == 0) {
-        LOG_ERR("No DPDK ports available (is eth1 bound to vfio-pci?)");
+    if (nb_ports < 2) {
+        LOG_ERR("Need 2 DPDK ports available (client + server), got %u"
+                " (are both bound to vfio-pci?)", nb_ports);
         return 1;
     }
 
-    static struct eth0_io eth0;
+    /* Map roles to ports by MAC, never by port ID: DPDK numbers ports in PCI
+     * order, which does not reliably follow ENI device_index, so a hardcoded
+     * 0/1 split can silently swap the client and ServerNIC links. */
+    uint16_t client_port_id, server_port_id;
+    if (io_find_port_by_mac(client_port_mac, &client_port_id) < 0) {
+        LOG_ERR("No DPDK port with --client-port-mac "
+                "%02x:%02x:%02x:%02x:%02x:%02x (is that ENI bound to vfio-pci?)",
+                client_port_mac[0], client_port_mac[1], client_port_mac[2],
+                client_port_mac[3], client_port_mac[4], client_port_mac[5]);
+        return 1;
+    }
+    if (io_find_port_by_mac(server_port_mac, &server_port_id) < 0) {
+        LOG_ERR("No DPDK port with --server-port-mac "
+                "%02x:%02x:%02x:%02x:%02x:%02x (is that ENI bound to vfio-pci?)",
+                server_port_mac[0], server_port_mac[1], server_port_mac[2],
+                server_port_mac[3], server_port_mac[4], server_port_mac[5]);
+        return 1;
+    }
+    if (client_port_id == server_port_id) {
+        LOG_ERR("--client-port-mac and --server-port-mac resolve to the same "
+                "DPDK port %u", client_port_id);
+        return 1;
+    }
+    LOG_INFO("Port map: client-facing=port %u, ServerNIC-facing=port %u",
+             client_port_id, server_port_id);
+
+    static struct client_io eth0;
     static struct eth1_io eth1;
     static struct flow_table ft;
     static struct packet_processor proc;
     static struct forwarder fwd;
     static struct pipeline_ctx pipeline;
 
-    if (eth0_init(&eth0, client_iface) < 0)
+    if (eth0_init(&eth0, client_port_id, mbuf_pool) < 0)
         return 1;
-    if (eth1_init(&eth1, 0, mbuf_pool, gw_mac) < 0)
+    if (eth1_init(&eth1, server_port_id, mbuf_pool, gw_mac) < 0)
         return 1;
 
     ft_init(&ft);
@@ -177,31 +221,31 @@ int main(int argc, char *argv[])
 
     LOG_INFO("Entering busy-poll loop...");
 
-    uint8_t eth0_buf[ETH0_BUF_SIZE];
-    struct rte_mbuf *rx_bufs[RX_BURST_SIZE];
+    struct rte_mbuf *rx_bufs0[RX_BURST_SIZE];
+    struct rte_mbuf *rx_bufs1[RX_BURST_SIZE];
 
     while (running) {
-        /* Drain eth0 (AF_PACKET) until empty (bounded) per pass. The bulk
-         * client->server upload arrives here; a single recv per loop lets the
-         * socket RX buffer overflow under the 100-flow burst -> dropped DATA
-         * -> ~200ms TCP RTO. The 64 bound keeps eth1/ACK servicing from
-         * starving. */
-        int n;
-        for (int k = 0; k < 64 &&
-             (n = eth0_recv(&eth0, eth0_buf, sizeof(eth0_buf))) > 0; k++)
-            pipeline_feed_eth0(&pipeline, eth0_buf, (uint16_t)n);
+        uint16_t nb_rx0 = rte_eth_rx_burst(eth0.port_id, 0, rx_bufs0, RX_BURST_SIZE);
+        for (uint16_t i = 0; i < nb_rx0; i++) {
+            uint8_t *data = rte_pktmbuf_mtod(rx_bufs0[i], uint8_t *);
+            uint16_t len  = rte_pktmbuf_data_len(rx_bufs0[i]);
+            pipeline_feed_eth0(&pipeline, data, len);
+            rte_pktmbuf_free(rx_bufs0[i]);
+        }
 
-        uint16_t nb_rx = rte_eth_rx_burst(eth1.port_id, 0, rx_bufs, RX_BURST_SIZE);
-        for (uint16_t i = 0; i < nb_rx; i++) {
+        uint16_t nb_rx1 = rte_eth_rx_burst(eth1.port_id, 0, rx_bufs1, RX_BURST_SIZE);
+        for (uint16_t i = 0; i < nb_rx1; i++) {
             if (capture)
-                pcap_writer_write_mbuf(capture, rx_bufs[i]);
-            pipeline_feed_eth1(&pipeline, rx_bufs[i]);
-            rte_pktmbuf_free(rx_bufs[i]);
+                pcap_writer_write_mbuf(capture, rx_bufs1[i]);
+            pipeline_feed_eth1(&pipeline, rx_bufs1[i]);
+            rte_pktmbuf_free(rx_bufs1[i]);
         }
     }
 
     LOG_INFO("Shutting down...");
     pcap_writer_close(capture);
+    rte_eth_dev_stop(eth0.port_id);
+    rte_eth_dev_close(eth0.port_id);
     rte_eth_dev_stop(eth1.port_id);
     rte_eth_dev_close(eth1.port_id);
     rte_eal_cleanup();

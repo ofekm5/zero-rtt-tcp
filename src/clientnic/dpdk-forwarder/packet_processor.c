@@ -20,7 +20,7 @@
 #define SPOOFED_MSS 1460
 
 void proc_init(struct packet_processor *proc, struct flow_table *ft,
-               struct eth0_io *eth0, struct eth1_io *eth1)
+               struct client_io *eth0, struct eth1_io *eth1)
 {
     proc->ft   = ft;
     proc->eth0 = eth0;

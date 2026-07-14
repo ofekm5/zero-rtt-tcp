@@ -5,6 +5,30 @@
 > (An earlier full-owner implementation, `clientnic/dpdk/`, kept spoofing and
 > translation both on the ClientNIC; it was removed — see git history.)
 
+## Dual-DPDK data plane
+
+ClientNIC runs a **dual-DPDK** data plane — both the client-facing and
+ServerNIC-facing ports are DPDK ENA PMD (vfio-pci), not AF_PACKET. A third,
+dedicated **management ENI** (kernel-driven, primary interface) carries SSM
+Session Manager access and is never bound to vfio-pci, so it stays reachable
+even while both data-plane ports are DPDK-owned:
+
+```
+eth0 (primary, kernel)   → SSM management only, never bound to vfio-pci
+eth1 (secondary, DPDK)   → ServerNIC-facing data plane (vfio-pci)
+eth2 (tertiary, DPDK)    → Client-facing data plane (vfio-pci)
+```
+
+DPDK port IDs are assigned in PCI-enumeration order, which does **not** reliably
+track ENI `device_index` — so the binary never assumes port 0 is the client link.
+`--client-port-mac` and `--server-port-mac` carry the MACs of ClientNIC's *own*
+two ENIs, and each port is matched to its role by comparing its MAC against them.
+Getting this wrong swaps the two links silently, so a mismatch is a startup error.
+
+Server-bound frames are addressed with the configured peer MAC (`--gw-mac`), since
+a DPDK-owned port can't ARP. Client-bound frames need no configured peer: the
+client's MAC is learned per-flow from the SYN and stored in the flow entry.
+
 ## How it differs from the full-owner design
 
 | Aspect | Full owner (removed `clientnic/dpdk/`) | `src/clientnic/dpdk-forwarder/` (T8 variant) |
@@ -32,7 +56,7 @@ On retransmit, the same `V` is re-stamped (no new flow entry created).
 |------|---------|
 | `main.c` | EAL init, CLI parsing, mempool, busy-poll loop |
 | `flow_table.c/h` | Slim flow table: `{V, client_mac, state}` — no delta or buffer |
-| `io.c/h` | eth0 AF_PACKET socket + eth1 DPDK ENA port |
+| `io.c/h` | Both data-plane ports: DPDK ENA PMD (client-facing + ServerNIC-facing) |
 | `packet_processor.c/h` | `proc_handle_syn`: spoof SYN-ACK + stamp V + forward |
 | `forwarder.c/h` | `forward_c2s` / `forward_s2c`: Ethernet rewrite only, seq/ack untouched |
 | `pipeline.c/h` | Parse → classify → dispatch |
@@ -57,11 +81,23 @@ The CDK stack builds this binary at provision time and points the
 ## Run
 
 ```bash
-sudo ./builddir/clientnic-dpdk-forwarder -l 0 -- --port=8080 --gw-mac=<ServerNIC-eth1-MAC>
+sudo ./builddir/clientnic-dpdk-forwarder -l 0 -- \
+    --port=8080 \
+    --gw-mac=<ServerNIC-eth1-MAC> \
+    --client-port-mac=<our-own-eth2-MAC> \
+    --server-port-mac=<our-own-eth1-MAC>
 ```
 
-`--gw-mac` is the **ServerNIC's eth1 MAC** (Middle-subnet DPDK port). Retrieve it from the EC2
-API — eth1 is DPDK-controlled so the kernel can't ARP for it:
+| Flag | Whose MAC | Why |
+|------|-----------|-----|
+| `--gw-mac` | ServerNIC's eth1 (**peer**) | TX destination for server-bound frames; a DPDK port can't ARP for it |
+| `--client-port-mac` | ClientNIC's own eth2 (**local**) | Identifies which DPDK port is the client link |
+| `--server-port-mac` | ClientNIC's own eth1 (**local**) | Identifies which DPDK port is the ServerNIC link |
+
+The client's MAC is *not* a flag — it's learned per-flow from the incoming SYN.
+
+All three come from the EC2 API (`DeviceIndex` 1 of `smartnics-servernic`, then 2 and 1
+of `smartnics-clientnic`); the run scripts resolve them automatically:
 
 ```bash
 aws ec2 describe-instances \

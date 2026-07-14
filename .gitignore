@@ -214,3 +214,6 @@ infra/.venv/
 tcp-header.png
 infra/bluefield/setup/bf-bundle-3.0.0-135_25.04_ubuntu-22.04_prod.bfb
 *.ovpn
+
+# task-runner sprint scratch (plans, contracts, build notes, transcripts)
+.harness/

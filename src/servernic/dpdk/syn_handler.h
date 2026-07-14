@@ -7,7 +7,7 @@
 struct syn_handler {
     struct flow_table *ft;
     struct eth1_io    *eth1;  /* ClientNIC-facing DPDK port */
-    struct eth2_io    *eth2;  /* Server-facing AF_PACKET socket */
+    struct eth2_io    *eth2;  /* Server-facing DPDK port */
 };
 
 void syn_handler_init(struct syn_handler *sh, struct flow_table *ft,

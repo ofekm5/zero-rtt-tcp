@@ -8,7 +8,7 @@
 #include <rte_tcp.h>
 
 void pipeline_init(struct pipeline_ctx *ctx, struct packet_processor *proc,
-                   struct forwarder *fwd, struct eth0_io *eth0,
+                   struct forwarder *fwd, struct client_io *eth0,
                    struct eth1_io *eth1, uint16_t app_port_base,
                    uint16_t app_port_count)
 {
@@ -32,7 +32,7 @@ static inline int port_in_app_range(const struct pipeline_ctx *ctx,
     return (dp >= lo && dp < hi) || (sp >= lo && sp < hi);
 }
 
-/* ── eth0 ingress (AF_PACKET raw buffer from client) ─────────────────────── */
+/* ── eth0 ingress (DPDK mbuf from client, handed in as a raw buffer) ─────── */
 
 void pipeline_feed_eth0(struct pipeline_ctx *ctx, uint8_t *pkt, uint16_t len)
 {
