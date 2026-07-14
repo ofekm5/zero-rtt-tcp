@@ -14,10 +14,19 @@ The AF_PACKET endpoint-facing interfaces (ClientNIC client-facing port, ServerNI
 
 ## What Changes
 
-- **Infra (CDK, both stacks' `smartnics_stack.py`):** Each SmartNIC gets a **dedicated management ENI** (primary, device_index 0, kernel-bound, SSM only). All data-plane ENIs become **vfio-pci secondaries**. ClientNIC's client-facing data moves from its primary ENI onto a new secondary ENI; ServerNIC's eth2 (server-facing) rebinds from kernel to vfio-pci. User-data binds every data ENI to vfio-pci at boot. **BREAKING** for the deployed topology (requires stack redeploy).
-- **ClientNIC forwarder (`src/clientnic/dpdk-forwarder/`):** Replace the `eth0_io` AF_PACKET struct and its `eth0_recv`/`eth0_send`/`SO_*BUFFORCE`/drain-loop/`sendto`-retry code with a **second ENA PMD port** (`rte_eth_rx_burst`/`tx_burst`, shared mbuf pool). Both ports polled in the single busy-poll loop. Client MAC passed via a new `--client-mac` CLI flag.
-- **ServerNIC (`src/servernic/dpdk/`):** Same conversion for the eth2 server-facing port — drop `eth2_io` AF_PACKET, add a second ENA PMD port, add `--server-mac`.
-- **Experiments (`experiments/dpdk/*.sh`, `run_core.sh`):** Resolve client/server peer MACs via EC2 `describe-instances`; pass the new `--client-mac`/`--server-mac`. Remove the now-impossible SmartNIC-side `tcpdump` (the interface is DPDK-owned); metrics come from the Client/Server host pcaps.
+- **Infra (CDK, both stacks' `smartnics_stack.py`):** Each SmartNIC gets a **dedicated management ENI** (primary, device_index 0, kernel-bound, SSM only). All data-plane ENIs become **vfio-pci secondaries**. ClientNIC's client-facing data moves from its primary ENI onto a new secondary ENI; ServerNIC's eth2 (server-facing) rebinds from kernel to vfio-pci. User-data binds every non-primary ENI to vfio-pci at boot, selecting them by **IMDS `device-number` + MAC** rather than by kernel interface name (names are not stable across attach order, and unbinding one ENI frees its name for another). **BREAKING** for the deployed topology (requires stack redeploy).
+- **ClientNIC forwarder (`src/clientnic/dpdk-forwarder/`):** Replace the `eth0_io` AF_PACKET struct and its `eth0_recv`/`eth0_send`/`SO_*BUFFORCE`/drain-loop/`sendto`-retry code with a **second ENA PMD port** (`rte_eth_rx_burst`/`tx_burst`, shared mbuf pool). Both ports polled in the single busy-poll loop. The client's MAC is **learned per-flow from the SYN**, not configured (see the design-deviation note below).
+- **ServerNIC (`src/servernic/dpdk/`):** Same conversion for the eth2 server-facing port — drop `eth2_io` AF_PACKET, add a second ENA PMD port, add `--server-mac` (a genuine next hop, which cannot be learned).
+- **Both binaries — port identity:** each takes the MACs of its **own** two data ENIs (`--client-port-mac` / `--server-port-mac`) and resolves which DPDK port plays which role by matching `rte_eth_macaddr_get()` against them. DPDK numbers ports in PCI-enumeration order, which does not reliably track ENI `device_index`, so a hardcoded `port 0`/`port 1` split can silently swap the two links.
+- **Experiments (`experiments/dpdk/*.sh`, `run_core.sh`):** Resolve next-hop MACs *and* each SmartNIC's own two port MACs via EC2 `describe-instances`, and pass them through. Remove the now-impossible SmartNIC-side `tcpdump` (the interface is DPDK-owned); metrics come from the Client/Server host pcaps. Retire `servernic.sh`'s kernel-name-based DPDK rebind hack, which under dual-DPDK would unbind an arbitrary vfio device.
+
+> **Design deviation from the original proposal (post-review, PR #22).** The original
+> scope specified a `--client-mac` CLI flag carrying the Client VM's peer MAC. Review
+> found it **required but never read** — client-bound frames use `entry->client_mac`,
+> learned from the SYN — so it was removed rather than left as dead configuration. The
+> `--client-port-mac` / `--server-port-mac` flags that replaced it serve a *different*
+> purpose (local port identity, not peer address) and fix a latent link-swap bug the
+> original design did not anticipate. See `design.md` D3/D3b.
 
 ## Capabilities
 

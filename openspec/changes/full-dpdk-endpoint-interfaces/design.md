@@ -25,16 +25,33 @@ The T8 data-plane logic (V stamping, delta computation, seq/ack rewrite, bufferi
 The primary ENI (device_index 0) becomes management-only (kernel, SSM). All data-plane ENIs are secondaries bound to vfio-pci. ClientNIC gains a new secondary ENI for the client-facing data (moved off the primary); ServerNIC's existing eth2 secondary is rebound from kernel to vfio-pci. This yields a uniform layout — *primary=mgmt, secondaries=DPDK* — on both nodes.
 
 **D2 — Second ENA PMD port, not a merged/bonded port.**
-Each binary initializes two independent `rte_eth` ports and polls both in the existing loop. The endpoint-facing `ethX_io` AF_PACKET struct is replaced with an ENA-port struct shaped like the current `eth1_io` (`port_id`, `mac`, `peer_mac`, `mbuf_pool`). Send becomes `rte_eth_tx_burst` with the same bounded-retry-then-drop shape already used on the DPDK side; receive becomes `rte_eth_rx_burst`. The AF_PACKET-specific code (socket fd, `sll` addressing, `SO_*BUFFORCE`, drain-loop) is deleted.
+Each binary initializes two independent `rte_eth` ports and polls both in the existing loop. The endpoint-facing `ethX_io` AF_PACKET struct is replaced with an ENA-port struct shaped like the current `eth1_io` (`port_id`, `mac`, `mbuf_pool`, plus a `peer_mac` **only where a peer MAC is actually needed** — see D3). Send becomes `rte_eth_tx_burst` with the same bounded-retry-then-drop shape already used on the DPDK side; receive becomes `rte_eth_rx_burst`. The AF_PACKET-specific code (socket fd, `sll` addressing, `SO_*BUFFORCE`, drain-loop) is deleted.
 
-**D3 — Peer MAC via CLI (`--client-mac` / `--server-mac`).**
-DPDK ports have no ARP. The endpoint peer's MAC is resolved out-of-band in the experiment scripts (EC2 `describe-instances` on the client/server data ENI) and passed on the CLI, exactly as `--gw-mac` already supplies the middle-link peer. The Ethernet-rewrite paths that previously read `io->mac` for the AF_PACKET egress now use the port MAC + configured peer MAC.
+**D3 — Next-hop MAC via CLI, but only where it cannot be learned (`--server-mac`; *not* `--client-mac`).**
+DPDK ports have no ARP, so a next-hop MAC that cannot be observed on a received frame must be resolved out-of-band in the experiment scripts (EC2 `describe-instances`) and passed on the CLI, exactly as `--gw-mac` already supplies the middle-link peer. That is true of the **server-side** next hop (`--server-mac`).
+
+It is *not* true of the client. The client's MAC is always the source MAC of its own SYN, which the ClientNIC has necessarily already received before it needs to send anything client-bound — so it is learned per-flow into `entry->client_mac`. An earlier revision of this design specified a `--client-mac` flag; implementation review found it **required but never read**, and it was removed. Do not reintroduce it.
+
+**D3b — Port role resolved by ENI identity, never by port ID (added post-review).**
+DPDK assigns `port_id` in **PCI-enumeration order**, which does **not** reliably track ENI `device_index`. A fixed `port 0 = client-facing, port 1 = server-facing` mapping is therefore not safe: on a given instance the two links can swap, and the failure is silent — both ports come up cleanly and traffic simply goes out the wrong wire. (The pre-existing `servernic.sh` rebind hack was empirical evidence of the same class of problem at the kernel-naming layer: *"on some instances the OS assigns the Server-subnet ENI as eth1"*.)
+
+Each binary therefore takes the MACs of its **own** two data ENIs (`--client-port-mac` / `--server-port-mac`) and resolves each role by matching `rte_eth_macaddr_get()` against them, failing loudly on an unmatched or colliding MAC. The same principle applies one layer down: boot user-data binds ENIs to vfio-pci by IMDS `device-number` + MAC, not by kernel interface name.
 
 **D4 — Measurement stays on endpoint hosts.**
 Kernel `tcpdump` on the converted interface is impossible once it is DPDK-owned. The `endpoint-pcap-measurement` model already captures `/tmp/client_side.pcap` and `/tmp/server_side.pcap` on the Client and Server hosts and runs `analyze_metrics.py` there. The SmartNIC-side `tcpdump` invocation in `clientnic.sh` is removed; no new capture path is added.
 
-**D5 — mbuf pool sizing.**
-A single shared mbuf pool now feeds two RX ports; bump `MBUF_POOL_SIZE` to cover both ports' RX descriptor rings plus in-flight buffers. Keep it a power-of-two-minus-one per DPDK convention.
+**D5 — mbuf pool sizing (no bump needed; verified).**
+A single shared mbuf pool now feeds two RX ports. The requirement is
+`nb_ports × (nb_rxd + nb_txd + MAX_BURST + nb_lcores × cache)` =
+`2 × (1024 + 1024 + 32 + 250)` = **4,660 mbufs**, against the existing
+`MBUF_POOL_SIZE = 8191` — 1.76× headroom, so **no bump is required**. (The
+headroom did halve, from 3.5× with one DPDK port, which is why the constant
+should be *derived* from the ring sizes rather than left as a magic number
+beside them.) At ~2,304 B/mbuf the pool is ~18 MiB of the 1 GiB hugepage
+reservation, so it is cheap to over-provision if ever in doubt.
+
+See `docs/capacity-model.md` for the full derivation and for the constraints that
+*do* bind at scale — none of which is the mbuf pool.
 
 ## Alternatives Considered
 
