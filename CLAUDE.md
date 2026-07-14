@@ -103,6 +103,7 @@ Scapy provides:
 ### Architecture & Design
 - **`src/clientnic/README.md`**: Detailed ClientNIC implementation (0-RTT core logic)
 - **`src/servernic/README.md`**: ServerNIC forwarding implementation
+- **`docs/capacity-model.md`**: Hardware constraints and sizing calculations — mbuf pool, NIC rings/ENA allowances, flow tables, the 2048-byte frame ceiling, port space, CPU and endpoint limits. Read before changing a sizing constant or running a large-scale benchmark.
 - **`observability/`**: eBPF observability implementation (currently disabled) — packet tracing and performance monitoring
 
 ### OpenSpec Change Tracking
