@@ -4,33 +4,41 @@
 TBD - created by archiving change clientnic-dpdk-port. Update Purpose after archive.
 ## Requirements
 ### Requirement: DPDK EAL initialization and port configuration
-The application SHALL initialize the DPDK EAL, create a packet mempool, and configure exactly one RX queue and one TX queue on DPDK port 0 (eth1) using the ENA PMD.
+The application SHALL initialize the DPDK EAL, create a packet mempool, and configure exactly one RX queue and one TX queue on **two** DPDK ports using the ENA PMD. The mempool SHALL be sized to feed both ports' RX rings plus in-flight buffers.
+
+Port roles SHALL NOT be assigned by port ID. DPDK numbers ports in PCI-enumeration order, which does not reliably track ENI `device_index`, so a fixed `port 0` / `port 1` role split can silently swap the two links. Each port's role SHALL be resolved by matching the port's own MAC (`rte_eth_macaddr_get()`) against the local ENI MACs supplied on the command line.
 
 #### Scenario: Successful DPDK port startup
-- **WHEN** the application starts with valid EAL arguments and eth1 is bound to vfio-pci
-- **THEN** DPDK port 0 SHALL be configured with 1 RX queue and 1 TX queue, the port SHALL be started, and promiscuous mode SHALL be enabled
+- **WHEN** the application starts with valid EAL arguments and both data ENIs are bound to vfio-pci
+- **THEN** both DPDK ports SHALL be configured with 1 RX queue and 1 TX queue, started, and promiscuous mode enabled, each bound to its role by MAC match
 
 #### Scenario: DPDK port unavailable
-- **WHEN** no DPDK port is available (eth1 not bound to vfio-pci)
+- **WHEN** fewer than two DPDK ports are available (a data ENI not bound to vfio-pci)
 - **THEN** the application SHALL log an error and exit with a non-zero status code
 
-### Requirement: AF_PACKET raw socket for eth0
-The application SHALL open a non-blocking `AF_PACKET SOCK_RAW` socket bound to eth0 for receiving and sending raw Ethernet frames on the client-facing interface.
-
-#### Scenario: eth0 socket initialization
-- **WHEN** the application starts and eth0 exists as a kernel interface
-- **THEN** an AF_PACKET raw socket SHALL be opened, bound to eth0's interface index, and set to non-blocking mode
-
-#### Scenario: Receiving packets from eth0
-- **WHEN** a TCP packet matching the configured port arrives on eth0
-- **THEN** the packet SHALL be read via `recvfrom()` into a raw buffer and passed to the pipeline
-
 ### Requirement: Busy-poll main loop
-The application SHALL run a single-threaded busy-poll loop that alternates between polling eth0 (non-blocking `recvfrom`) and eth1 (`rte_eth_rx_burst`).
+The application SHALL run a single-threaded busy-poll loop that polls both DPDK ports via `rte_eth_rx_burst` — the client-facing port and the server-facing port — on each iteration without blocking.
 
 #### Scenario: Continuous polling
 - **WHEN** the main loop is running
-- **THEN** it SHALL poll eth0 via `recvfrom()` and eth1 via `rte_eth_rx_burst()` on each iteration without blocking
+- **THEN** it SHALL call `rte_eth_rx_burst()` on both the client-facing and server-facing DPDK ports on each iteration without blocking
+
+### Requirement: DPDK port identity from CLI arguments
+The application SHALL accept `--client-port-mac` and `--server-port-mac` command-line arguments carrying the MACs of its **own** two data ENIs (client-facing and server-facing respectively), and SHALL exit non-zero if either is missing.
+
+These identify which DPDK port plays which role. They are **local port identities, not peer/next-hop MACs**.
+
+#### Scenario: Port roles resolved by MAC
+- **WHEN** `--client-port-mac` and `--server-port-mac` are passed and each matches an available DPDK port's own MAC
+- **THEN** the application SHALL bind each role to the matching port ID and log the resulting port map
+
+#### Scenario: A supplied port MAC matches no DPDK port
+- **WHEN** either port MAC matches no available DPDK port (e.g. that ENI was not bound to vfio-pci)
+- **THEN** the application SHALL log an error naming the unmatched MAC and exit with a non-zero status code
+
+#### Scenario: Both port MACs resolve to the same port
+- **WHEN** `--client-port-mac` and `--server-port-mac` resolve to the same DPDK port ID
+- **THEN** the application SHALL log an error and exit with a non-zero status code
 
 ### Requirement: Sending on eth1 via DPDK
 The application SHALL send packets on eth1 by allocating an mbuf from the mempool, writing the Ethernet frame (using cached gateway MAC as destination), and calling `rte_eth_tx_burst()`.
@@ -39,12 +47,14 @@ The application SHALL send packets on eth1 by allocating an mbuf from the mempoo
 - **WHEN** a SYN is intercepted on eth0 and must be forwarded to the server
 - **THEN** the application SHALL allocate an mbuf, set Ether header with our eth1 MAC as src and gateway MAC as dst, copy the IP+TCP payload, and transmit via `rte_eth_tx_burst()`
 
-### Requirement: Sending on eth0 via raw socket
-The application SHALL send packets on eth0 by constructing a complete Ethernet frame and calling `sendto()` on the AF_PACKET socket.
+### Requirement: Sending toward the client via DPDK
+The application SHALL send packets toward the client by allocating an mbuf from the mempool, writing the Ethernet frame (client-facing port MAC as src, the flow's client MAC as dst), and calling `rte_eth_tx_burst()` on the client-facing DPDK port, retrying briefly on a full ring before dropping.
+
+The client's MAC SHALL be learned per-flow from the source MAC of the client's SYN and stored in the flow entry. It SHALL NOT be supplied as a CLI argument: unlike the server-side next hop, the client's MAC is always observable on an already-received frame before any client-bound frame needs to be sent.
 
 #### Scenario: Send spoofed SYN-ACK to client
-- **WHEN** a spoofed SYN-ACK is constructed
-- **THEN** it SHALL be sent via `sendto()` on the AF_PACKET socket with the client's MAC as destination
+- **WHEN** a spoofed SYN-ACK is constructed in response to a client SYN
+- **THEN** it SHALL be transmitted via `rte_eth_tx_burst()` on the client-facing DPDK port, addressed to the client MAC learned from that SYN
 
 ### Requirement: Gateway MAC from CLI argument
 The application SHALL accept a `--gw-mac` command-line argument specifying the middle subnet gateway's MAC address for eth1 Ethernet header construction.
