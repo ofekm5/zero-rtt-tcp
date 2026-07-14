@@ -211,7 +211,6 @@ __marimo__/
 infra/*/cdk.out/
 infra/.venv/
 .claude/settings.local.json
-tcp-header.png
 infra/bluefield/setup/bf-bundle-3.0.0-135_25.04_ubuntu-22.04_prod.bfb
 *.ovpn
 

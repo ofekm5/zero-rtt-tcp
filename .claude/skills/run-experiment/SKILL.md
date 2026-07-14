@@ -172,6 +172,27 @@ For each ❌, quote the exact log line or output that caused the failure.
 
 Common failure patterns and fixes: `references/troubleshooting.md`.
 
+## Step 5 — Propose insights for `experiments/insights.md`
+
+After reporting results (Step 3) and investigating any failures (Step 4), check
+whether this run surfaced a **durable insight** — a confirmed root cause, a
+bottleneck localized to a specific layer (endpoint / SmartNIC / kernel / config),
+or a correction to a documented capacity assumption. Not every run produces one;
+don't force it, and routine pass/fail results already in the auto-generated
+report don't count.
+
+If it does:
+
+1. Draft the entry in the same format as existing entries in
+   `experiments/insights.md` (source report/log, what the run showed, root
+   cause, "carry forward" takeaway).
+2. **Ask the user to confirm before writing** — never append to
+   `experiments/insights.md` without approval:
+   > "This run surfaced an insight: `<one-line summary>`. Add it to
+   > `experiments/insights.md`?"
+3. On confirmation, append the entry (never overwrite or reorder prior
+   entries). On decline, discard the draft — don't save it elsewhere.
+
 ---
 
 ## Manual / Interactive Testing

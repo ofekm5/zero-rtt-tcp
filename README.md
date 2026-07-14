@@ -29,6 +29,30 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 
 **Key**: ClientNIC sends the spoofed SYN-ACK (④) before the real one (⑤) even arrives, so the client can send data (⑥) a full RTT earlier than normal TCP. The real SYN-ACK is dropped; sequence numbers are transparently rewritten (⑦, ⑩) so the server never knows.
 
+## TCP Header Format
+
+```
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|          Source Port         |       Destination Port       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        Sequence Number                       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                    Acknowledgment Number                     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|Length | Resv. |N|C|E|U|A|P|R|S|F|                             |
+|       |       |S|W|C|R|C|S|S|Y|I|         Window Size         |
+|       |       | |R|E|G|K|H|T|N|N|                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|            Checksum          |        Urgent Pointer         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                Options                      |    Padding      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+```
+
+The fields this project's translation logic touches directly: **Sequence Number** (rewritten server→client by `+= delta`), **Acknowledgment Number** (rewritten client→server by `-= delta`, and used by ClientNIC to stamp the spoofed ISN `V` in T8 mode), and **Checksum** (recalculated after every rewrite — see below).
+
 ## Sequence Number Translation
 
 ClientNIC maintains a flow table with a per-connection `seq_delta`:
