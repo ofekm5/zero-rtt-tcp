@@ -101,6 +101,7 @@ Scapy provides:
 ## Key Documentation
 
 ### Architecture & Design
+- **`roadmap.md`**: Working record of scale/experiment goals (100k-connection load testing, DPDK-vs-baseline comparison) that originated as GitHub issues (#20, #21) and are now tracked here instead — scope, verified infra state, and success criteria.
 - **`src/clientnic/README.md`**: Detailed ClientNIC implementation (0-RTT core logic)
 - **`src/servernic/README.md`**: ServerNIC forwarding implementation
 - **`docs/capacity-model.md`**: Hardware constraints and sizing calculations — mbuf pool, NIC rings/ENA allowances, flow tables, the 2048-byte frame ceiling, port space, CPU and endpoint limits. Read before changing a sizing constant or running a large-scale benchmark.
