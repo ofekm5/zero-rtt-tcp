@@ -3,10 +3,13 @@
 #include <string.h>
 #include <signal.h>
 #include <getopt.h>
+#include <inttypes.h>
 
 #include <rte_eal.h>
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
+#include <rte_cycles.h>
+#include <rte_mempool.h>
 
 #include "pipeline.h"
 #include "capture.h"
@@ -15,6 +18,7 @@
 #define MBUF_POOL_SIZE  8191
 #define MBUF_CACHE_SIZE 250
 #define RX_BURST_SIZE   32
+#define STATS_INTERVAL_SEC 5   /* seconds between periodic per-port stats logs */
 
 static volatile int running = 1;
 
@@ -52,6 +56,35 @@ static void install_iptables(uint16_t base, uint16_t count)
     snprintf(cmd, sizeof(cmd),
              "iptables -A FORWARD -p tcp --sport %u:%u -j DROP", base, hi);
     system(cmd);
+}
+
+/* Periodic per-port drop/error visibility. imissed and rx_nombuf look identical
+ * from the outside (throughput collapses) but have opposite fixes, so log them
+ * separately with the diagnosis attached. See docs/capacity-model.md §11. */
+static void log_port_stats(uint16_t port_id, const char *name)
+{
+    struct rte_eth_stats st;
+    if (rte_eth_stats_get(port_id, &st) != 0) {
+        LOG_WARN("stats %s (port %u): rte_eth_stats_get failed", name, port_id);
+        return;
+    }
+    LOG_INFO("stats %s (port %u): rx=%" PRIu64 " tx=%" PRIu64
+             " imissed=%" PRIu64 " rx_nombuf=%" PRIu64
+             " ierrors=%" PRIu64 " oerrors=%" PRIu64,
+             name, port_id, st.ipackets, st.opackets,
+             st.imissed, st.rx_nombuf, st.ierrors, st.oerrors);
+    if (st.imissed)
+        LOG_WARN("stats %s (port %u): imissed=%" PRIu64
+                 " — RX ring overflowed, core too slow (capacity-model §11)",
+                 name, port_id, st.imissed);
+    if (st.rx_nombuf)
+        LOG_WARN("stats %s (port %u): rx_nombuf=%" PRIu64
+                 " — mempool ran dry, pool too small or mbuf leak (capacity-model §11)",
+                 name, port_id, st.rx_nombuf);
+    if (st.oerrors)
+        LOG_WARN("stats %s (port %u): oerrors=%" PRIu64
+                 " — TX errors, downstream/link (capacity-model §11)",
+                 name, port_id, st.oerrors);
 }
 
 int main(int argc, char *argv[])
@@ -224,6 +257,10 @@ int main(int argc, char *argv[])
     struct rte_mbuf *rx_bufs0[RX_BURST_SIZE];
     struct rte_mbuf *rx_bufs1[RX_BURST_SIZE];
 
+    const uint64_t stats_period = rte_get_tsc_hz() * STATS_INTERVAL_SEC;
+    uint64_t next_stats = rte_rdtsc() + stats_period;
+    unsigned mempool_low_water = MBUF_POOL_SIZE;  /* min free mbufs observed */
+
     while (running) {
         uint16_t nb_rx0 = rte_eth_rx_burst(eth0.port_id, 0, rx_bufs0, RX_BURST_SIZE);
         for (uint16_t i = 0; i < nb_rx0; i++) {
@@ -239,6 +276,24 @@ int main(int argc, char *argv[])
                 pcap_writer_write_mbuf(capture, rx_bufs1[i]);
             pipeline_feed_eth1(&pipeline, rx_bufs1[i]);
             rte_pktmbuf_free(rx_bufs1[i]);
+        }
+
+        /* Sample pool headroom only while packets are in flight — that is when
+         * the pool actually drains, and it keeps the count off the idle path. */
+        if (nb_rx0 || nb_rx1) {
+            unsigned avail = rte_mempool_avail_count(mbuf_pool);
+            if (avail < mempool_low_water)
+                mempool_low_water = avail;
+        }
+
+        uint64_t now = rte_rdtsc();
+        if (now >= next_stats) {
+            log_port_stats(eth0.port_id, "client-facing");
+            log_port_stats(eth1.port_id, "ServerNIC-facing");
+            LOG_INFO("stats mempool: avail=%u/%d low-water=%u",
+                     rte_mempool_avail_count(mbuf_pool), MBUF_POOL_SIZE,
+                     mempool_low_water);
+            next_stats = now + stats_period;
         }
     }
 

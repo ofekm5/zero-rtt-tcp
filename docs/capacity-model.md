@@ -417,12 +417,14 @@ cat /proc/sys/net/netfilter/nf_conntrack_max   # if present
 
 ## 11. Measurement: what to instrument, what to run
 
-### In the data plane (does not exist yet — add it)
+### In the data plane
 
 The AF_PACKET → DPDK move deleted the `tx_drops` counters and left the
-`LOG_WARN`s firing without a number. Restore visibility with `rte_eth_stats_get()`
-per port, logged every few seconds. These four distinguish failure modes that all
-present as "throughput collapsed" but have **opposite fixes**:
+`LOG_WARN`s firing without a number. Visibility is restored via
+`rte_eth_stats_get()` per port, logged every `STATS_INTERVAL_SEC` (5 s) from both
+busy-poll loops (`log_port_stats()` in each `main.c`), plus a mempool low-water
+mark from `rte_mempool_avail_count()`. These four distinguish failure modes that
+all present as "throughput collapsed" but have **opposite fixes**:
 
 | Counter | Means | Fix |
 |---|---|---|
