@@ -4,9 +4,24 @@ Tracks open GitHub issues and how they relate to the OpenSpec change pipeline (`
 
 ## Status snapshot
 
-- `full-dpdk-endpoint-interfaces` (#18) — **done**, archived 2026-07-14 (`openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`). Both SmartNICs now run dual-DPDK data-plane ports.
+- `full-dpdk-endpoint-interfaces` (#18) — **code done**, OpenSpec change archived 2026-07-14 (`openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`). Both SmartNICs now run dual-DPDK data-plane ports. **Deploy-gated verification still open** — see [#18 — remaining deploy-gated DoD](#18--remaining-deploy-gated-dod).
 - [#20 — Scale DPDK experiment to 100k parallel connections with 3-NIC SmartNIC topology](https://github.com/ofekm5/zero-rtt-tcp/issues/20) — closed 2026-07-21, tracked here going forward (topology sub-scope already shipped via #18; remaining load-scale work stays open in this doc)
 - [#21 — Run experiment on both DPDK and baseline stacks](https://github.com/ofekm5/zero-rtt-tcp/issues/21) — closed 2026-07-21, tracked here going forward
+
+## #18 — remaining deploy-gated DoD
+
+The code is shipped and the OpenSpec change is archived, but every remaining #18
+success criterion needs a live AWS deploy + run — none were verified in the
+authoring environment (no DPDK toolchain, no infra). Do these before closing #18.
+
+- [ ] **Compile the data plane on the VM.** PR [#25](https://github.com/ofekm5/zero-rtt-tcp/pull/25) (drop counters) and everything in the archived change are **unverified builds** — no local DPDK. First `meson`/`ninja` happens on the ClientNIC/ServerNIC during deploy; treat "it builds" as open.
+- [ ] **Redeploy the 3-ENI/SmartNIC topology** (Task 2). Each SmartNIC now provisions 3 ENIs (1 kernel/SSM mgmt + 2 vfio-pci data) — **BREAKING**, a full redeploy, not update-in-place. Use the `deploy-infra` skill (GitHub Actions path needs no local AWS creds). Watch the `vfio-bind:` boot log (`_bind_data_enis_to_vfio()` in `infra/dpdk/cdk/smartnics_stack.py`).
+- [ ] **Criterion 2 — SSM reachability** (Task 3). Both SmartNICs stay SSM-reachable with both data ENIs bound to vfio-pci: expect exactly 2 vfio-pci devices per SmartNIC and `eth0` still kernel-bound with an IP. If SSM is dead, the primary ENI got bound — check `/var/log/cloud-init-output.log`.
+- [ ] **Criterion 4 — regression run at current working scale** (Task 4). `./experiments/dpdk/run_experiment.sh`; confirm no `server_gap` regression vs. the AF_PACKET baseline (`experiments/dpdk/reports/`). Use the `run-experiment` skill.
+  - Read the startup `Port map: client-facing=port N, ServerNIC-facing=port M` line first — if swapped vs. the ENI subnets, the whole fix premise is wrong and you'll see zero 0-RTT behaviour.
+  - Pin endpoint MTU to 1500 in `run_core.sh` before the run — the 2048-byte frame ceiling vs. default 9001 MTU trap (`docs/capacity-model.md` §5) presents as data-plane corruption/stalls.
+  - The restored drop counters (PR #25) now make this criterion evaluable: `imissed`/`rx_nombuf`/`oerrors` should be zero or explained.
+- [ ] **Then close #18** and reconcile the GitHub issue state with this roadmap (issue is still open; the OpenSpec change is already archived).
 
 ## #20 — Scale to 100k connections, 3-NIC topology
 
