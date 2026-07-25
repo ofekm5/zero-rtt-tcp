@@ -4,25 +4,47 @@ Tracks open GitHub issues and how they relate to the OpenSpec change pipeline (`
 
 ## Status snapshot
 
-- `full-dpdk-endpoint-interfaces` (#18) — **code done**, OpenSpec change archived 2026-07-14 (`openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`). Both SmartNICs now run dual-DPDK data-plane ports. **Deploy-gated verification still open** — see [#18 — remaining deploy-gated DoD](#18--remaining-deploy-gated-dod).
+- `full-dpdk-endpoint-interfaces` (#18) — **DONE, closed 2026-07-25**. OpenSpec change archived 2026-07-14 (`openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`); deploy-gated DoD verified against a live redeploy the same day. Both SmartNICs run dual-DPDK data-plane ports, confirmed SSM-reachable with 2 vfio-pci devices each, and a regression run at current working scale (100 connections) passed clean. See [#18 — deploy-gated DoD verified 2026-07-25](#18--deploy-gated-dod-verified-2026-07-25) for the evidence.
 - [#20 — Scale DPDK experiment to 100k parallel connections with 3-NIC SmartNIC topology](https://github.com/ofekm5/zero-rtt-tcp/issues/20) — closed 2026-07-21, tracked here going forward (topology sub-scope already shipped via #18; remaining load-scale work stays open in this doc)
 - [#21 — Run experiment on both DPDK and baseline stacks](https://github.com/ofekm5/zero-rtt-tcp/issues/21) — closed 2026-07-21, tracked here going forward
 - **Infra hand-tailoring** — CDK/runtime properties need to be tuned to the ceilings `docs/capacity-model.md` documents before the #20 100k run is meaningful; not yet started. See [Infra hand-tailoring](#infra-hand-tailoring-per-docscapacity-modelmd).
 
-## #18 — remaining deploy-gated DoD
+## #18 — deploy-gated DoD verified 2026-07-25
 
-The code is shipped and the OpenSpec change is archived, but every remaining #18
-success criterion needs a live AWS deploy + run — none were verified in the
-authoring environment (no DPDK toolchain, no infra). Do these before closing #18.
+Redeployed the 3-ENI/SmartNIC topology (stack outputs dated 2026-07-25) and ran
+every remaining #18 success criterion against it. All passed:
 
-- [ ] **Compile the data plane on the VM.** PR [#25](https://github.com/ofekm5/zero-rtt-tcp/pull/25) (drop counters) and everything in the archived change are **unverified builds** — no local DPDK. First `meson`/`ninja` happens on the ClientNIC/ServerNIC during deploy; treat "it builds" as open.
-- [ ] **Redeploy the 3-ENI/SmartNIC topology** (Task 2). Each SmartNIC now provisions 3 ENIs (1 kernel/SSM mgmt + 2 vfio-pci data) — **BREAKING**, a full redeploy, not update-in-place. Use the `deploy-infra` skill (GitHub Actions path needs no local AWS creds). Watch the `vfio-bind:` boot log (`_bind_data_enis_to_vfio()` in `infra/dpdk/cdk/smartnics_stack.py`).
-- [ ] **Criterion 2 — SSM reachability** (Task 3). Both SmartNICs stay SSM-reachable with both data ENIs bound to vfio-pci: expect exactly 2 vfio-pci devices per SmartNIC and `eth0` still kernel-bound with an IP. If SSM is dead, the primary ENI got bound — check `/var/log/cloud-init-output.log`.
-- [ ] **Criterion 4 — regression run at current working scale** (Task 4). `./experiments/dpdk/run_experiment.sh`; confirm no `server_gap` regression vs. the AF_PACKET baseline (`experiments/dpdk/reports/`). Use the `run-experiment` skill.
-  - Read the startup `Port map: client-facing=port N, ServerNIC-facing=port M` line first — if swapped vs. the ENI subnets, the whole fix premise is wrong and you'll see zero 0-RTT behaviour.
-  - Pin endpoint MTU to 1500 in `run_core.sh` before the run — the 2048-byte frame ceiling vs. default 9001 MTU trap (`docs/capacity-model.md` §5) presents as data-plane corruption/stalls.
-  - The restored drop counters (PR #25) now make this criterion evaluable: `imissed`/`rx_nombuf`/`oerrors` should be zero or explained.
-- [ ] **Then close #18** and reconcile the GitHub issue state with this roadmap (issue is still open; the OpenSpec change is already archived).
+- [x] **Compile the data plane on the VM.** Both binaries built clean via the CDK
+      user-data `meson`/`ninja` step on first boot — `clientnic-dpdk-forwarder`
+      (10/10 objects) and `servernic-dpdk` (9/9 objects), only benign
+      `-Wpointer-sign` warnings, no errors. PR #25's drop-counter code compiled
+      as part of this.
+- [x] **Redeploy the 3-ENI/SmartNIC topology.** Confirmed via `describe-instances`:
+      both ClientNIC and ServerNIC carry exactly 3 ENIs (mgmt + 2 data) at
+      device-indexes 0/1/2.
+- [x] **Criterion 2 — SSM reachability.** Both SmartNICs SSM-reachable
+      post-redeploy with `eth0` kernel-bound (has an IP) and exactly 2
+      `vfio-pci` devices each (`dpdk-devbind.py --status`); `vfio-bind:` boot
+      log confirmed the primary ENI was correctly skipped on both.
+- [x] **Criterion 4 — regression run at current working scale.**
+      `IPERF_PARALLEL=100 IPERF_PORTS=1 ./experiments/dpdk/run_experiment.sh`
+      (100k is out of scope for #18 per the original issue text — t3.micro
+      endpoints can't sustain it; see #20). Result: **ALL CHECKS PASSED**,
+      report at `experiments/dpdk/reports/integration-test-report-2026-07-25.md`.
+      Endpoint MTU pinned to 1500 on Client/Server first (2048-byte frame
+      ceiling trap). Startup `Port map: client-facing=port 1,
+      ServerNIC-facing=port 0` matched the ENI subnets. Drop counters
+      (PR #25) showed `imissed=1264` on ServerNIC's ClientNIC-facing port —
+      explained inline as "RX ring overflowed, core too slow (capacity-model
+      §11)", the known single-lcore/one-packet-burst-TX bottleneck already
+      tracked under #20's scope D; `rx_nombuf`/`oerrors` were zero everywhere.
+- [x] **No first-data-loss warnings / tx-drop accounting issues** in the
+      ServerNIC run log.
+- [x] **`pytest`** — `python3 -m pytest src/clientnic/dpdk-forwarder/tests
+      src/servernic/dpdk/tests`: 26 passed.
+- [x] **Zero AF_PACKET** — `grep -rniE "AF_PACKET|SOCK_RAW|PF_PACKET"` over
+      non-test source returns no matches (README mentions only).
+- [x] **Closed #18** and reconciled the GitHub issue state with this roadmap.
 
 ## #20 — Scale to 100k connections, 3-NIC topology
 
