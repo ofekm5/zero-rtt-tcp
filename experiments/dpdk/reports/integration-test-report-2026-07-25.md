@@ -5,7 +5,7 @@
 **ServerNIC binary**: `src/servernic/dpdk/` (full translator)
 **Experiment script**: `experiments/dpdk/run_experiment.sh`
 **Node scripts**: `experiments/dpdk/` (clientnic/servernic), `experiments/nodes/` (client/server)
-**Overall result**: ALL PASSED
+**Overall result**: 1 FAILURE(S)
 
 ## Latency Summary (TTFB @ 3 points + FCT)
 
@@ -14,640 +14,698 @@
   servernic TTFB (in-app): no samples found
   Client TTFB   : no samples found
   Client FCT    : no samples found
-  Pcap FCT      : n=100  min=116.845  mean=422.991  median=472.077  max=674.377 ms
-  Send unlock   : n=100  min=1.699  mean=22.291  median=22.603  max=37.502 ms
-  Server gap    : n=100  min=3.128  mean=36.216  median=27.556  max=257.675 ms
+  Pcap FCT      : n=143  min=16037.647  mean=16042.805  median=16042.734  max=16048.904 ms
+  Send unlock   : n=144  min=16031.818  mean=16033.750  median=16033.779  max=16035.737 ms
+  Server gap    : n=277  min=15973.667  mean=16009.819  median=16007.544  max=16035.586 ms
 ```
 
 ## Client Output
 
 ```
---- Round 1/1: 1 port(s) [8080-8080] x 100 parallel = 100 conns ---
-------------------------------------------------------------
-Client connecting to 10.1.2.143, TCP port 8080
-TCP window size: 0.11 MByte (default)
-------------------------------------------------------------
-[ 72] local 10.1.0.178 port 37824 connected with 10.1.2.143 port 8080
-[  3] local 10.1.0.178 port 37158 connected with 10.1.2.143 port 8080
-[  5] local 10.1.0.178 port 37188 connected with 10.1.2.143 port 8080
-[  4] local 10.1.0.178 port 37174 connected with 10.1.2.143 port 8080
-[  6] local 10.1.0.178 port 37198 connected with 10.1.2.143 port 8080
-[ 18] local 10.1.0.178 port 37330 connected with 10.1.2.143 port 8080
-[  9] local 10.1.0.178 port 37220 connected with 10.1.2.143 port 8080
-[  7] local 10.1.0.178 port 37208 connected with 10.1.2.143 port 8080
-[  8] local 10.1.0.178 port 37210 connected with 10.1.2.143 port 8080
-[ 10] local 10.1.0.178 port 37236 connected with 10.1.2.143 port 8080
-[ 12] local 10.1.0.178 port 37268 connected with 10.1.2.143 port 8080
-[ 16] local 10.1.0.178 port 37312 connected with 10.1.2.143 port 8080
-[ 19] local 10.1.0.178 port 37344 connected with 10.1.2.143 port 8080
-[ 25] local 10.1.0.178 port 37410 connected with 10.1.2.143 port 8080
-[ 23] local 10.1.0.178 port 37398 connected with 10.1.2.143 port 8080
-[ 26] local 10.1.0.178 port 37424 connected with 10.1.2.143 port 8080
-[ 29] local 10.1.0.178 port 37452 connected with 10.1.2.143 port 8080
-[ 31] local 10.1.0.178 port 37474 connected with 10.1.2.143 port 8080
-[ 27] local 10.1.0.178 port 37432 connected with 10.1.2.143 port 8080
-[ 36] local 10.1.0.178 port 37516 connected with 10.1.2.143 port 8080
-[ 35] local 10.1.0.178 port 37504 connected with 10.1.2.143 port 8080
-[ 40] local 10.1.0.178 port 37544 connected with 10.1.2.143 port 8080
-[ 44] local 10.1.0.178 port 37584 connected with 10.1.2.143 port 8080
-[ 47] local 10.1.0.178 port 37622 connected with 10.1.2.143 port 8080
-[ 91] local 10.1.0.178 port 37998 connected with 10.1.2.143 port 8080
-[ 90] local 10.1.0.178 port 37986 connected with 10.1.2.143 port 8080
-[ 67] local 10.1.0.178 port 37764 connected with 10.1.2.143 port 8080
-[ 69] local 10.1.0.178 port 37794 connected with 10.1.2.143 port 8080
-[103] local 10.1.0.178 port 38098 connected with 10.1.2.143 port 8080
-[ 11] local 10.1.0.178 port 37252 connected with 10.1.2.143 port 8080
-[ 13] local 10.1.0.178 port 37280 connected with 10.1.2.143 port 8080
-[ 15] local 10.1.0.178 port 37302 connected with 10.1.2.143 port 8080
-[ 70] local 10.1.0.178 port 37798 connected with 10.1.2.143 port 8080
-[ 17] local 10.1.0.178 port 37314 connected with 10.1.2.143 port 8080
-[ 78] local 10.1.0.178 port 37854 connected with 10.1.2.143 port 8080
-[ 14] local 10.1.0.178 port 37286 connected with 10.1.2.143 port 8080
-[ 97] local 10.1.0.178 port 38052 connected with 10.1.2.143 port 8080
-[ 20] local 10.1.0.178 port 37358 connected with 10.1.2.143 port 8080
-[ 77] local 10.1.0.178 port 37848 connected with 10.1.2.143 port 8080
-[ 54] local 10.1.0.178 port 37672 connected with 10.1.2.143 port 8080
-[ 76] local 10.1.0.178 port 37844 connected with 10.1.2.143 port 8080
-[ 80] local 10.1.0.178 port 37884 connected with 10.1.2.143 port 8080
-[ 21] local 10.1.0.178 port 37368 connected with 10.1.2.143 port 8080
-[ 83] local 10.1.0.178 port 37916 connected with 10.1.2.143 port 8080
-[ 22] local 10.1.0.178 port 37384 connected with 10.1.2.143 port 8080
-[ 86] local 10.1.0.178 port 37940 connected with 10.1.2.143 port 8080
-[ 49] local 10.1.0.178 port 37632 connected with 10.1.2.143 port 8080
-[ 64] local 10.1.0.178 port 37742 connected with 10.1.2.143 port 8080
-[ 34] local 10.1.0.178 port 37496 connected with 10.1.2.143 port 8080
-[ 42] local 10.1.0.178 port 37574 connected with 10.1.2.143 port 8080
-[ 75] local 10.1.0.178 port 37838 connected with 10.1.2.143 port 8080
-[ 28] local 10.1.0.178 port 37438 connected with 10.1.2.143 port 8080
-[ 96] local 10.1.0.178 port 38030 connected with 10.1.2.143 port 8080
-[ 82] local 10.1.0.178 port 37908 connected with 10.1.2.143 port 8080
-[ 65] local 10.1.0.178 port 37756 connected with 10.1.2.143 port 8080
-[ 87] local 10.1.0.178 port 37956 connected with 10.1.2.143 port 8080
-[ 24] local 10.1.0.178 port 37408 connected with 10.1.2.143 port 8080
-[ 51] local 10.1.0.178 port 37652 connected with 10.1.2.143 port 8080
-[ 52] local 10.1.0.178 port 37658 connected with 10.1.2.143 port 8080
-[ 43] local 10.1.0.178 port 37578 connected with 10.1.2.143 port 8080
-[ 56] local 10.1.0.178 port 37682 connected with 10.1.2.143 port 8080
-[ 58] local 10.1.0.178 port 37692 connected with 10.1.2.143 port 8080
-[ 38] local 10.1.0.178 port 37522 connected with 10.1.2.143 port 8080
-[ 37] local 10.1.0.178 port 37520 connected with 10.1.2.143 port 8080
-[ 57] local 10.1.0.178 port 37688 connected with 10.1.2.143 port 8080
-[ 59] local 10.1.0.178 port 37696 connected with 10.1.2.143 port 8080
-[ 60] local 10.1.0.178 port 37694 connected with 10.1.2.143 port 8080
-[ 61] local 10.1.0.178 port 37706 connected with 10.1.2.143 port 8080
-[ 32] local 10.1.0.178 port 37482 connected with 10.1.2.143 port 8080
-[ 55] local 10.1.0.178 port 37676 connected with 10.1.2.143 port 8080
-[ 85] local 10.1.0.178 port 37932 connected with 10.1.2.143 port 8080
-[ 88] local 10.1.0.178 port 37966 connected with 10.1.2.143 port 8080
-[ 81] local 10.1.0.178 port 37892 connected with 10.1.2.143 port 8080
-[ 98] local 10.1.0.178 port 38064 connected with 10.1.2.143 port 8080
-[ 33] local 10.1.0.178 port 37494 connected with 10.1.2.143 port 8080
-[ 94] local 10.1.0.178 port 38014 connected with 10.1.2.143 port 8080
-[ 74] local 10.1.0.178 port 37828 connected with 10.1.2.143 port 8080
-[ 73] local 10.1.0.178 port 37826 connected with 10.1.2.143 port 8080
-[ 84] local 10.1.0.178 port 37930 connected with 10.1.2.143 port 8080
-[ 41] local 10.1.0.178 port 37560 connected with 10.1.2.143 port 8080
-[ 66] local 10.1.0.178 port 37758 connected with 10.1.2.143 port 8080
-[ 79] local 10.1.0.178 port 37868 connected with 10.1.2.143 port 8080
-[ 95] local 10.1.0.178 port 38036 connected with 10.1.2.143 port 8080
-[ 89] local 10.1.0.178 port 37980 connected with 10.1.2.143 port 8080
-[ 62] local 10.1.0.178 port 37722 connected with 10.1.2.143 port 8080
-[ 92] local 10.1.0.178 port 38012 connected with 10.1.2.143 port 8080
-[ 30] local 10.1.0.178 port 37468 connected with 10.1.2.143 port 8080
-[ 39] local 10.1.0.178 port 37532 connected with 10.1.2.143 port 8080
-[ 93] local 10.1.0.178 port 38008 connected with 10.1.2.143 port 8080
-[ 48] local 10.1.0.178 port 37630 connected with 10.1.2.143 port 8080
-[ 53] local 10.1.0.178 port 37664 connected with 10.1.2.143 port 8080
-[ 46] local 10.1.0.178 port 37600 connected with 10.1.2.143 port 8080
-[ 50] local 10.1.0.178 port 37648 connected with 10.1.2.143 port 8080
-[ 99] local 10.1.0.178 port 38078 connected with 10.1.2.143 port 8080
-[ 45] local 10.1.0.178 port 37612 connected with 10.1.2.143 port 8080
-[ 63] local 10.1.0.178 port 37726 connected with 10.1.2.143 port 8080
-[ 68] local 10.1.0.178 port 37780 connected with 10.1.2.143 port 8080
-[100] local 10.1.0.178 port 38086 connected with 10.1.2.143 port 8080
-[ 71] local 10.1.0.178 port 37812 connected with 10.1.2.143 port 8080
-[101] local 10.1.0.178 port 38096 connected with 10.1.2.143 port 8080
-[ ID] Interval       Transfer     Bandwidth
-[ 16]  0.0- 0.1 sec  1.00 MBytes   140 Mbits/sec
-[ 36]  0.0- 0.1 sec  1.00 MBytes   155 Mbits/sec
-[ 40]  0.0- 0.1 sec  1.00 MBytes   134 Mbits/sec
-[ 42]  0.0- 0.1 sec  1.00 MBytes   155 Mbits/sec
-[ 44]  0.0- 0.1 sec  1.00 MBytes  92.5 Mbits/sec
-[ 13]  0.0- 0.1 sec  1.00 MBytes  91.7 Mbits/sec
-[ 14]  0.0- 0.1 sec  1.00 MBytes  88.1 Mbits/sec
-[ 38]  0.0- 0.1 sec  1.00 MBytes  76.4 Mbits/sec
-[ 32]  0.0- 0.1 sec  1.00 MBytes  83.9 Mbits/sec
-[ 23]  0.0- 0.1 sec  1.00 MBytes  67.2 Mbits/sec
-[ 31]  0.0- 0.1 sec  1.00 MBytes  69.3 Mbits/sec
-[ 35]  0.0- 0.1 sec  1.00 MBytes  65.5 Mbits/sec
-[ 24]  0.0- 0.1 sec  1.00 MBytes  64.3 Mbits/sec
-[  4]  0.0- 0.2 sec  1.00 MBytes  54.3 Mbits/sec
-[  9]  0.0- 0.1 sec  1.00 MBytes  56.5 Mbits/sec
-[ 11]  0.0- 0.2 sec  1.00 MBytes  55.7 Mbits/sec
-[ 21]  0.0- 0.1 sec  1.00 MBytes  57.9 Mbits/sec
-[ 34]  0.0- 0.1 sec  1.00 MBytes  60.1 Mbits/sec
-[ 43]  0.0- 0.1 sec  1.00 MBytes  56.9 Mbits/sec
-[ 37]  0.0- 0.1 sec  1.00 MBytes  58.8 Mbits/sec
-[ 33]  0.0- 0.1 sec  1.00 MBytes  62.2 Mbits/sec
-[  3]  0.0- 0.2 sec  1.00 MBytes  50.0 Mbits/sec
-[ 25]  0.0- 0.2 sec  1.00 MBytes  47.1 Mbits/sec
-[ 29]  0.0- 0.2 sec  1.00 MBytes  45.0 Mbits/sec
-[ 17]  0.0- 0.2 sec  1.00 MBytes  46.3 Mbits/sec
-[ 22]  0.0- 0.2 sec  1.00 MBytes  52.9 Mbits/sec
-[  7]  0.0- 0.2 sec  1.00 MBytes  43.2 Mbits/sec
-[ 12]  0.0- 0.2 sec  1.00 MBytes  41.5 Mbits/sec
-[ 15]  0.0- 0.2 sec  1.00 MBytes  43.6 Mbits/sec
-[ 19]  0.0- 0.2 sec  1.00 MBytes  37.8 Mbits/sec
-[ 27]  0.0- 0.2 sec  1.00 MBytes  38.4 Mbits/sec
-[ 20]  0.0- 0.2 sec  1.00 MBytes  38.8 Mbits/sec
-[  8]  0.0- 0.2 sec  1.00 MBytes  35.3 Mbits/sec
-[ 10]  0.0- 0.3 sec  1.00 MBytes  33.2 Mbits/sec
-[ 26]  0.0- 0.2 sec  1.00 MBytes  33.9 Mbits/sec
-[ 28]  0.0- 0.2 sec  1.00 MBytes  34.2 Mbits/sec
-[ 62]  0.0- 0.3 sec  1.00 MBytes  30.6 Mbits/sec
-[ 50]  0.0- 0.3 sec  1.00 MBytes  31.8 Mbits/sec
-[ 82]  0.0- 0.3 sec  1.00 MBytes  28.5 Mbits/sec
-[ 30]  0.0- 0.3 sec  1.00 MBytes  29.0 Mbits/sec
-[ 54]  0.0- 0.3 sec  1.00 MBytes  28.0 Mbits/sec
-[ 55]  0.0- 0.3 sec  1.00 MBytes  25.5 Mbits/sec
-[ 84]  0.0- 0.3 sec  1.00 MBytes  26.2 Mbits/sec
-[ 47]  0.0- 0.4 sec  1.00 MBytes  23.5 Mbits/sec
-[ 52]  0.0- 0.3 sec  1.00 MBytes  24.6 Mbits/sec
-[ 78]  0.0- 0.4 sec  1.00 MBytes  22.6 Mbits/sec
-[ 97]  0.0- 0.4 sec  1.00 MBytes  22.4 Mbits/sec
-[ 49]  0.0- 0.4 sec  1.00 MBytes  22.4 Mbits/sec
-[ 65]  0.0- 0.4 sec  1.00 MBytes  22.3 Mbits/sec
-[ 18]  0.0- 0.4 sec  1.00 MBytes  21.5 Mbits/sec
-[ 88]  0.0- 0.4 sec  1.00 MBytes  21.7 Mbits/sec
-[  6]  0.0- 0.4 sec  1.00 MBytes  20.6 Mbits/sec
-[ 58]  0.0- 0.4 sec  1.00 MBytes  20.1 Mbits/sec
-[ 80]  0.0- 0.4 sec  1.00 MBytes  19.7 Mbits/sec
-[ 87]  0.0- 0.4 sec  1.00 MBytes  19.5 Mbits/sec
-[ 73]  0.0- 0.4 sec  1.00 MBytes  18.9 Mbits/sec
-[ 39]  0.0- 0.4 sec  1.00 MBytes  19.2 Mbits/sec
-[ 53]  0.0- 0.4 sec  1.00 MBytes  19.3 Mbits/sec
-[ 45]  0.0- 0.4 sec  1.00 MBytes  19.7 Mbits/sec
-[ 67]  0.0- 0.4 sec  1.00 MBytes  18.7 Mbits/sec
-[103]  0.0- 0.5 sec  1.00 MBytes  18.0 Mbits/sec
-[ 86]  0.0- 0.5 sec  1.00 MBytes  18.1 Mbits/sec
-[ 59]  0.0- 0.5 sec  1.00 MBytes  17.8 Mbits/sec
-[ 81]  0.0- 0.5 sec  1.00 MBytes  18.5 Mbits/sec
-[ 63]  0.0- 0.5 sec  1.00 MBytes  18.0 Mbits/sec
-[ 72]  0.0- 0.5 sec  1.00 MBytes  16.4 Mbits/sec
-[ 91]  0.0- 0.5 sec  1.00 MBytes  16.4 Mbits/sec
-[ 90]  0.0- 0.5 sec  1.00 MBytes  17.3 Mbits/sec
-[ 69]  0.0- 0.5 sec  1.00 MBytes  17.6 Mbits/sec
-[ 77]  0.0- 0.5 sec  1.00 MBytes  16.8 Mbits/sec
-[ 64]  0.0- 0.5 sec  1.00 MBytes  17.8 Mbits/sec
-[ 75]  0.0- 0.5 sec  1.00 MBytes  17.4 Mbits/sec
-[ 56]  0.0- 0.5 sec  1.00 MBytes  17.2 Mbits/sec
-[ 60]  0.0- 0.5 sec  1.00 MBytes  16.7 Mbits/sec
-[ 98]  0.0- 0.5 sec  1.00 MBytes  16.6 Mbits/sec
-[ 41]  0.0- 0.5 sec  1.00 MBytes  17.5 Mbits/sec
-[  5]  0.0- 0.5 sec  1.00 MBytes  16.3 Mbits/sec
-[ 70]  0.0- 0.5 sec  1.00 MBytes  16.0 Mbits/sec
-[ 76]  0.0- 0.5 sec  1.00 MBytes  15.8 Mbits/sec
-[ 57]  0.0- 0.5 sec  1.00 MBytes  16.3 Mbits/sec
-[ 66]  0.0- 0.5 sec  1.00 MBytes  16.0 Mbits/sec
-[ 48]  0.0- 0.6 sec  1.00 MBytes  15.2 Mbits/sec
-[ 99]  0.0- 0.5 sec  1.00 MBytes  15.5 Mbits/sec
-[ 83]  0.0- 0.6 sec  1.00 MBytes  14.8 Mbits/sec
-[ 96]  0.0- 0.6 sec  1.00 MBytes  15.1 Mbits/sec
-[ 51]  0.0- 0.6 sec  1.00 MBytes  14.5 Mbits/sec
-[ 61]  0.0- 0.6 sec  1.00 MBytes  14.9 Mbits/sec
-[ 85]  0.0- 0.6 sec  1.00 MBytes  14.8 Mbits/sec
-[ 94]  0.0- 0.6 sec  1.00 MBytes  14.6 Mbits/sec
-[ 74]  0.0- 0.6 sec  1.00 MBytes  14.6 Mbits/sec
-[ 79]  0.0- 0.6 sec  1.00 MBytes  14.7 Mbits/sec
-[ 95]  0.0- 0.6 sec  1.00 MBytes  14.5 Mbits/sec
-[ 89]  0.0- 0.6 sec  1.00 MBytes  14.9 Mbits/sec
-[ 92]  0.0- 0.6 sec  1.00 MBytes  15.0 Mbits/sec
-[100]  0.0- 0.6 sec  1.00 MBytes  14.7 Mbits/sec
-[101]  0.0- 0.6 sec  1.00 MBytes  15.1 Mbits/sec
-[ 93]  0.0- 0.6 sec  1.00 MBytes  14.4 Mbits/sec
-[ 68]  0.0- 0.6 sec  1.00 MBytes  14.4 Mbits/sec
-[ 71]  0.0- 0.6 sec  1.00 MBytes  14.3 Mbits/sec
-[ 46]  0.0- 0.6 sec  1.00 MBytes  13.9 Mbits/sec
-[SUM]  0.0- 0.6 sec   100 MBytes  1388 Mbits/sec
-Success: 1/1
+--- Round 1/1: 4 port(s) starting at 8080 x 100000 total connections, 4096 bytes/conn ---
+Transfer complete: 68779/100000 connections ok, 31221 failed, duration=142.775s, ~15.8 Mbits/sec
+Success: 68779/100000
+Success: 0/1
 ```
 
 ## ClientNIC Log (0-RTT activity)
 
 ```
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x12906e2d in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x0d99cfcc in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe2f1839f in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x743986a7 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9aecd984 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x5726da61 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xff284f5e in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd28c1d69 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8738144d in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xfcd7320b in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xac44a422 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x82b11fda in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xa504435d in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9492709e in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xebe4ae4d in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8d46c2c9 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x99b6aeca in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1d989e57 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x55ba483c in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7f708625 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x14fb5222 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x34202fc5 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x3f4f5747 in ack-num
-FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xa380d25d in ack-num
-FORWARDER: stats client-facing (port 1): rx=73772 tx=61165 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats ServerNIC-facing (port 0): rx=61065 tx=73772 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats mempool: avail=5185/8191 low-water=4236
-FORWARDER: stats client-facing (port 1): rx=73772 tx=61165 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats ServerNIC-facing (port 0): rx=61065 tx=73772 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats mempool: avail=5185/8191 low-water=4236
-FORWARDER: stats client-facing (port 1): rx=73772 tx=61165 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats ServerNIC-facing (port 0): rx=61065 tx=73772 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats mempool: avail=5185/8191 low-water=4236
-FORWARDER: stats client-facing (port 1): rx=73773 tx=61165 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats ServerNIC-facing (port 0): rx=61066 tx=73772 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats mempool: avail=5187/8191 low-water=4236
-FORWARDER: stats client-facing (port 1): rx=73773 tx=61165 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats ServerNIC-facing (port 0): rx=61066 tx=73772 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats mempool: avail=5187/8191 low-water=4236
-FORWARDER: stats client-facing (port 1): rx=73773 tx=61165 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats ServerNIC-facing (port 0): rx=61066 tx=73772 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats mempool: avail=5187/8191 low-water=4236
-FORWARDER: stats client-facing (port 1): rx=73773 tx=61165 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats ServerNIC-facing (port 0): rx=61066 tx=73772 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-FORWARDER: stats mempool: avail=5187/8191 low-water=4236
-FORWARDER: Shutting down...
-ena_rx_queue_release(): Rx queue 1:0 released
-ena_tx_queue_release(): Tx queue 1:0 released
-ena_rx_queue_release(): Rx queue 0:0 released
-ena_tx_queue_release(): Tx queue 0:0 released
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x31069f98 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xde8942eb in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe7eb56a1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1dd4d502 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf5b96fac in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x24accff1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x414263bb in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7cde02de in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf47b0f1f in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf547cbc2 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x61ef3ecd in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8dbae168 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x932087a2 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x628228b1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe95b743a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc636d349 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xda013a97 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xa3e5a46a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8744b349 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1f7fa379 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe70b65f7 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x496c0f64 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x156df218 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x0a553386 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x28894da4 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb955a879 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xcb266639 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x347c8b08 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x0c178be7 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd68ebb0a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x53ba15ab in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xcb291be6 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xcd3c9672 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd6b23825 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9b64bbcd in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb24b69aa in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x077375f3 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb6b73057 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7f036449 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe80fb8d7 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf399ff26 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd69e57eb in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x760cd00c in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf6cd8f2b in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x040eca76 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xbd13a0b5 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x93187ce9 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x3aa2e9b2 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1f6ab7de in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6f849deb in ack-nu--output truncated--
 ```
 
 ## ServerNIC Log
 
 ```
-SERVERNIC: stats mempool: avail=5670/8191 low-water=4273
-SERVERNIC: stats ClientNIC-facing (port 0): rx=72509 tx=61065 imissed=1264 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats ClientNIC-facing (port 0): imissed=1264 ? RX ring overflowed, core too slow (capacity-model ?11)
-SERVERNIC: stats Server-facing (port 1): rx=61166 tx=72508 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats mempool: avail=5670/8191 low-water=4273
-SERVERNIC: stats ClientNIC-facing (port 0): rx=72509 tx=61065 imissed=1264 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats ClientNIC-facing (port 0): imissed=1264 ? RX ring overflowed, core too slow (capacity-model ?11)
-SERVERNIC: stats Server-facing (port 1): rx=61166 tx=72508 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats mempool: avail=5670/8191 low-water=4273
-SERVERNIC: stats ClientNIC-facing (port 0): rx=72509 tx=61065 imissed=1264 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats ClientNIC-facing (port 0): imissed=1264 ? RX ring overflowed, core too slow (capacity-model ?11)
-SERVERNIC: stats Server-facing (port 1): rx=61166 tx=72508 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats mempool: avail=5670/8191 low-water=4273
-SERVERNIC: stats ClientNIC-facing (port 0): rx=72509 tx=61065 imissed=1264 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats ClientNIC-facing (port 0): imissed=1264 ? RX ring overflowed, core too slow (capacity-model ?11)
-SERVERNIC: stats Server-facing (port 1): rx=61166 tx=72508 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats mempool: avail=5670/8191 low-water=4273
-SERVERNIC: stats ClientNIC-facing (port 0): rx=72510 tx=61065 imissed=1264 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats ClientNIC-facing (port 0): imissed=1264 ? RX ring overflowed, core too slow (capacity-model ?11)
-SERVERNIC: stats Server-facing (port 1): rx=61167 tx=72508 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats mempool: avail=5672/8191 low-water=4273
-SERVERNIC: stats ClientNIC-facing (port 0): rx=72510 tx=61065 imissed=1264 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats ClientNIC-facing (port 0): imissed=1264 ? RX ring overflowed, core too slow (capacity-model ?11)
-SERVERNIC: stats Server-facing (port 1): rx=61167 tx=72508 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
-SERVERNIC: stats mempool: avail=5672/8191 low-water=4273
-SERVERNIC: Shutting down...
-ena_rx_queue_release(): Rx queue 0:0 released
-ena_tx_queue_release(): Tx queue 0:0 released
-ena_rx_queue_release(): Rx queue 1:0 released
-ena_tx_queue_release(): Tx queue 1:0 released
+SERVERNIC: SYN: new flow, V=0x0770c43c
+SERVERNIC: SYN-ACK: delta=0x391e6529, V=0x8ebea2c5, real_isn=0x55a03d9c
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xfda98390
+SERVERNIC: SYN: new flow, V=0x0cc52c10
+SERVERNIC: SYN: new flow, V=0x6b6c7489
+SERVERNIC: SYN-ACK: delta=0xbd173a32, V=0xa87de5a4, real_isn=0xeb66ab72
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN-ACK: delta=0x1beccc25, V=0x505bd371, real_isn=0x346f074c
+SERVERNIC: SYN-ACK: delta=0x3b26e29e, V=0xc611a524, real_isn=0x8aeac286
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x36b9021d
+SERVERNIC: SYN-ACK: delta=0xd5adf501, V=0x0770c43c, real_isn=0x31c2cf3b
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x6dcb441e
+SERVERNIC: SYN-ACK: delta=0x16601934, V=0xfda98390, real_isn=0xe7496a5c
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x48afac6d
+SERVERNIC: SYN-ACK: delta=0xc6f7e481, V=0x0cc52c10, real_isn=0x45cd478f
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x090e07e9
+SERVERNIC: SYN-ACK: delta=0x83d92763, V=0x6b6c7489, real_isn=0xe7934d26
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x408a3c73
+SERVERNIC: SYN: new flow, V=0x79273f43
+SERVERNIC: SYN-ACK: delta=0xad8aa794, V=0x6dcb441e, real_isn=0xc0409c8a
+SERVERNIC: SYN-ACK: delta=0xa3bf3604, V=0x36b9021d, real_isn=0x92f9cc19
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xef24f101
+SERVERNIC: SYN: new flow, V=0xf392--output truncated--
 ```
 
 ## Server Log
 
 ```
-[ 46]  0.0- 0.5 sec  1.00 MBytes  15.3 Mbits/sec
-[ 13]  0.0- 0.6 sec  1.00 MBytes  15.2 Mbits/sec
-[ 14]  0.0- 0.6 sec  1.00 MBytes  13.9 Mbits/sec
-[ 30]  0.0- 0.6 sec  1.00 MBytes  14.4 Mbits/sec
-[ 64]  0.0- 0.6 sec  1.00 MBytes  14.5 Mbits/sec
-[ 72]  0.0- 0.6 sec  1.00 MBytes  14.2 Mbits/sec
-[ 60]  0.0- 0.6 sec  1.00 MBytes  14.4 Mbits/sec
-[ 65]  0.0- 0.6 sec  1.00 MBytes  13.9 Mbits/sec
-[ 67]  0.0- 0.6 sec  1.00 MBytes  14.3 Mbits/sec
-[ 71]  0.0- 0.6 sec  1.00 MBytes  14.0 Mbits/sec
-[ 50]  0.0- 0.6 sec  1.00 MBytes  14.1 Mbits/sec
-[ 54]  0.0- 0.6 sec  1.00 MBytes  14.5 Mbits/sec
-[ 66]  0.0- 0.6 sec  1.00 MBytes  14.3 Mbits/sec
-[ 56]  0.0- 0.6 sec  1.00 MBytes  14.2 Mbits/sec
-[ 44]  0.0- 0.6 sec  1.00 MBytes  13.8 Mbits/sec
-[ 39]  0.0- 0.6 sec  1.00 MBytes  13.8 Mbits/sec
-[ 21]  0.0- 0.6 sec  1.00 MBytes  13.7 Mbits/sec
-[ 63]  0.0- 0.6 sec  1.00 MBytes  13.4 Mbits/sec
-[ 47]  0.0- 0.6 sec  1.00 MBytes  13.3 Mbits/sec
-[SUM]  0.0- 0.6 sec   100 MBytes  1.33 Gbits/sec
+[1;33m[18:12:24] Killing any leftover load-generator processes...[0m
+[1;33m[18:12:25] Open-file limit (ulimit -n): 1048576[0m
+[1;33m[18:12:25] Syncing code to origin/main (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            main       -> FETCH_HEAD
+HEAD is now at 58f11c3 Measure cycles_per_packet against offered load; raise pcap-analysis timeout for 100k-scale captures
+[1;33m[18:12:26] Server VM IP: 10.1.2.143[0m
+[1;33m[18:12:26] Will listen on 0.0.0.0:8080-8083 (4 port(s))[0m
+
+[1;33m[18:12:26] Starting load-generator server on ports 8080-8083 ? press Ctrl+C to stop.[0m
+
+Listening on ports [8080, 8081, 8082, 8083]
+Received 38715392 bytes across 9452 connections (so far)
+Received 122867712 bytes across 29997 connections (so far)
+Received 161480704 bytes across 39424 connections (so far)
+Received 161566720 bytes across 39445 connections (so far)
 ```
 
 ## Packet Analysis
 
 ```
-metric=send_unlock value_ms=37.502 node=client flow=10.1.0.178:37158-10.1.2.143:8080
-metric=fct value_ms=237.485 node=client flow=10.1.0.178:37158-10.1.2.143:8080
-metric=send_unlock value_ms=37.020 node=client flow=10.1.0.178:37174-10.1.2.143:8080
-metric=fct value_ms=212.814 node=client flow=10.1.0.178:37174-10.1.2.143:8080
-metric=send_unlock value_ms=36.385 node=client flow=10.1.0.178:37188-10.1.2.143:8080
-metric=fct value_ms=607.086 node=client flow=10.1.0.178:37188-10.1.2.143:8080
-metric=send_unlock value_ms=35.778 node=client flow=10.1.0.178:37198-10.1.2.143:8080
-metric=fct value_ms=501.625 node=client flow=10.1.0.178:37198-10.1.2.143:8080
-metric=send_unlock value_ms=35.156 node=client flow=10.1.0.178:37208-10.1.2.143:8080
-metric=fct value_ms=271.949 node=client flow=10.1.0.178:37208-10.1.2.143:8080
-metric=send_unlock value_ms=34.548 node=client flow=10.1.0.178:37210-10.1.2.143:8080
-metric=fct value_ms=312.031 node=client flow=10.1.0.178:37210-10.1.2.143:8080
-metric=send_unlock value_ms=34.382 node=client flow=10.1.0.178:37220-10.1.2.143:8080
-metric=fct value_ms=210.106 node=client flow=10.1.0.178:37220-10.1.2.143:8080
-metric=send_unlock value_ms=33.882 node=client flow=10.1.0.178:37236-10.1.2.143:8080
-metric=fct value_ms=311.320 node=client flow=10.1.0.178:37236-10.1.2.143:8080
-metric=send_unlock value_ms=34.786 node=client flow=10.1.0.178:37252-10.1.2.143:8080
-metric=fct value_ms=209.235 node=client flow=10.1.0.178:37252-10.1.2.143:8080
-metric=send_unlock value_ms=33.226 node=client flow=10.1.0.178:37268-10.1.2.143:8080
-metric=fct value_ms=292.456 node=client flow=10.1.0.178:37268-10.1.2.143:8080
-metric=send_unlock value_ms=34.318 node=client flow=10.1.0.178:37280-10.1.2.143:8080
-metric=fct value_ms=158.726 node=client flow=10.1.0.178:37280-10.1.2.143:8080
-metric=send_unlock value_ms=34.114 node=client flow=10.1.0.178:37286-10.1.2.143:8080
-metric=fct value_ms=158.154 node=client flow=10.1.0.178:37286-10.1.2.143:8080
-metric=send_unlock value_ms=33.701 node=client flow=10.1.0.178:37302-10.1.2.143:8080
-metric=fct value_ms=269.166 node=client flow=10.1.0.178:37302-10.1.2.143:8080
-metric=send_unlock value_ms=31.898 node=client flow=10.1.0.178:37312-10.1.2.143:8080
-metric=fct value_ms=126.325 node=client flow=10.1.0.178:37312-10.1.2.143:8080
-metric=send_unlock value_ms=33.179 node=client flow=10.1.0.178:37314-10.1.2.143:8080
-metric=fct value_ms=243.490 node=client flow=10.1.0.178:37314-10.1.2.143:8080
-metric=send_unlock value_ms=31.415 node=client flow=10.1.0.178:37330-10.1.2.143:8080
-metric=fct value_ms=454.384 node=client flow=10.1.0.178:37330-10.1.2.143:8080
-metric=send_unlock value_ms=31.099 node=client flow=10.1.0.178:37344-10.1.2.143:8080
-metric=fct value_ms=290.167 node=client flow=10.1.0.178:37344-10.1.2.143:8080
-metric=send_unlock value_ms=32.844 node=client flow=10.1.0.178:37358-10.1.2.143:8080
-metric=fct value_ms=290.081 node=client flow=10.1.0.178:37358-10.1.2.143:8080
-metric=send_unlock value_ms=32.597 node=client flow=10.1.0.178:37368-10.1.2.143:8080
-metric=fct value_ms=230.241 node=client flow=10.1.0.178:37368-10.1.2.143:8080
-metric=send_unlock value_ms=32.121 node=client flow=10.1.0.178:37384-10.1.2.143:8080
-metric=fct value_ms=225.827 node=client flow=10.1.0.178:37384-10.1.2.143:8080
-metric=send_unlock value_ms=29.844 node=client flow=10.1.0.178:37398-10.1.2.143:8080
-metric=fct value_ms=208.929 node=client flow=10.1.0.178:37398-10.1.2.143:8080
-metric=send_unlock value_ms=32.831 node=client flow=10.1.0.178:37408-10.1.2.143:8080
-metric=fct value_ms=173.573 node=client flow=10.1.0.178:37408-10.1.2.143:8080
-metric=send_unlock value_ms=28.569 node=client flow=10.1.0.178:37410-10.1.2.143:8080
-metric=fct value_ms=224.344 node=client flow=10.1.0.178:37410-10.1.2.143:8080
-metric=send_unlock value_ms=28.529 node=client flow=10.1.0.178:37424-10.1.2.143:8080
-metric=fct value_ms=305.706 node=client flow=10.1.0.178:37424-10.1.2.143:8080
-metric=send_unlock value_ms=28.026 node=client flow=10.1.0.178:37432-10.1.2.143:8080
-metric=fct value_ms=285.106 node=client flow=10.1.0.178:37432-10.1.2.143:8080
-metric=send_unlock value_ms=31.210 node=client flow=10.1.0.178:37438-10.1.2.143:8080
-metric=fct value_ms=305.193 node=client flow=10.1.0.178:37438-10.1.2.143:8080
-metric=send_unlock value_ms=27.267 node=client flow=10.1.0.178:37452-10.1.2.143:8080
-metric=fct value_ms=238.800 node=client flow=10.1.0.178:37452-10.1.2.143:8080
-metric=send_unlock value_ms=33.250 node=client flow=10.1.0.178:37468-10.1.2.143:8080
-metric=fct value_ms=349.378 node=client flow=10.1.0.178:37468-10.1.2.143:8080
-metric=send_unlock value_ms=26.656 node=client flow=10.1.0.178:37474-10.1.2.143:8080
-metric=fct value_ms=205.657 node=client flow=10.1.0.178:37474-10.1.2.143:8080
-metric=send_unlock value_ms=31.339 node=client flow=10.1.0.178:37482-10.1.2.143:8080
-metric=fct value_ms=161.896 node=client flow=10.1.0.178:37482-10.1.2.143:8080
-metric=send_unlock value_ms=30.954 node=client flow=10.1.0.178:37494-10.1.2.143:8080
-metric=fct value_ms=209.467 node=client flow=10.1.0.178:37494-10.1.2.143:8080
-metric=send_unlock value_ms=28.013 node=client flow=10.1.0.178:37496-10.1.2.143:8080
-metric=fct value_ms=200.526 node=client flow=10.1.0.178:37496-10.1.2.143:8080
-metric=send_unlock value_ms=25.423 node=client flow=10.1.0.178:37504-10.1.2.143:8080
-metric=fct value_ms=216.997 node=client flow=10.1.0.178:37504-10.1.2.143:8080
-metric=send_unlock value_ms=24.756 node=client flow=10.1.0.178:37516-10.1.2.143:8080
-metric=fct value_ms=118.994 node=client flow=10.1.0.178:37516-10.1.2.143:8080
-metric=send_unlock value_ms=29.093 node=client flow=10.1.0.178:37520-10.1.2.143:8080
-metric=fct value_ms=204.538 node=client flow=10.1.0.178:37520-10.1.2.143:8080
-metric=send_unlock value_ms=28.423 node=client flow=10.1.0.178:37522-10.1.2.143:8080
-metric=fct value_ms=149.189 node=client flow=10.1.0.178:37522-10.1.2.143:8080
-metric=send_unlock value_ms=29.993 node=client flow=10.1.0.178:37532-10.1.2.143:8080
-metric=fct value_ms=526.609 node=client flow=10.1.0.178:37532-10.1.2.143:8080
-metric=send_unlock value_ms=23.518 node=client flow=10.1.0.178:37544-10.1.2.143:8080
-metric=fct value_ms=117.383 node=client flow=10.1.0.178:37544-10.1.2.143:8080
-metric=send_unlock value_ms=28.559 node=client flow=10.1.0.178:37560-10.1.2.143:8080
-metric=fct value_ms=593.347 node=client flow=10.1.0.178:37560-10.1.2.143:8080
-metric=send_unlock value_ms=25.375 node=client flow=10.1.0.178:37574-10.1.2.143:8080
-metric=fct value_ms=116.845 node=client flow=10.1.0.178:37574-10.1.2.143:8080
-metric=send_unlock value_ms=26.756 node=client flow=10.1.0.178:37578-10.1.2.143:8080
-metric=fct value_ms=218.503 node=client flow=10.1.0.178:37578-10.1.2.143:8080
-metric=send_unlock value_ms=22.130 node=client flow=10.1.0.178:37584-10.1.2.143:8080
-metric=fct value_ms=156.994 node=client flow=10.1.0.178:37584-10.1.2.143:8080
-metric=send_unlock value_ms=28.316 node=client flow=10.1.0.178:37600-10.1.2.143:8080
-metric=fct value_ms=674.377 node=client flow=10.1.0.178:37600-10.1.2.143:8080
-metric=send_unlock value_ms=27.936 node=client flow=10.1.0.178:37612-10.1.2.143:8080
-metric=fct value_ms=531.116 node=client flow=10.1.0.178:37612-10.1.2.143:8080
-metric=send_unlock value_ms=21.404 node=client flow=10.1.0.178:37622-10.1.2.143:8080
-metric=fct value_ms=422.347 node=client flow=10.1.0.178:37622-10.1.2.143:8080
-metric=send_unlock value_ms=26.956 node=client flow=10.1.0.178:37630-10.1.2.143:8080
-metric=fct value_ms=590.108 node=client flow=10.1.0.178:37630-10.1.2.143:8080
-metric=send_unlock value_ms=22.587 node=client flow=10.1.0.178:37632-10.1.2.143:8080
-metric=fct value_ms=442.920 node=client flow=10.1.0.178:37632-10.1.2.143:8080
-metric=send_unlock value_ms=26.476 node=client flow=10.1.0.178:37648-10.1.2.143:8080
-metric=fct value_ms=360.346 node=client flow=10.1.0.178:37648-10.1.2.143:8080
-metric=send_unlock value_ms=23.408 node=client flow=10.1.0.178:37652-10.1.2.143:8080
-metric=fct value_ms=627.290 node=client flow=10.1.0.178:37652-10.1.2.143:8080
-metric=send_unlock value_ms=23.279 node=client flow=10.1.0.178:37658-10.1.2.143:8080
-metric=fct value_ms=421.274 node=client flow=10.1.0.178:37658-10.1.2.143:8080
-metric=send_unlock value_ms=25.411 node=client flow=10.1.0.178:37664-10.1.2.143:8080
-metric=fct value_ms=484.444 node=client flow=10.1.0.178:37664-10.1.2.143:8080
-metric=send_unlock value_ms=20.702 node=client flow=10.1.0.178:37672-10.1.2.143:8080
-metric=fct value_ms=360.577 node=client flow=10.1.0.178:37672-10.1.2.143:8080
-metric=send_unlock value_ms=23.454 node=client flow=10.1.0.178:37676-10.1.2.143:8080
-metric=fct value_ms=399.328 node=client flow=10.1.0.178:37676-10.1.2.143:8080
-metric=send_unlock value_ms=22.483 node=client flow=10.1.0.178:37682-10.1.2.143:8080
-metric=fct value_ms=548.339 node=client flow=10.1.0.178:37682-10.1.2.143:8080
-metric=send_unlock value_ms=22.459 node=client flow=10.1.0.178:37688-10.1.2.143:8080
-metric=fct value_ms=567.038 node=client flow=10.1.0.178:37688-10.1.2.143:8080
-metric=send_unlock value_ms=21.760 node=client flow=10.1.0.178:37692-10.1.2.143:8080
-metric=fct value_ms=482.414 node=client flow=10.1.0.178:37692-10.1.2.143:8080
-metric=send_unlock value_ms=21.985 node=client flow=10.1.0.178:37694-10.1.2.143:8080
-metric=fct value_ms=545.216 node=client flow=10.1.0.178:37694-10.1.2.143:8080
-metric=send_unlock value_ms=21.288 node=client flow=10.1.0.178:37696-10.1.2.143:8080
-metric=fct value_ms=499.949 node=client flow=10.1.0.178:37696-10.1.2.143:8080
-metric=send_unlock value_ms=21.278 node=client flow=10.1.0.178:37706-10.1.2.143:8080
-metric=fct value_ms=624.650 node=client flow=10.1.0.178:37706-10.1.2.143:8080
-metric=send_unlock value_ms=21.604 node=client flow=10.1.0.178:37722-10.1.2.143:8080
-metric=fct value_ms=361.317 node=client flow=10.1.0.178:37722-10.1.2.143:8080
-metric=send_unlock value_ms=22.619 node=client flow=10.1.0.178:37726-10.1.2.143:8080
-metric=fct value_ms=578.902 node=client flow=10.1.0.178:37726-10.1.2.143:8080
-metric=send_unlock value_ms=17.936 node=client flow=10.1.0.178:37742-10.1.2.143:8080
-metric=fct value_ms=545.196 node=client flow=10.1.0.178:37742-10.1.2.143:8080
-metric=send_unlock value_ms=18.673 node=client flow=10.1.0.178:37756-10.1.2.143:8080
-metric=fct value_ms=525.957 node=client flow=10.1.0.178:37756-10.1.2.143:8080
-metric=send_unlock value_ms=20.087 node=client flow=10.1.0.178:37758-10.1.2.143:8080
-metric=fct value_ms=584.948 node=client flow=10.1.0.178:37758-10.1.2.143:8080
-metric=send_unlock value_ms=14.903 node=client flow=10.1.0.178:37764-10.1.2.143:8080
-metric=fct value_ms=584.275 node=client flow=10.1.0.178:37764-10.1.2.143:8080
-metric=send_unlock value_ms=20.816 node=client flow=10.1.0.178:37780-10.1.2.143:8080
-metric=fct value_ms=646.570 node=client flow=10.1.0.178:37780-10.1.2.143:8080
-metric=send_unlock value_ms=14.314 node=client flow=10.1.0.178:37794-10.1.2.143:8080
-metric=fct value_ms=542.037 node=client flow=10.1.0.178:37794-10.1.2.143:8080
-metric=send_unlock value_ms=14.463 node=client flow=10.1.0.178:37798-10.1.2.143:8080
-metric=fct value_ms=562.457 node=client flow=10.1.0.178:37798-10.1.2.143:8080
-metric=send_unlock value_ms=20.043 node=client flow=10.1.0.178:37812-10.1.2.143:8080
-metric=fct value_ms=645.570 node=client flow=10.1.0.178:37812-10.1.2.143:8080
-metric=send_unlock value_ms=12.181 node=client flow=10.1.0.178:37824-10.1.2.143:8080
-metric=fct value_ms=582.788 node=client flow=10.1.0.178:37824-10.1.2.143:8080
-metric=send_unlock value_ms=17.567 node=client flow=10.1.0.178:37826-10.1.2.143:8080
-metric=fct value_ms=508.544 node=client flow=10.1.0.178:37826-10.1.2.143:8080
-metric=send_unlock value_ms=17.135 node=client flow=10.1.0.178:37828-10.1.2.143:8080
-metric=fct value_ms=643.596 node=client flow=10.1.0.178:37828-10.1.2.143:8080
-metric=send_unlock value_ms=14.543 node=client flow=10.1.0.178:37838-10.1.2.143:8080
-metric=fct value_ms=581.804 node=client flow=10.1.0.178:37838-10.1.2.143:8080
-metric=send_unlock value_ms=13.233 node=client flow=10.1.0.178:37844-10.1.2.143:8080
-metric=fct value_ms=581.482 node=client flow=10.1.0.178:37844-10.1.2.143:8080
-metric=send_unlock value_ms=12.723 node=client flow=10.1.0.178:37848-10.1.2.143:8080
-metric=fct value_ms=564.788 node=client flow=10.1.0.178:37848-10.1.2.143:8080
-metric=send_unlock value_ms=11.948 node=client flow=10.1.0.178:37854-10.1.2.143:8080
-metric=fct value_ms=411.837 node=client flow=10.1.0.178:37854-10.1.2.143:8080
-metric=send_unlock value_ms=15.790 node=client flow=10.1.0.178:37868-10.1.2.143:8080
-metric=fct value_ms=618.116 node=client flow=10.1.0.178:37868-10.1.2.143:8080
-metric=send_unlock value_ms=12.046 node=client flow=10.1.0.178:37884-10.1.2.143:8080
-metric=fct value_ms=475.057 node=client flow=10.1.0.178:37884-10.1.2.143:8080
-metric=send_unlock value_ms=14.425 node=client flow=10.1.0.178:37892-10.1.2.143:8080
-metric=fct value_ms=545.378 node=client flow=10.1.0.178:37892-10.1.2.143:8080
-metric=send_unlock value_ms=12.831 node=client flow=10.1.0.178:37908-10.1.2.143:8080
-metric=fct value_ms=392.492 node=client flow=10.1.0.178:37908-10.1.2.143:8080
-metric=send_unlock value_ms=10.917 node=client flow=10.1.0.178:37916-10.1.2.143:8080
-metric=fct value_ms=616.844 node=client flow=10.1.0.178:37916-10.1.2.143:8080
-metric=send_unlock value_ms=14.072 node=client flow=10.1.0.178:37930-10.1.2.143:8080
-metric=fct value_ms=389.838 node=client flow=10.1.0.178:37930-10.1.2.143:8080
-metric=send_unlock value_ms=13.040 node=client flow=10.1.0.178:37932-10.1.2.143:8080
-metric=fct value_ms=616.132 node=client flow=10.1.0.178:37932-10.1.2.143:8080
-metric=send_unlock value_ms=10.295 node=client flow=10.1.0.178:37940-10.1.2.143:8080
-metric=fct value_ms=519.320 node=client flow=10.1.0.178:37940-10.1.2.143:8080
-metric=send_unlock value_ms=11.074 node=client flow=10.1.0.178:37956-10.1.2.143:8080
-metric=fct value_ms=469.097 node=client flow=10.1.0.178:37956-10.1.2.143:8080
-metric=send_unlock value_ms=12.343 node=client flow=10.1.0.178:37966-10.1.2.143:8080
-metric=fct value_ms=456.041 node=client flow=10.1.0.178:37966-10.1.2.143:8080
-metric=send_unlock value_ms=12.291 node=client flow=10.1.0.178:37980-10.1.2.143:8080
-metric=fct value_ms=614.680 node=client flow=10.1.0.178:37980-10.1.2.143:8080
-metric=send_unlock value_ms=6.525 node=client flow=10.1.0.178:37986-10.1.2.143:8080
-metric=fct value_ms=559.978 node=client flow=10.1.0.178:37986-10.1.2.143:8080
-metric=send_unlock value_ms=6.174 node=client flow=10.1.0.178:37998-10.1.2.143:8080
-metric=fct value_ms=575.805 node=client flow=10.1.0.178:37998-10.1.2.143:8080
-metric=send_unlock value_ms=11.776 node=client flow=10.1.0.178:38008-10.1.2.143:8080
-metric=fct value_ms=637.855 node=client flow=10.1.0.178:38008-10.1.2.143:8080
-metric=send_unlock value_ms=10.591 node=client flow=10.1.0.178:38012-10.1.2.143:8080
-metric=fct value_ms=612.718 node=client flow=10.1.0.178:38012-10.1.2.143:8080
-metric=send_unlock value_ms=9.835 node=client flow=10.1.0.178:38014-10.1.2.143:8080
-metric=fct value_ms=612.879 node=client flow=10.1.0.178:38014-10.1.2.143:8080
-metric=send_unlock value_ms=7.610 node=client flow=10.1.0.178:38030-10.1.2.143:8080
-metric=fct value_ms=612.104 node=client flow=10.1.0.178:38030-10.1.2.143:8080
-metric=send_unlock value_ms=9.496 node=client flow=10.1.0.178:38036-10.1.2.143:8080
-metric=fct value_ms=611.954 node=client flow=10.1.0.178:38036-10.1.2.143:8080
-metric=send_unlock value_ms=5.198 node=client flow=10.1.0.178:38052-10.1.2.143:8080
-metric=fct value_ms=533.467 node=client flow=10.1.0.178:38052-10.1.2.143:8080
-metric=send_unlock value_ms=8.227 node=client flow=10.1.0.178:38064-10.1.2.143:8080
-metric=fct value_ms=573.515 node=client flow=10.1.0.178:38064-10.1.2.143:8080
-metric=send_unlock value_ms=9.218 node=client flow=10.1.0.178:38078-10.1.2.143:8080
-metric=fct value_ms=572.858 node=client flow=10.1.0.178:38078-10.1.2.143:8080
-metric=send_unlock value_ms=8.632 node=client flow=10.1.0.178:38086-10.1.2.143:8080
-metric=fct value_ms=609.813 node=client flow=10.1.0.178:38086-10.1.2.143:8080
-metric=send_unlock value_ms=8.539 node=client flow=10.1.0.178:38096-10.1.2.143:8080
-metric=fct value_ms=609.318 node=client flow=10.1.0.178:38096-10.1.2.143:8080
-metric=send_unlock value_ms=1.699 node=client flow=10.1.0.178:38098-10.1.2.143:8080
-metric=fct value_ms=529.373 node=client flow=10.1.0.178:38098-10.1.2.143:8080
-metric=server_gap value_ms=36.110 node=server flow=10.1.0.178:37188-10.1.2.143:8080
-metric=server_gap value_ms=35.939 node=server flow=10.1.0.178:37158-10.1.2.143:8080
-metric=server_gap value_ms=36.177 node=server flow=10.1.0.178:37174-10.1.2.143:8080
-metric=server_gap value_ms=35.618 node=server flow=10.1.0.178:37198-10.1.2.143:8080
-metric=server_gap value_ms=35.099 node=server flow=10.1.0.178:37208-10.1.2.143:8080
-metric=server_gap value_ms=34.457 node=server flow=10.1.0.178:37210-10.1.2.143:8080
-metric=server_gap value_ms=34.289 node=server flow=10.1.0.178:37220-10.1.2.143:8080
-metric=server_gap value_ms=33.944 node=server flow=10.1.0.178:37236-10.1.2.143:8080
-metric=server_gap value_ms=36.134 node=server flow=10.1.0.178:37252-10.1.2.143:8080
-metric=server_gap value_ms=33.319 node=server flow=10.1.0.178:37268-10.1.2.143:8080
-metric=server_gap value_ms=35.849 node=server flow=10.1.0.178:37280-10.1.2.143:8080
-metric=server_gap value_ms=35.974 node=server flow=10.1.0.178:37286-10.1.2.143:8080
-metric=server_gap value_ms=35.254 node=server flow=10.1.0.178:37302-10.1.2.143:8080
-metric=server_gap value_ms=32.244 node=server flow=10.1.0.178:37312-10.1.2.143:8080
-metric=server_gap value_ms=35.094 node=server flow=10.1.0.178:37314-10.1.2.143:8080
-metric=server_gap value_ms=31.614 node=server flow=10.1.0.178:37330-10.1.2.143:8080
-metric=server_gap value_ms=31.274 node=server flow=10.1.0.178:37344-10.1.2.143:8080
-metric=server_gap value_ms=35.135 node=server flow=10.1.0.178:37358-10.1.2.143:8080
-metric=server_gap value_ms=35.207 node=server flow=10.1.0.178:37368-10.1.2.143:8080
-metric=server_gap value_ms=35.235 node=server flow=10.1.0.178:37384-10.1.2.143:8080
-metric=server_gap value_ms=30.249 node=server flow=10.1.0.178:37398-10.1.2.143:8080
-metric=server_gap value_ms=36.928 node=server flow=10.1.0.178:37408-10.1.2.143:8080
-metric=server_gap value_ms=28.962 node=server flow=10.1.0.178:37410-10.1.2.143:8080
-metric=server_gap value_ms=28.960 node=server flow=10.1.0.178:37424-10.1.2.143:8080
-metric=server_gap value_ms=28.492 node=server flow=10.1.0.178:37432-10.1.2.143:8080
-metric=server_gap value_ms=34.866 node=server flow=10.1.0.178:37438-10.1.2.143:8080
-metric=server_gap value_ms=27.680 node=server flow=10.1.0.178:37452-10.1.2.143:8080
-metric=server_gap value_ms=39.919 node=server flow=10.1.0.178:37468-10.1.2.143:8080
-metric=server_gap value_ms=27.055 node=server flow=10.1.0.178:37474-10.1.2.143:8080
-metric=server_gap value_ms=36.762 node=server flow=10.1.0.178:37482-10.1.2.143:8080
-metric=server_gap value_ms=36.771 node=server flow=10.1.0.178:37494-10.1.2.143:8080
-metric=server_gap value_ms=31.450 node=server flow=10.1.0.178:37496-10.1.2.143:8080
-metric=server_gap value_ms=25.869 node=server flow=10.1.0.178:37504-10.1.2.143:8080
-metric=server_gap value_ms=25.191 node=server flow=10.1.0.178:37516-10.1.2.143:8080
-metric=server_gap value_ms=34.134 node=server flow=10.1.0.178:37520-10.1.2.143:8080
-metric=server_gap value_ms=33.457 node=server flow=10.1.0.178:37522-10.1.2.143:8080
-metric=server_gap value_ms=36.442 node=server flow=10.1.0.178:37532-10.1.2.143:8080
-metric=server_gap value_ms=24.082 node=server flow=10.1.0.178:37544-10.1.2.143:8080
-metric=server_gap value_ms=34.736 node=server flow=10.1.0.178:37560-10.1.2.143:8080
-metric=server_gap value_ms=29.001 node=server flow=10.1.0.178:37574-10.1.2.143:8080
-metric=server_gap value_ms=31.276 node=server flow=10.1.0.178:37578-10.1.2.143:8080
-metric=server_gap value_ms=22.938 node=server flow=10.1.0.178:37584-10.1.2.143:8080
-metric=server_gap value_ms=257.675 node=server flow=10.1.0.178:37600-10.1.2.143:8080
-metric=server_gap value_ms=34.603 node=server flow=10.1.0.178:37612-10.1.2.143:8080
-metric=server_gap value_ms=22.464 node=server flow=10.1.0.178:37622-10.1.2.143:8080
-metric=server_gap value_ms=234.271 node=server flow=10.1.0.178:37630-10.1.2.143:8080
-metric=server_gap value_ms=25.782 node=server flow=10.1.0.178:37632-10.1.2.143:8080
-metric=server_gap value_ms=33.003 node=server flow=10.1.0.178:37648-10.1.2.143:8080
-metric=server_gap value_ms=27.756 node=server flow=10.1.0.178:37652-10.1.2.143:8080
-metric=server_gap value_ms=27.771 node=server flow=10.1.0.178:37658-10.1.2.143:8080
-metric=server_gap value_ms=254.849 node=server flow=10.1.0.178:37664-10.1.2.143:8080
-metric=server_gap value_ms=23.294 node=server flow=10.1.0.178:37672-10.1.2.143:8080
-metric=server_gap value_ms=29.154 node=server flow=10.1.0.178:37676-10.1.2.143:8080
-metric=server_gap value_ms=27.183 node=server flow=10.1.0.178:37682-10.1.2.143:8080
-metric=server_gap value_ms=27.745 node=server flow=10.1.0.178:37688-10.1.2.143:8080
-metric=server_gap value_ms=26.425 node=server flow=10.1.0.178:37692-10.1.2.143:8080
-metric=server_gap value_ms=27.431 node=server flow=10.1.0.178:37694-10.1.2.143:8080
-metric=server_gap value_ms=26.525 node=server flow=10.1.0.178:37696-10.1.2.143:8080
-metric=server_gap value_ms=26.707 node=server flow=10.1.0.178:37706-10.1.2.143:8080
-metric=server_gap value_ms=28.122 node=server flow=10.1.0.178:37722-10.1.2.143:8080
-metric=server_gap value_ms=29.049 node=server flow=10.1.0.178:37726-10.1.2.143:8080
-metric=server_gap value_ms=21.494 node=server flow=10.1.0.178:37742-10.1.2.143:8080
-metric=server_gap value_ms=22.802 node=server flow=10.1.0.178:37756-10.1.2.143:8080
-metric=server_gap value_ms=26.353 node=server flow=10.1.0.178:37758-10.1.2.143:8080
-metric=server_gap value_ms=15.946 node=server flow=10.1.0.178:37764-10.1.2.143:8080
-metric=server_gap value_ms=27.403 node=server flow=10.1.0.178:37780-10.1.2.143:8080
-metric=server_gap value_ms=15.526 node=server flow=10.1.0.178:37794-10.1.2.143:8080
-metric=server_gap value_ms=16.102 node=server flow=10.1.0.178:37798-10.1.2.143:8080
-metric=server_gap value_ms=26.935 node=server flow=10.1.0.178:37812-10.1.2.143:8080
-metric=server_gap value_ms=12.189 node=server flow=10.1.0.178:37824-10.1.2.143:8080
-metric=server_gap value_ms=23.681 node=server flow=10.1.0.178:37826-10.1.2.143:8080
-metric=server_gap value_ms=23.150 node=server flow=10.1.0.178:37828-10.1.2.143:8080
-metric=server_gap value_ms=18.378 node=server flow=10.1.0.178:37838-10.1.2.143:8080
-metric=server_gap value_ms=15.970 node=server flow=10.1.0.178:37844-10.1.2.143:8080
-metric=server_gap value_ms=15.048 node=server flow=10.1.0.178:37848-10.1.2.143:8080
-metric=server_gap value_ms=13.634 node=server flow=10.1.0.178:37854-10.1.2.143:8080
-metric=server_gap value_ms=22.316 node=server flow=10.1.0.178:37868-10.1.2.143:8080
-metric=server_gap value_ms=14.718 node=server flow=10.1.0.178:37884-10.1.2.143:8080
-metric=server_gap value_ms=20.228 node=server flow=10.1.0.178:37892-10.1.2.143:8080
-metric=server_gap value_ms=16.874 node=server flow=10.1.0.178:37908-10.1.2.143:8080
-metric=server_gap value_ms=13.758 node=server flow=10.1.0.178:37916-10.1.2.143:8080
-metric=server_gap value_ms=20.344 node=server flow=10.1.0.178:37930-10.1.2.143:8080
-metric=server_gap value_ms=18.629 node=server flow=10.1.0.178:37932-10.1.2.143:8080
-metric=server_gap value_ms=13.375 node=server flow=10.1.0.178:37940-10.1.2.143:8080
-metric=server_gap value_ms=15.127 node=server flow=10.1.0.178:37956-10.1.2.143:8080
-metric=server_gap value_ms=17.850 node=server flow=10.1.0.178:37966-10.1.2.143:8080
-metric=server_gap value_ms=18.646 node=server flow=10.1.0.178:37980-10.1.2.143:8080
-metric=server_gap value_ms=7.677 node=server flow=10.1.0.178:37986-10.1.2.143:8080
-metric=server_gap value_ms=7.176 node=server flow=10.1.0.178:37998-10.1.2.143:8080
-metric=server_gap value_ms=18.571 node=server flow=10.1.0.178:38008-10.1.2.143:8080
-metric=server_gap value_ms=218.574 node=server flow=10.1.0.178:38012-10.1.2.143:8080
-metric=server_gap value_ms=15.857 node=server flow=10.1.0.178:38014-10.1.2.143:8080
-metric=server_gap value_ms=11.461 node=server flow=10.1.0.178:38030-10.1.2.143:8080
-metric=server_gap value_ms=15.908 node=server flow=10.1.0.178:38036-10.1.2.143:8080
-metric=server_gap value_ms=7.413 node=server flow=10.1.0.178:38052-10.1.2.143:8080
-metric=server_gap value_ms=14.105 node=server flow=10.1.0.178:38064-10.1.2.143:8080
-metric=server_gap value_ms=15.637 node=server flow=10.1.0.178:38078-10.1.2.143:8080
-metric=server_gap value_ms=15.392 node=server flow=10.1.0.178:38086-10.1.2.143:8080
-metric=server_gap value_ms=215.187 node=server flow=10.1.0.178:38096-10.1.2.143:8080
-metric=server_gap value_ms=3.128 node=server flow=10.1.0.178:38098-10.1.2.143:8080
+metric=send_unlock value_ms=16035.737 node=client flow=10.1.0.178:9226-10.1.2.143:8080
+metric=fct value_ms=16038.201 node=client flow=10.1.0.178:9226-10.1.2.143:8080
+metric=send_unlock value_ms=16035.699 node=client flow=10.1.0.178:53158-10.1.2.143:8081
+metric=fct value_ms=16037.712 node=client flow=10.1.0.178:53158-10.1.2.143:8081
+metric=send_unlock value_ms=16035.628 node=client flow=10.1.0.178:3466-10.1.2.143:8082
+metric=fct value_ms=16037.986 node=client flow=10.1.0.178:3466-10.1.2.143:8082
+metric=send_unlock value_ms=16035.610 node=client flow=10.1.0.178:36622-10.1.2.143:8083
+metric=fct value_ms=16037.944 node=client flow=10.1.0.178:36622-10.1.2.143:8083
+metric=send_unlock value_ms=16035.589 node=client flow=10.1.0.178:9236-10.1.2.143:8080
+metric=fct value_ms=16037.849 node=client flow=10.1.0.178:9236-10.1.2.143:8080
+metric=send_unlock value_ms=16035.526 node=client flow=10.1.0.178:53162-10.1.2.143:8081
+metric=fct value_ms=16037.771 node=client flow=10.1.0.178:53162-10.1.2.143:8081
+metric=send_unlock value_ms=16035.476 node=client flow=10.1.0.178:3470-10.1.2.143:8082
+metric=fct value_ms=16037.700 node=client flow=10.1.0.178:3470-10.1.2.143:8082
+metric=send_unlock value_ms=16035.452 node=client flow=10.1.0.178:36624-10.1.2.143:8083
+metric=fct value_ms=16037.647 node=client flow=10.1.0.178:36624-10.1.2.143:8083
+metric=send_unlock value_ms=16035.439 node=client flow=10.1.0.178:9244-10.1.2.143:8080
+metric=fct value_ms=16038.272 node=client flow=10.1.0.178:9244-10.1.2.143:8080
+metric=send_unlock value_ms=16035.472 node=client flow=10.1.0.178:53170-10.1.2.143:8081
+metric=fct value_ms=16038.247 node=client flow=10.1.0.178:53170-10.1.2.143:8081
+metric=send_unlock value_ms=16035.345 node=client flow=10.1.0.178:3486-10.1.2.143:8082
+metric=fct value_ms=16038.165 node=client flow=10.1.0.178:3486-10.1.2.143:8082
+metric=send_unlock value_ms=16035.367 node=client flow=10.1.0.178:36634-10.1.2.143:8083
+metric=fct value_ms=16038.107 node=client flow=10.1.0.178:36634-10.1.2.143:8083
+metric=send_unlock value_ms=16035.335 node=client flow=10.1.0.178:9256-10.1.2.143:8080
+metric=fct value_ms=16038.086 node=client flow=10.1.0.178:9256-10.1.2.143:8080
+metric=send_unlock value_ms=16035.298 node=client flow=10.1.0.178:53176-10.1.2.143:8081
+metric=fct value_ms=16038.007 node=client flow=10.1.0.178:53176-10.1.2.143:8081
+metric=send_unlock value_ms=16035.248 node=client flow=10.1.0.178:3500-10.1.2.143:8082
+metric=fct value_ms=16039.014 node=client flow=10.1.0.178:3500-10.1.2.143:8082
+metric=send_unlock value_ms=16035.208 node=client flow=10.1.0.178:36646-10.1.2.143:8083
+metric=fct value_ms=16038.899 node=client flow=10.1.0.178:36646-10.1.2.143:8083
+metric=send_unlock value_ms=16035.210 node=client flow=10.1.0.178:9270-10.1.2.143:8080
+metric=fct value_ms=16038.872 node=client flow=10.1.0.178:9270-10.1.2.143:8080
+metric=send_unlock value_ms=16035.238 node=client flow=10.1.0.178:53192-10.1.2.143:8081
+metric=fct value_ms=16038.796 node=client flow=10.1.0.178:53192-10.1.2.143:8081
+metric=send_unlock value_ms=16035.008 node=client flow=10.1.0.178:3510-10.1.2.143:8082
+metric=fct value_ms=16038.684 node=client flow=10.1.0.178:3510-10.1.2.143:8082
+metric=send_unlock value_ms=16035.166 node=client flow=10.1.0.178:36650-10.1.2.143:8083
+metric=fct value_ms=16038.684 node=client flow=10.1.0.178:36650-10.1.2.143:8083
+metric=send_unlock value_ms=16035.135 node=client flow=10.1.0.178:9278-10.1.2.143:8080
+metric=fct value_ms=16038.628 node=client flow=10.1.0.178:9278-10.1.2.143:8080
+metric=send_unlock value_ms=16035.023 node=client flow=10.1.0.178:53194-10.1.2.143:8081
+metric=fct value_ms=16038.527 node=client flow=10.1.0.178:53194-10.1.2.143:8081
+metric=send_unlock value_ms=16035.003 node=client flow=10.1.0.178:3526-10.1.2.143:8082
+metric=fct value_ms=16038.440 node=client flow=10.1.0.178:3526-10.1.2.143:8082
+metric=send_unlock value_ms=16035.065 node=client flow=10.1.0.178:36652-10.1.2.143:8083
+metric=fct value_ms=16039.715 node=client flow=10.1.0.178:36652-10.1.2.143:8083
+metric=send_unlock value_ms=16035.050 node=client flow=10.1.0.178:9280-10.1.2.143:8080
+metric=fct value_ms=16039.649 node=client flow=10.1.0.178:9280-10.1.2.143:8080
+metric=send_unlock value_ms=16034.872 node=client flow=10.1.0.178:53204-10.1.2.143:8081
+metric=fct value_ms=16039.521 node=client flow=10.1.0.178:53204-10.1.2.143:8081
+metric=send_unlock value_ms=16034.963 node=client flow=10.1.0.178:3542-10.1.2.143:8082
+metric=fct value_ms=16039.496 node=client flow=10.1.0.178:3542-10.1.2.143:8082
+metric=send_unlock value_ms=16034.950 node=client flow=10.1.0.178:36660-10.1.2.143:8083
+metric=fct value_ms=16039.407 node=client flow=10.1.0.178:36660-10.1.2.143:8083
+metric=send_unlock value_ms=16035.040 node=client flow=10.1.0.178:9288-10.1.2.143:8080
+metric=fct value_ms=16039.431 node=client flow=10.1.0.178:9288-10.1.2.143:8080
+metric=send_unlock value_ms=16034.840 node=client flow=10.1.0.178:53220-10.1.2.143:8081
+metric=fct value_ms=16039.302 node=client flow=10.1.0.178:53220-10.1.2.143:8081
+metric=send_unlock value_ms=16034.798 node=client flow=10.1.0.178:3548-10.1.2.143:8082
+metric=fct value_ms=16039.209 node=client flow=10.1.0.178:3548-10.1.2.143:8082
+metric=send_unlock value_ms=16034.802 node=client flow=10.1.0.178:36676-10.1.2.143:8083
+metric=fct value_ms=16040.898 node=client flow=10.1.0.178:36676-10.1.2.143:8083
+metric=send_unlock value_ms=16034.777 node=client flow=10.1.0.178:9300-10.1.2.143:8080
+metric=fct value_ms=16040.789 node=client flow=10.1.0.178:9300-10.1.2.143:8080
+metric=send_unlock value_ms=16034.751 node=client flow=10.1.0.178:53226-10.1.2.143:8081
+metric=fct value_ms=16040.781 node=client flow=10.1.0.178:53226-10.1.2.143:8081
+metric=send_unlock value_ms=16034.744 node=client flow=10.1.0.178:3556-10.1.2.143:8082
+metric=fct value_ms=16040.725 node=client flow=10.1.0.178:3556-10.1.2.143:8082
+metric=send_unlock value_ms=16034.716 node=client flow=10.1.0.178:36692-10.1.2.143:8083
+metric=fct value_ms=16040.667 node=client flow=10.1.0.178:36692-10.1.2.143:8083
+metric=send_unlock value_ms=16034.668 node=client flow=10.1.0.178:9308-10.1.2.143:8080
+metric=fct value_ms=16040.598 node=client flow=10.1.0.178:9308-10.1.2.143:8080
+metric=send_unlock value_ms=16034.611 node=client flow=10.1.0.178:53232-10.1.2.143:8081
+metric=fct value_ms=16040.489 node=client flow=10.1.0.178:53232-10.1.2.143:8081
+metric=send_unlock value_ms=16034.581 node=client flow=10.1.0.178:3564-10.1.2.143:8082
+metric=fct value_ms=16040.495 node=client flow=10.1.0.178:3564-10.1.2.143:8082
+metric=send_unlock value_ms=16034.543 node=client flow=10.1.0.178:36698-10.1.2.143:8083
+metric=fct value_ms=16040.418 node=client flow=10.1.0.178:36698-10.1.2.143:8083
+metric=send_unlock value_ms=16034.511 node=client flow=10.1.0.178:9320-10.1.2.143:8080
+metric=fct value_ms=16040.321 node=client flow=10.1.0.178:9320-10.1.2.143:8080
+metric=send_unlock value_ms=16034.496 node=client flow=10.1.0.178:53248-10.1.2.143:8081
+metric=fct value_ms=16040.261 node=client flow=10.1.0.178:53248-10.1.2.143:8081
+metric=send_unlock value_ms=16034.479 node=client flow=10.1.0.178:3578-10.1.2.143:8082
+metric=fct value_ms=16040.209 node=client flow=10.1.0.178:3578-10.1.2.143:8082
+metric=send_unlock value_ms=16034.496 node=client flow=10.1.0.178:36706-10.1.2.143:8083
+metric=fct value_ms=16040.206 node=client flow=10.1.0.178:36706-10.1.2.143:8083
+metric=send_unlock value_ms=16034.389 node=client flow=10.1.0.178:9330-10.1.2.143:8080
+metric=fct value_ms=16040.120 node=client flow=10.1.0.178:9330-10.1.2.143:8080
+metric=send_unlock value_ms=16034.377 node=client flow=10.1.0.178:53262-10.1.2.143:8081
+metric=fct value_ms=16040.042 node=client flow=10.1.0.178:53262-10.1.2.143:8081
+metric=send_unlock value_ms=16034.375 node=client flow=10.1.0.178:3588-10.1.2.143:8082
+metric=fct value_ms=16042.279 node=client flow=10.1.0.178:3588-10.1.2.143:8082
+metric=send_unlock value_ms=16034.342 node=client flow=10.1.0.178:36720-10.1.2.143:8083
+metric=fct value_ms=16042.266 node=client flow=10.1.0.178:36720-10.1.2.143:8083
+metric=send_unlock value_ms=16034.415 node=client flow=10.1.0.178:9346-10.1.2.143:8080
+metric=fct value_ms=16042.141 node=client flow=10.1.0.178:9346-10.1.2.143:8080
+metric=send_unlock value_ms=16034.396 node=client flow=10.1.0.178:53266-10.1.2.143:8081
+metric=fct value_ms=16042.120 node=client flow=10.1.0.178:53266-10.1.2.143:8081
+metric=send_unlock value_ms=16034.200 node=client flow=10.1.0.178:3590-10.1.2.143:8082
+metric=fct value_ms=16042.017 node=client flow=10.1.0.178:3590-10.1.2.143:8082
+metric=send_unlock value_ms=16034.353 node=client flow=10.1.0.178:36726-10.1.2.143:8083
+metric=fct value_ms=16041.969 node=client flow=10.1.0.178:36726-10.1.2.143:8083
+metric=send_unlock value_ms=16034.249 node=client flow=10.1.0.178:9360-10.1.2.143:8080
+metric=fct value_ms=16041.917 node=client flow=10.1.0.178:9360-10.1.2.143:8080
+metric=send_unlock value_ms=16034.280 node=client flow=10.1.0.178:53280-10.1.2.143:8081
+metric=fct value_ms=16041.984 node=client flow=10.1.0.178:53280-10.1.2.143:8081
+metric=send_unlock value_ms=16034.263 node=client flow=10.1.0.178:3604-10.1.2.143:8082
+metric=fct value_ms=16041.853 node=client flow=10.1.0.178:3604-10.1.2.143:8082
+metric=send_unlock value_ms=16034.135 node=client flow=10.1.0.178:36738-10.1.2.143:8083
+metric=fct value_ms=16041.690 node=client flow=10.1.0.178:36738-10.1.2.143:8083
+metric=send_unlock value_ms=16034.131 node=client flow=10.1.0.178:9376-10.1.2.143:8080
+metric=fct value_ms=16041.724 node=client flow=10.1.0.178:9376-10.1.2.143:8080
+metric=send_unlock value_ms=16034.086 node=client flow=10.1.0.178:53288-10.1.2.143:8081
+metric=fct value_ms=16041.606 node=client flow=10.1.0.178:53288-10.1.2.143:8081
+metric=send_unlock value_ms=16034.070 node=client flow=10.1.0.178:3618-10.1.2.143:8082
+metric=fct value_ms=16041.555 node=client flow=10.1.0.178:3618-10.1.2.143:8082
+metric=send_unlock value_ms=16034.045 node=client flow=10.1.0.178:36744-10.1.2.143:8083
+metric=fct value_ms=16041.495 node=client flow=10.1.0.178:36744-10.1.2.143:8083
+metric=send_unlock value_ms=16034.069 node=client flow=10.1.0.178:9380-10.1.2.143:8080
+metric=fct value_ms=16041.509 node=client flow=10.1.0.178:9380-10.1.2.143:8080
+metric=send_unlock value_ms=16034.040 node=client flow=10.1.0.178:53296-10.1.2.143:8081
+metric=fct value_ms=16041.506 node=client flow=10.1.0.178:53296-10.1.2.143:8081
+metric=send_unlock value_ms=16033.872 node=client flow=10.1.0.178:3626-10.1.2.143:8082
+metric=fct value_ms=16041.326 node=client flow=10.1.0.178:3626-10.1.2.143:8082
+metric=send_unlock value_ms=16033.895 node=client flow=10.1.0.178:36758-10.1.2.143:8083
+metric=fct value_ms=16041.308 node=client flow=10.1.0.178:36758-10.1.2.143:8083
+metric=send_unlock value_ms=16033.879 node=client flow=10.1.0.178:9394-10.1.2.143:8080
+metric=fct value_ms=16041.204 node=client flow=10.1.0.178:9394-10.1.2.143:8080
+metric=send_unlock value_ms=16033.870 node=client flow=10.1.0.178:53308-10.1.2.143:8081
+metric=fct value_ms=16041.218 node=client flow=10.1.0.178:53308-10.1.2.143:8081
+metric=send_unlock value_ms=16033.878 node=client flow=10.1.0.178:3638-10.1.2.143:8082
+metric=fct value_ms=16041.105 node=client flow=10.1.0.178:3638-10.1.2.143:8082
+metric=send_unlock value_ms=16033.876 node=client flow=10.1.0.178:36764-10.1.2.143:8083
+metric=fct value_ms=16043.905 node=client flow=10.1.0.178:36764-10.1.2.143:8083
+metric=send_unlock value_ms=16033.849 node=client flow=10.1.0.178:9408-10.1.2.143:8080
+metric=fct value_ms=16043.877 node=client flow=10.1.0.178:9408-10.1.2.143:8080
+metric=send_unlock value_ms=16033.829 node=client flow=10.1.0.178:53314-10.1.2.143:8081
+metric=fct value_ms=16043.819 node=client flow=10.1.0.178:53314-10.1.2.143:8081
+metric=send_unlock value_ms=16033.813 node=client flow=10.1.0.178:3652-10.1.2.143:8082
+metric=fct value_ms=16043.813 node=client flow=10.1.0.178:3652-10.1.2.143:8082
+metric=send_unlock value_ms=16033.842 node=client flow=10.1.0.178:36778-10.1.2.143:8083
+metric=fct value_ms=16043.851 node=client flow=10.1.0.178:36778-10.1.2.143:8083
+metric=send_unlock value_ms=16033.664 node=client flow=10.1.0.178:9416-10.1.2.143:8080
+metric=fct value_ms=16043.633 node=client flow=10.1.0.178:9416-10.1.2.143:8080
+metric=send_unlock value_ms=16033.684 node=client flow=10.1.0.178:53330-10.1.2.143:8081
+metric=fct value_ms=16043.638 node=client flow=10.1.0.178:53330-10.1.2.143:8081
+metric=send_unlock value_ms=16033.744 node=client flow=10.1.0.178:3658-10.1.2.143:8082
+metric=fct value_ms=16043.643 node=client flow=10.1.0.178:3658-10.1.2.143:8082
+metric=send_unlock value_ms=16033.588 node=client flow=10.1.0.178:36784-10.1.2.143:8083
+metric=fct value_ms=16043.505 node=client flow=10.1.0.178:36784-10.1.2.143:8083
+metric=send_unlock value_ms=16033.543 node=client flow=10.1.0.178:9426-10.1.2.143:8080
+metric=fct value_ms=16043.522 node=client flow=10.1.0.178:9426-10.1.2.143:8080
+metric=send_unlock value_ms=16033.556 node=client flow=10.1.0.178:53340-10.1.2.143:8081
+metric=fct value_ms=16043.404 node=client flow=10.1.0.178:53340-10.1.2.143:8081
+metric=send_unlock value_ms=16033.517 node=client flow=10.1.0.178:3666-10.1.2.143:8082
+metric=fct value_ms=16043.351 node=client flow=10.1.0.178:3666-10.1.2.143:8082
+metric=send_unlock value_ms=16033.533 node=client flow=10.1.0.178:36786-10.1.2.143:8083
+metric=fct value_ms=16043.281 node=client flow=10.1.0.178:36786-10.1.2.143:8083
+metric=send_unlock value_ms=16033.522 node=client flow=10.1.0.178:9430-10.1.2.143:8080
+metric=fct value_ms=16043.215 node=client flow=10.1.0.178:9430-10.1.2.143:8080
+metric=send_unlock value_ms=16033.479 node=client flow=10.1.0.178:53354-10.1.2.143:8081
+metric=fct value_ms=16043.178 node=client flow=10.1.0.178:53354-10.1.2.143:8081
+metric=send_unlock value_ms=16033.427 node=client flow=10.1.0.178:3676-10.1.2.143:8082
+metric=fct value_ms=16043.087 node=client flow=10.1.0.178:3676-10.1.2.143:8082
+metric=send_unlock value_ms=16033.423 node=client flow=10.1.0.178:36798-10.1.2.143:8083
+metric=fct value_ms=16043.019 node=client flow=10.1.0.178:36798-10.1.2.143:8083
+metric=send_unlock value_ms=16033.389 node=client flow=10.1.0.178:9436-10.1.2.143:8080
+metric=fct value_ms=16042.961 node=client flow=10.1.0.178:9436-10.1.2.143:8080
+metric=send_unlock value_ms=16033.380 node=client flow=10.1.0.178:53360-10.1.2.143:8081
+metric=fct value_ms=16042.902 node=client flow=10.1.0.178:53360-10.1.2.143:8081
+metric=send_unlock value_ms=16033.475 node=client flow=10.1.0.178:3692-10.1.2.143:8082
+metric=fct value_ms=16042.871 node=client flow=10.1.0.178:3692-10.1.2.143:8082
+metric=send_unlock value_ms=16033.288 node=client flow=10.1.0.178:36812-10.1.2.143:8083
+metric=fct value_ms=16042.819 node=client flow=10.1.0.178:36812-10.1.2.143:8083
+metric=send_unlock value_ms=16033.291 node=client flow=10.1.0.178:9442-10.1.2.143:8080
+metric=fct value_ms=16042.734 node=client flow=10.1.0.178:9442-10.1.2.143:8080
+metric=send_unlock value_ms=16033.298 node=client flow=10.1.0.178:53362-10.1.2.143:8081
+metric=fct value_ms=16042.680 node=client flow=10.1.0.178:53362-10.1.2.143:8081
+metric=send_unlock value_ms=16033.304 node=client flow=10.1.0.178:3706-10.1.2.143:8082
+metric=fct value_ms=16042.627 node=client flow=10.1.0.178:3706-10.1.2.143:8082
+metric=send_unlock value_ms=16033.148 node=client flow=10.1.0.178:36818-10.1.2.143:8083
+metric=fct value_ms=16042.519 node=client flow=10.1.0.178:36818-10.1.2.143:8083
+metric=send_unlock value_ms=16033.181 node=client flow=10.1.0.178:9450-10.1.2.143:8080
+metric=fct value_ms=16042.430 node=client flow=10.1.0.178:9450-10.1.2.143:8080
+metric=send_unlock value_ms=16033.157 node=client flow=10.1.0.178:53372-10.1.2.143:8081
+metric=fct value_ms=16046.042 node=client flow=10.1.0.178:53372-10.1.2.143:8081
+metric=send_unlock value_ms=16033.137 node=client flow=10.1.0.178:3722-10.1.2.143:8082
+metric=fct value_ms=16046.031 node=client flow=10.1.0.178:3722-10.1.2.143:8082
+metric=send_unlock value_ms=16033.084 node=client flow=10.1.0.178:36828-10.1.2.143:8083
+metric=fct value_ms=16045.969 node=client flow=10.1.0.178:36828-10.1.2.143:8083
+metric=send_unlock value_ms=16033.060 node=client flow=10.1.0.178:9454-10.1.2.143:8080
+metric=fct value_ms=16045.918 node=client flow=10.1.0.178:9454-10.1.2.143:8080
+metric=send_unlock value_ms=16033.117 node=client flow=10.1.0.178:53386-10.1.2.143:8081
+metric=fct value_ms=16045.905 node=client flow=10.1.0.178:53386-10.1.2.143:8081
+metric=send_unlock value_ms=16033.094 node=client flow=10.1.0.178:3732-10.1.2.143:8082
+metric=fct value_ms=16045.831 node=client flow=10.1.0.178:3732-10.1.2.143:8082
+metric=send_unlock value_ms=16032.926 node=client flow=10.1.0.178:36842-10.1.2.143:8083
+metric=fct value_ms=16045.710 node=client flow=10.1.0.178:36842-10.1.2.143:8083
+metric=send_unlock value_ms=16033.018 node=client flow=10.1.0.178:9462-10.1.2.143:8080
+metric=fct value_ms=16045.711 node=client flow=10.1.0.178:9462-10.1.2.143:8080
+metric=send_unlock value_ms=16033.038 node=client flow=10.1.0.178:53388-10.1.2.143:8081
+metric=fct value_ms=16045.764 node=client flow=10.1.0.178:53388-10.1.2.143:8081
+metric=send_unlock value_ms=16033.019 node=client flow=10.1.0.178:3746-10.1.2.143:8082
+metric=fct value_ms=16045.655 node=client flow=10.1.0.178:3746-10.1.2.143:8082
+metric=send_unlock value_ms=16032.992 node=client flow=10.1.0.178:36858-10.1.2.143:8083
+metric=fct value_ms=16045.751 node=client flow=10.1.0.178:36858-10.1.2.143:8083
+metric=send_unlock value_ms=16032.958 node=client flow=10.1.0.178:9476-10.1.2.143:8080
+metric=fct value_ms=16045.678 node=client flow=10.1.0.178:9476-10.1.2.143:8080
+metric=send_unlock value_ms=16032.939 node=client flow=10.1.0.178:53404-10.1.2.143:8081
+metric=fct value_ms=16045.612 node=client flow=10.1.0.178:53404-10.1.2.143:8081
+metric=send_unlock value_ms=16032.958 node=client flow=10.1.0.178:3748-10.1.2.143:8082
+metric=fct value_ms=16045.587 node=client flow=10.1.0.178:3748-10.1.2.143:8082
+metric=send_unlock value_ms=16032.778 node=client flow=10.1.0.178:36862-10.1.2.143:8083
+metric=fct value_ms=16045.424 node=client flow=10.1.0.178:36862-10.1.2.143:8083
+metric=send_unlock value_ms=16032.792 node=client flow=10.1.0.178:9484-10.1.2.143:8080
+metric=fct value_ms=16045.348 node=client flow=10.1.0.178:9484-10.1.2.143:8080
+metric=send_unlock value_ms=16032.770 node=client flow=10.1.0.178:53408-10.1.2.143:8081
+metric=fct value_ms=16045.312 node=client flow=10.1.0.178:53408-10.1.2.143:8081
+metric=send_unlock value_ms=16032.766 node=client flow=10.1.0.178:3762-10.1.2.143:8082
+metric=fct value_ms=16045.241 node=client flow=10.1.0.178:3762-10.1.2.143:8082
+metric=send_unlock value_ms=16032.731 node=client flow=10.1.0.178:36878-10.1.2.143:8083
+metric=fct value_ms=16045.188 node=client flow=10.1.0.178:36878-10.1.2.143:8083
+metric=send_unlock value_ms=16032.719 node=client flow=10.1.0.178:9488-10.1.2.143:8080
+metric=fct value_ms=16045.127 node=client flow=10.1.0.178:9488-10.1.2.143:8080
+metric=send_unlock value_ms=16032.796 node=client flow=10.1.0.178:53424-10.1.2.143:8081
+metric=fct value_ms=16045.075 node=client flow=10.1.0.178:53424-10.1.2.143:8081
+metric=send_unlock value_ms=16032.629 node=client flow=10.1.0.178:3764-10.1.2.143:8082
+metric=fct value_ms=16044.937 node=client flow=10.1.0.178:3764-10.1.2.143:8082
+metric=send_unlock value_ms=16032.682 node=client flow=10.1.0.178:36890-10.1.2.143:8083
+metric=fct value_ms=16044.913 node=client flow=10.1.0.178:36890-10.1.2.143:8083
+metric=send_unlock value_ms=16032.708 node=client flow=10.1.0.178:9502-10.1.2.143:8080
+metric=fct value_ms=16044.842 node=client flow=10.1.0.178:9502-10.1.2.143:8080
+metric=send_unlock value_ms=16032.586 node=client flow=10.1.0.178:53432-10.1.2.143:8081
+metric=fct value_ms=16044.772 node=client flow=10.1.0.178:53432-10.1.2.143:8081
+metric=send_unlock value_ms=16032.594 node=client flow=10.1.0.178:3772-10.1.2.143:8082
+metric=fct value_ms=16044.709 node=client flow=10.1.0.178:3772-10.1.2.143:8082
+metric=send_unlock value_ms=16032.568 node=client flow=10.1.0.178:36894-10.1.2.143:8083
+metric=fct value_ms=16044.672 node=client flow=10.1.0.178:36894-10.1.2.143:8083
+metric=send_unlock value_ms=16032.593 node=client flow=10.1.0.178:9512-10.1.2.143:8080
+metric=fct value_ms=16044.626 node=client flow=10.1.0.178:9512-10.1.2.143:8080
+metric=send_unlock value_ms=16032.578 node=client flow=10.1.0.178:53446-10.1.2.143:8081
+metric=fct value_ms=16044.566 node=client flow=10.1.0.178:53446-10.1.2.143:8081
+metric=send_unlock value_ms=16032.501 node=client flow=10.1.0.178:3776-10.1.2.143:8082
+metric=fct value_ms=16044.541 node=client flow=10.1.0.178:3776-10.1.2.143:8082
+metric=send_unlock value_ms=16032.291 node=client flow=10.1.0.178:36904-10.1.2.143:8083
+metric=fct value_ms=16044.336 node=client flow=10.1.0.178:36904-10.1.2.143:8083
+metric=send_unlock value_ms=16032.395 node=client flow=10.1.0.178:9518-10.1.2.143:8080
+metric=fct value_ms=16044.347 node=client flow=10.1.0.178:9518-10.1.2.143:8080
+metric=send_unlock value_ms=16032.333 node=client flow=10.1.0.178:53460-10.1.2.143:8081
+metric=fct value_ms=16044.290 node=client flow=10.1.0.178:53460-10.1.2.143:8081
+metric=send_unlock value_ms=16032.314 node=client flow=10.1.0.178:3786-10.1.2.143:8082
+metric=fct value_ms=16048.904 node=client flow=10.1.0.178:3786-10.1.2.143:8082
+metric=send_unlock value_ms=16032.270 node=client flow=10.1.0.178:36918-10.1.2.143:8083
+metric=fct value_ms=16048.844 node=client flow=10.1.0.178:36918-10.1.2.143:8083
+metric=send_unlock value_ms=16032.298 node=client flow=10.1.0.178:9524-10.1.2.143:8080
+metric=fct value_ms=16048.846 node=client flow=10.1.0.178:9524-10.1.2.143:8080
+metric=send_unlock value_ms=16032.174 node=client flow=10.1.0.178:53474-10.1.2.143:8081
+metric=fct value_ms=16048.732 node=client flow=10.1.0.178:53474-10.1.2.143:8081
+metric=send_unlock value_ms=16032.193 node=client flow=10.1.0.178:3790-10.1.2.143:8082
+metric=fct value_ms=16048.716 node=client flow=10.1.0.178:3790-10.1.2.143:8082
+metric=send_unlock value_ms=16032.196 node=client flow=10.1.0.178:36922-10.1.2.143:8083
+metric=fct value_ms=16048.662 node=client flow=10.1.0.178:36922-10.1.2.143:8083
+metric=send_unlock value_ms=16032.165 node=client flow=10.1.0.178:9538-10.1.2.143:8080
+metric=fct value_ms=16048.622 node=client flow=10.1.0.178:9538-10.1.2.143:8080
+metric=send_unlock value_ms=16032.135 node=client flow=10.1.0.178:53480-10.1.2.143:8081
+metric=fct value_ms=16048.571 node=client flow=10.1.0.178:53480-10.1.2.143:8081
+metric=send_unlock value_ms=16032.088 node=client flow=10.1.0.178:3800-10.1.2.143:8082
+metric=fct value_ms=16048.510 node=client flow=10.1.0.178:3800-10.1.2.143:8082
+metric=send_unlock value_ms=16032.053 node=client flow=10.1.0.178:36928-10.1.2.143:8083
+metric=fct value_ms=16048.440 node=client flow=10.1.0.178:36928-10.1.2.143:8083
+metric=send_unlock value_ms=16032.030 node=client flow=10.1.0.178:9546-10.1.2.143:8080
+metric=fct value_ms=16048.410 node=client flow=10.1.0.178:9546-10.1.2.143:8080
+metric=send_unlock value_ms=16032.007 node=client flow=10.1.0.178:53496-10.1.2.143:8081
+metric=fct value_ms=16048.345 node=client flow=10.1.0.178:53496-10.1.2.143:8081
+metric=send_unlock value_ms=16031.990 node=client flow=10.1.0.178:3812-10.1.2.143:8082
+metric=fct value_ms=16048.293 node=client flow=10.1.0.178:3812-10.1.2.143:8082
+metric=send_unlock value_ms=16032.087 node=client flow=10.1.0.178:36938-10.1.2.143:8083
+metric=fct value_ms=16048.270 node=client flow=10.1.0.178:36938-10.1.2.143:8083
+metric=send_unlock value_ms=16031.897 node=client flow=10.1.0.178:9552-10.1.2.143:8080
+metric=fct value_ms=16048.179 node=client flow=10.1.0.178:9552-10.1.2.143:8080
+metric=send_unlock value_ms=16031.893 node=client flow=10.1.0.178:53504-10.1.2.143:8081
+metric=fct value_ms=16048.201 node=client flow=10.1.0.178:53504-10.1.2.143:8081
+metric=send_unlock value_ms=16031.867 node=client flow=10.1.0.178:3826-10.1.2.143:8082
+metric=fct value_ms=16048.031 node=client flow=10.1.0.178:3826-10.1.2.143:8082
+metric=send_unlock value_ms=16031.818 node=client flow=10.1.0.178:36944-10.1.2.143:8083
+metric=fct v--output truncated--
+metric=server_gap value_ms=16035.528 node=server flow=10.1.0.178:53158-10.1.2.143:8081
+metric=server_gap value_ms=16035.560 node=server flow=10.1.0.178:9226-10.1.2.143:8080
+metric=server_gap value_ms=16035.586 node=server flow=10.1.0.178:3466-10.1.2.143:8082
+metric=server_gap value_ms=16035.558 node=server flow=10.1.0.178:36622-10.1.2.143:8083
+metric=server_gap value_ms=16035.506 node=server flow=10.1.0.178:9236-10.1.2.143:8080
+metric=server_gap value_ms=16035.480 node=server flow=10.1.0.178:53162-10.1.2.143:8081
+metric=server_gap value_ms=16035.385 node=server flow=10.1.0.178:3470-10.1.2.143:8082
+metric=server_gap value_ms=16035.398 node=server flow=10.1.0.178:9244-10.1.2.143:8080
+metric=server_gap value_ms=16035.321 node=server flow=10.1.0.178:36624-10.1.2.143:8083
+metric=server_gap value_ms=16035.355 node=server flow=10.1.0.178:3486-10.1.2.143:8082
+metric=server_gap value_ms=16035.325 node=server flow=10.1.0.178:53170-10.1.2.143:8081
+metric=server_gap value_ms=16035.322 node=server flow=10.1.0.178:36634-10.1.2.143:8083
+metric=server_gap value_ms=16035.293 node=server flow=10.1.0.178:9256-10.1.2.143:8080
+metric=server_gap value_ms=16035.254 node=server flow=10.1.0.178:53176-10.1.2.143:8081
+metric=server_gap value_ms=16035.191 node=server flow=10.1.0.178:3500-10.1.2.143:8082
+metric=server_gap value_ms=16035.164 node=server flow=10.1.0.178:9270-10.1.2.143:8080
+metric=server_gap value_ms=16035.045 node=server flow=10.1.0.178:36646-10.1.2.143:8083
+metric=server_gap value_ms=16035.182 node=server flow=10.1.0.178:53192-10.1.2.143:8081
+metric=server_gap value_ms=16034.954 node=server flow=10.1.0.178:3510-10.1.2.143:8082
+metric=server_gap value_ms=16035.096 node=server flow=10.1.0.178:36650-10.1.2.143:8083
+metric=server_gap value_ms=16034.957 node=server flow=10.1.0.178:53194-10.1.2.143:8081
+metric=server_gap value_ms=16034.944 node=server flow=10.1.0.178:9278-10.1.2.143:8080
+metric=server_gap value_ms=16034.948 node=server flow=10.1.0.178:3526-10.1.2.143:8082
+metric=server_gap value_ms=16035.010 node=server flow=10.1.0.178:36652-10.1.2.143:8083
+metric=server_gap value_ms=16035.009 node=server flow=10.1.0.178:9280-10.1.2.143:8080
+metric=server_gap value_ms=16034.844 node=server flow=10.1.0.178:53204-10.1.2.143:8081
+metric=server_gap value_ms=16034.906 node=server flow=10.1.0.178:3542-10.1.2.143:8082
+metric=server_gap value_ms=16034.906 node=server flow=10.1.0.178:36660-10.1.2.143:8083
+metric=server_gap value_ms=16034.991 node=server flow=10.1.0.178:9288-10.1.2.143:8080
+metric=server_gap value_ms=16034.797 node=server flow=10.1.0.178:53220-10.1.2.143:8081
+metric=server_gap value_ms=16034.985 node=server flow=10.1.0.178:36676-10.1.2.143:8083
+metric=server_gap value_ms=16034.592 node=server flow=10.1.0.178:3548-10.1.2.143:8082
+metric=server_gap value_ms=16034.885 node=server flow=10.1.0.178:9300-10.1.2.143:8080
+metric=server_gap value_ms=16034.844 node=server flow=10.1.0.178:3556-10.1.2.143:8082
+metric=server_gap value_ms=16034.726 node=server flow=10.1.0.178:53226-10.1.2.143:8081
+metric=server_gap value_ms=16034.717 node=server flow=10.1.0.178:9308-10.1.2.143:8080
+metric=server_gap value_ms=16034.692 node=server flow=10.1.0.178:36692-10.1.2.143:8083
+metric=server_gap value_ms=16034.585 node=server flow=10.1.0.178:3564-10.1.2.143:8082
+metric=server_gap value_ms=16034.524 node=server flow=10.1.0.178:36698-10.1.2.143:8083
+metric=server_gap value_ms=16034.427 node=server flow=10.1.0.178:53232-10.1.2.143:8081
+metric=server_gap value_ms=16034.443 node=server flow=10.1.0.178:9320-10.1.2.143:8080
+metric=server_gap value_ms=16034.463 node=server flow=10.1.0.178:53248-10.1.2.143:8081
+metric=server_gap value_ms=16034.330 node=server flow=10.1.0.178:9330-10.1.2.143:8080
+metric=server_gap value_ms=16034.264 node=server flow=10.1.0.178:3578-10.1.2.143:8082
+metric=server_gap value_ms=16034.335 node=server flow=10.1.0.178:36706-10.1.2.143:8083
+metric=server_gap value_ms=16034.530 node=server flow=10.1.0.178:36720-10.1.2.143:8083
+metric=server_gap value_ms=16034.150 node=server flow=10.1.0.178:53262-10.1.2.143:8081
+metric=server_gap value_ms=16034.389 node=server flow=10.1.0.178:3588-10.1.2.143:8082
+metric=server_gap value_ms=16034.505 node=server flow=10.1.0.178:9346-10.1.2.143:8080
+metric=server_gap value_ms=16034.440 node=server flow=10.1.0.178:53266-10.1.2.143:8081
+metric=server_gap value_ms=16034.361 node=server flow=10.1.0.178:3590-10.1.2.143:8082
+metric=server_gap value_ms=16034.361 node=server flow=10.1.0.178:36726-10.1.2.143:8083
+metric=server_gap value_ms=16034.276 node=server flow=10.1.0.178:9360-10.1.2.143:8080
+metric=server_gap value_ms=16034.327 node=server flow=10.1.0.178:53280-10.1.2.143:8081
+metric=server_gap value_ms=16034.224 node=server flow=10.1.0.178:3604-10.1.2.143:8082
+metric=server_gap value_ms=16034.081 node=server flow=10.1.0.178:9376-10.1.2.143:8080
+metric=server_gap value_ms=16033.957 node=server flow=10.1.0.178:36738-10.1.2.143:8083
+metric=server_gap value_ms=16034.022 node=server flow=10.1.0.178:53288-10.1.2.143:8081
+metric=server_gap value_ms=16034.009 node=server flow=10.1.0.178:36744-10.1.2.143:8083
+metric=server_gap value_ms=16034.031 node=server flow=10.1.0.178:9380-10.1.2.143:8080
+metric=server_gap value_ms=16033.861 node=server flow=10.1.0.178:3618-10.1.2.143:8082
+metric=server_gap value_ms=16033.983 node=server flow=10.1.0.178:53296-10.1.2.143:8081
+metric=server_gap value_ms=16033.854 node=server flow=10.1.0.178:36758-10.1.2.143:8083
+metric=server_gap value_ms=16033.674 node=server flow=10.1.0.178:3626-10.1.2.143:8082
+metric=server_gap value_ms=16033.820 node=server flow=10.1.0.178:53308-10.1.2.143:8081
+metric=server_gap value_ms=16033.748 node=server flow=10.1.0.178:3638-10.1.2.143:8082
+metric=server_gap value_ms=16033.811 node=server flow=10.1.0.178:36764-10.1.2.143:8083
+metric=server_gap value_ms=16033.633 node=server flow=10.1.0.178:9394-10.1.2.143:8080
+metric=server_gap value_ms=16033.794 node=server flow=10.1.0.178:53314-10.1.2.143:8081
+metric=server_gap value_ms=16033.746 node=server flow=10.1.0.178:9408-10.1.2.143:8080
+metric=server_gap value_ms=16033.746 node=server flow=10.1.0.178:3652-10.1.2.143:8082
+metric=server_gap value_ms=16033.649 node=server flow=10.1.0.178:36778-10.1.2.143:8083
+metric=server_gap value_ms=16033.613 node=server flow=10.1.0.178:9416-10.1.2.143:8080
+metric=server_gap value_ms=16033.459 node=server flow=10.1.0.178:53330-10.1.2.143:8081
+metric=server_gap value_ms=16033.578 node=server flow=10.1.0.178:3658-10.1.2.143:8082
+metric=server_gap value_ms=16033.449 node=server flow=10.1.0.178:36784-10.1.2.143:8083
+metric=server_gap value_ms=16033.497 node=server flow=10.1.0.178:9426-10.1.2.143:8080
+metric=server_gap value_ms=16033.522 node=server flow=10.1.0.178:53340-10.1.2.143:8081
+metric=server_gap value_ms=16033.505 node=server flow=10.1.0.178:3666-10.1.2.143:8082
+metric=server_gap value_ms=16033.472 node=server flow=10.1.0.178:36786-10.1.2.143:8083
+metric=server_gap value_ms=16033.477 node=server flow=10.1.0.178:9430-10.1.2.143:8080
+metric=server_gap value_ms=16033.425 node=server flow=10.1.0.178:53354-10.1.2.143:8081
+metric=server_gap value_ms=16033.356 node=server flow=10.1.0.178:3676-10.1.2.143:8082
+metric=server_gap value_ms=16033.372 node=server flow=10.1.0.178:36798-10.1.2.143:8083
+metric=server_gap value_ms=16033.341 node=server flow=10.1.0.178:9436-10.1.2.143:8080
+metric=server_gap value_ms=16033.346 node=server flow=10.1.0.178:53360-10.1.2.143:8081
+metric=server_gap value_ms=16033.242 node=server flow=10.1.0.178:36812-10.1.2.143:8083
+metric=server_gap value_ms=16033.324 node=server flow=10.1.0.178:3692-10.1.2.143:8082
+metric=server_gap value_ms=16033.240 node=server flow=10.1.0.178:9442-10.1.2.143:8080
+metric=server_gap value_ms=16033.258 node=server flow=10.1.0.178:53362-10.1.2.143:8081
+metric=server_gap value_ms=16033.256 node=server flow=10.1.0.178:3706-10.1.2.143:8082
+metric=server_gap value_ms=16033.100 node=server flow=10.1.0.178:36818-10.1.2.143:8083
+metric=server_gap value_ms=16032.931 node=server flow=10.1.0.178:9450-10.1.2.143:8080
+metric=server_gap value_ms=16032.977 node=server flow=10.1.0.178:53372-10.1.2.143:8081
+metric=server_gap value_ms=16033.025 node=server flow=10.1.0.178:3722-10.1.2.143:8082
+metric=server_gap value_ms=16033.016 node=server flow=10.1.0.178:36828-10.1.2.143:8083
+metric=server_gap value_ms=16033.069 node=server flow=10.1.0.178:53386-10.1.2.143:8081
+metric=server_gap value_ms=16032.941 node=server flow=10.1.0.178:9454-10.1.2.143:8080
+metric=server_gap value_ms=16033.043 node=server flow=10.1.0.178:3732-10.1.2.143:8082
+metric=server_gap value_ms=16032.768 node=server flow=10.1.0.178:36842-10.1.2.143:8083
+metric=server_gap value_ms=16032.915 node=server flow=10.1.0.178:9462-10.1.2.143:8080
+metric=server_gap value_ms=16032.996 node=server flow=10.1.0.178:53388-10.1.2.143:8081
+metric=server_gap value_ms=16032.948 node=server flow=10.1.0.178:36858-10.1.2.143:8083
+metric=server_gap value_ms=16032.870 node=server flow=10.1.0.178:3746-10.1.2.143:8082
+metric=server_gap value_ms=16032.714 node=server flow=10.1.0.178:9476-10.1.2.143:8080
+metric=server_gap value_ms=16032.760 node=server flow=10.1.0.178:53404-10.1.2.143:8081
+metric=server_gap value_ms=16032.844 node=server flow=10.1.0.178:3748-10.1.2.143:8082
+metric=server_gap value_ms=16032.710 node=server flow=10.1.0.178:36862-10.1.2.143:8083
+metric=server_gap value_ms=16032.726 node=server flow=10.1.0.178:9484-10.1.2.143:8080
+metric=server_gap value_ms=16032.716 node=server flow=10.1.0.178:53408-10.1.2.143:8081
+metric=server_gap value_ms=16032.677 node=server flow=10.1.0.178:3762-10.1.2.143:8082
+metric=server_gap value_ms=16032.669 node=server flow=10.1.0.178:9488-10.1.2.143:8080
+metric=server_gap value_ms=16032.584 node=server flow=10.1.0.178:36878-10.1.2.143:8083
+metric=server_gap value_ms=16032.569 node=server flow=10.1.0.178:3764-10.1.2.143:8082
+metric=server_gap value_ms=16032.625 node=server flow=10.1.0.178:36890-10.1.2.143:8083
+metric=server_gap value_ms=16032.541 node=server flow=10.1.0.178:53424-10.1.2.143:8081
+metric=server_gap value_ms=16032.657 node=server flow=10.1.0.178:9502-10.1.2.143:8080
+metric=server_gap value_ms=16032.503 node=server flow=10.1.0.178:53432-10.1.2.143:8081
+metric=server_gap value_ms=16032.585 node=server flow=10.1.0.178:3772-10.1.2.143:8082
+metric=server_gap value_ms=16032.533 node=server flow=10.1.0.178:36894-10.1.2.143:8083
+metric=server_gap value_ms=16005.440 node=server flow=10.1.0.178:9512-10.1.2.143:8080
+metric=server_gap value_ms=16005.493 node=server flow=10.1.0.178:53446-10.1.2.143:8081
+metric=server_gap value_ms=16005.586 node=server flow=10.1.0.178:53460-10.1.2.143:8081
+metric=server_gap value_ms=16005.364 node=server flow=10.1.0.178:36904-10.1.2.143:8083
+metric=server_gap value_ms=16005.766 node=server flow=10.1.0.178:9524-10.1.2.143:8080
+metric=server_gap value_ms=16005.813 node=server flow=10.1.0.178:3790-10.1.2.143:8082
+metric=server_gap value_ms=16005.627 node=server flow=10.1.0.178:3786-10.1.2.143:8082
+metric=server_gap value_ms=16005.483 node=server flow=10.1.0.178:3776-10.1.2.143:8082
+metric=server_gap value_ms=16005.656 node=server flow=10.1.0.178:36918-10.1.2.143:8083
+metric=server_gap value_ms=16005.706 node=server flow=10.1.0.178:53474-10.1.2.143:8081
+metric=server_gap value_ms=16006.249 node=server flow=10.1.0.178:36928-10.1.2.143:8083
+metric=server_gap value_ms=16005.493 node=server flow=10.1.0.178:9518-10.1.2.143:8080
+metric=server_gap value_ms=16005.959 node=server flow=10.1.0.178:53480-10.1.2.143:8081
+metric=server_gap value_ms=16005.989 node=server flow=10.1.0.178:3800-10.1.2.143:8082
+metric=server_gap value_ms=16005.895 node=server flow=10.1.0.178:9538-10.1.2.143:8080
+metric=server_gap value_ms=16005.824 node=server flow=10.1.0.178:36922-10.1.2.143:8083
+metric=server_gap value_ms=16006.142 node=server flow=10.1.0.178:53496-10.1.2.143:8081
+metric=server_gap value_ms=16006.268 node=server flow=10.1.0.178:3826-10.1.2.143:8082
+metric=server_gap value_ms=16006.109 node=server flow=10.1.0.178:9546-10.1.2.143:8080
+metric=server_gap value_ms=16006.605 node=server flow=10.1.0.178:9572-10.1.2.143:8080
+metric=server_gap value_ms=16006.334 node=server flow=10.1.0.178:53504-10.1.2.143:8081
+metric=server_gap value_ms=16006.331 node=server flow=10.1.0.178:9562-10.1.2.143:8080
+metric=server_gap value_ms=16006.289 node=server flow=10.1.0.178:36944-10.1.2.143:8083
+metric=server_gap value_ms=16006.672 node=server flow=10.1.0.178:3842-10.1.2.143:8082
+metric=server_gap value_ms=16006.461 node=server flow=10.1.0.178:3834-10.1.2.143:8082
+metric=server_gap value_ms=16006.545 node=server flow=10.1.0.178:36946-10.1.2.143:8083
+metric=server_gap value_ms=16006.102 node=server flow=10.1.0.178:9552-10.1.2.143:8080
+metric=server_gap value_ms=16006.103 node=server flow=10.1.0.178:3812-10.1.2.143:8082
+metric=server_gap value_ms=16006.358 node=server flow=10.1.0.178:53520-10.1.2.143:8081
+metric=server_gap value_ms=16006.137 node=server flow=10.1.0.178:36938-10.1.2.143:8083
+metric=server_gap value_ms=16006.701 node=server flow=10.1.0.178:53530-10.1.2.143:8081
+metric=server_gap value_ms=16006.764 node=server flow=10.1.0.178:36962-10.1.2.143:8083
+metric=server_gap value_ms=16006.905 node=server flow=10.1.0.178:3858-10.1.2.143:8082
+metric=server_gap value_ms=16006.711 node=server flow=10.1.0.178:53542-10.1.2.143:8081
+metric=server_gap value_ms=16007.041 node=server flow=10.1.0.178:36974-10.1.2.143:8083
+metric=server_gap value_ms=16006.880 node=server flow=10.1.0.178:9592-10.1.2.143:8080
+metric=server_gap value_ms=16006.943 node=server flow=10.1.0.178:3862-10.1.2.143:8082
+metric=server_gap value_ms=16007.102 node=server flow=10.1.0.178:53558-10.1.2.143:8081
+metric=server_gap value_ms=16007.137 node=server flow=10.1.0.178:3878-10.1.2.143:8082
+metric=server_gap value_ms=16006.718 node=server flow=10.1.0.178:36970-10.1.2.143:8083
+metric=server_gap value_ms=16006.797 node=server flow=10.1.0.178:9588-10.1.2.143:8080
+metric=server_gap value_ms=16007.168 node=server flow=10.1.0.178:53546-10.1.2.143:8081
+metric=server_gap value_ms=16007.053 node=server flow=10.1.0.178:9596-10.1.2.143:8080
+metric=server_gap value_ms=16007.202 node=server flow=10.1.0.178:36980-10.1.2.143:8083
+metric=server_gap value_ms=16007.411 node=server flow=10.1.0.178:36986-10.1.2.143:8083
+metric=server_gap value_ms=16007.360 node=server flow=10.1.0.178:3890-10.1.2.143:8082
+metric=server_gap value_ms=16007.263 node=server flow=10.1.0.178:9606-10.1.2.143:8080
+metric=server_gap value_ms=16007.307 node=server flow=10.1.0.178:53560-10.1.2.143:8081
+metric=server_gap value_ms=16007.084 node=server flow=10.1.0.178:53562-10.1.2.143:8081
+metric=server_gap value_ms=16007.057 node=server flow=10.1.0.178:9614-10.1.2.143:8080
+metric=server_gap value_ms=16007.360 node=server flow=10.1.0.178:3910-10.1.2.143:8082
+metric=server_gap value_ms=16007.574 node=server flow=10.1.0.178:3916-10.1.2.143:8082
+metric=server_gap value_ms=16007.535 node=server flow=10.1.0.178:53582-10.1.2.143:8081
+metric=server_gap value_ms=16007.283 node=server flow=10.1.0.178:9620-10.1.2.143:8080
+metric=server_gap value_ms=16007.709 node=server flow=10.1.0.178:53584-10.1.2.143:8081
+metric=server_gap value_ms=16007.406 node=server flow=10.1.0.178:37012-10.1.2.143:8083
+metric=server_gap value_ms=16007.668 node=server flow=10.1.0.178:9642-10.1.2.143:8080
+metric=server_gap value_ms=16007.192 node=server flow=10.1.0.178:53574-10.1.2.143:8081
+metric=server_gap value_ms=16007.050 node=server flow=10.1.0.178:3906-10.1.2.143:8082
+metric=server_gap value_ms=16007.115 node=server flow=10.1.0.178:36996-10.1.2.143:8083
+metric=server_gap value_ms=16007.425 node=server flow=10.1.0.178:9634-10.1.2.143:8080
+metric=server_gap value_ms=16007.807 node=server flow=10.1.0.178:37032-10.1.2.143:8083
+metric=server_gap value_ms=16007.734 node=server flow=10.1.0.178:3926-10.1.2.143:8082
+metric=server_gap value_ms=16007.531 node=server flow=10.1.0.178:37018-10.1.2.143:8083
+metric=server_gap value_ms=16007.544 node=server flow=10.1.0.178:53596-10.1.2.143:8081
+metric=server_gap value_ms=16007.431 node=server flow=10.1.0.178:9658-10.1.2.143:8080
+metric=server_gap value_ms=16007.483 node=server flow=10.1.0.178:3942-10.1.2.143:8082
+metric=server_gap value_ms=16007.565 node=server flow=10.1.0.178:9670-10.1.2.143:8080
+metric=server_gap value_ms=16007.748 node=server flow=10.1.0.178:3954-10.1.2.143:8082
+metric=server_gap value_ms=16007.717 node=server flow=10.1.0.178:53600-10.1.2.143:8081
+metric=server_gap value_ms=16007.954 node=server flow=10.1.0.178:3956-10.1.2.143:8082
+metric=server_gap value_ms=16008.088 node=server flow=10.1.0.178:9692-10.1.2.143:8080
+metric=server_gap value_ms=16008.014 node=server flow=10.1.0.178:37058-10.1.2.143:8083
+metric=server_gap value_ms=16007.731 node=server flow=10.1.0.178:37052-10.1.2.143:8083
+metric=server_gap value_ms=16008.179 node=server flow=10.1.0.178:37074-10.1.2.143:8083
+metric=server_gap value_ms=16008.250 node=server flow=10.1.0.178:3972-10.1.2.143:8082
+metric=server_gap value_ms=16008.124 node=server flow=10.1.0.178:53628-10.1.2.143:8081
+metric=server_gap value_ms=16007.823 node=server flow=10.1.0.178:53614-10.1.2.143:8081
+metric=server_gap value_ms=16007.553 node=server flow=10.1.0.178:37038-10.1.2.143:8083
+metric=server_gap value_ms=16007.753 node=server flow=10.1.0.178:9684-10.1.2.143:8080
+metric=server_gap value_ms=15973.711 node=server flow=10.1.0.178:9702-10.1.2.143:8080
+metric=server_gap value_ms=15973.726 node=server flow=10.1.0.178:53632-10.1.2.143:8081
+metric=server_gap value_ms=15973.862 node=server flow=10.1.0.178:37082-10.1.2.143:8083
+metric=server_gap value_ms=15973.976 node=server flow=10.1.0.178:53634-10.1.2.143:8081
+metric=server_gap value_ms=15974.058 node=server flow=10.1.0.178:9714-10.1.2.143:8080
+metric=server_gap value_ms=15973.936 node=server flow=10.1.0.178:3982-10.1.2.143:8082
+metric=server_gap value_ms=15973.889 node=server flow=10.1.0.178:9712-10.1.2.143:8080
+metric=server_gap value_ms=15974.140 node=server flow=10.1.0.178:53636-10.1.2.143:8081
+metric=server_gap value_ms=15974.171 node=server flow=10.1.0.178:37094-10.1.2.143:8083
+metric=server_gap value_ms=15974.271 node=server flow=10.1.0.178:53638-10.1.2.143:8081
+metric=server_gap value_ms=15973.667 node=server flow=10.1.0.178:3980-10.1.2.143:8082
+metric=server_gap value_ms=15973.938 node=server flow=10.1.0.178:37084-10.1.2.143:8083
+metric=server_gap value_ms=15974.135 node=server flow=10.1.0.178:3992-10.1.2.143:8082
+metric=server_gap value_ms=15974.308 node=server flow=10.1.0.178:4002-10.1.2.143:8082
+metric=server_gap value_ms=15974.184 node=server flow=10.1.0.178:9726-10.1.2.143:8080
+metric=server_gap value_ms=15974.304 node=server flow=10.1.0.178:37102-10.1.2.143:8083
+metric=server_gap value_ms=15974.188 node=server flow=10.1.0.178:9734-10.1.2.143:8080
+metric=server_gap value_ms=15974.337 node=server flow=10.1.0.178:53662-10.1.2.143:8081
+metric=server_gap value_ms=15974.506 node=server flow=10.1.0.178:4018-10.1.2.143:8082
+metric=server_gap value_ms=15974.528 node=server flow=10.1.0.178:37118-10.1.2.143:8083
+metric=server_gap value_ms=15974.761 node=server flow=10.1.0.178:37130-10.1.2.143:8083
+metric=server_gap value_ms=15974.740 node=server flow=10.1.0.178:4020-10.1.2.143:8082
+metric=server_gap value_ms=15974.802 node=server flow=10.1.0.178:9770-10.1.2.143:8080
+metric=server_gap value_ms=15974.572 node=server flow=10.1.0.178:9754-10.1.2.143:8080
+metric=server_gap value_ms=15974.246 node=server flow=10.1.0.178:4012-10.1.2.143:8082
+metric=server_gap value_ms=15974.342 node=server flow=10.1.0.178:37108-10.1.2.143:8083
+metric=server_gap value_ms=15974.423 node=server flow=10.1.0.178:9740-10.1.2.143:8080
+metric=server_gap value_ms=15974.216 node=server flow=10.1.0.178:53650-10.1.2.143:8081
+metric=server_gap value_ms=15974.645 node=server flow=10.1.0.178:53670-10.1.2.143:8081
+metric=server_gap value_ms=15974.822 node=server flow=10.1.0.178:53686-10.1.2.143:8081
+metric=server_gap value_ms=15974.946 node=server flow=10.1.0.178:4032-10.1.2.143:8082
+metric=server_gap value_ms=15974.776 node=server flow=10.1.0.178:37136-10.1.2.143:8083
+metric=server_gap value_ms=15975.171 node=server flow=10.1.0.178:4046-10.1.2.143:8082
+metric=server_gap value_ms=15975.069 node=server flow=10.1.0.178:9798-10.1.2.143:8080
+metric=server_gap value_ms=15975.212 node=server flow=10.1.0.178:37154-10.1.2.143:8083
+metric=server_gap value_ms=15975.105 node=server flow=10.1.0.178:53698-10.1.2.143:8081
+metric=server_gap value_ms=15975.585 node=server flow=10.1.0.178:37178-10.1.2.143:8083
+metric=server_gap value_ms=15975.465 node=server flow=10.1.0.178:9822-10.1.2.143:8080
+metric=server_gap value_ms=15974.975 node=server flow=10.1.0.178:37146-10.1.2.143:8083
+metric=server_gap value_ms=15975.362 node=server flow=10.1.0.178:4062-10.1.2.143:8082
+metric=server_gap value_ms=15974.916 node=server flow=10.1.0.178:53694-10.1.2.143:8081
+metric=server_gap value_ms=15975.282 node=server flow=10.1.0.178:9810-10.1.2.143:8080
+metric=server_gap value_ms=15974.787 node=server flow=10.1.0.178:9786-10.1.2.143:8080
+metric=server_gap value_ms=15974.907 node=server flow=10.1.0.178:4042-10.1.2.143:8082
+metric=server_gap value_ms=15975.285 node=server flow=10.1.0.178:53710-10.1.2.143:8081
+metric=server_gap value_ms=15975.368 node=server flow=10.1.0.178:37166-10.1.2.143:8083
+metric=server_gap value_ms=15975.504 node=server flow=10.1.0.178:4068-10.1.2.143:8082
+metric=server_gap value_ms=15975.450 node=server flow=10.1.0.178:53724-10.1.2.143:8081
+metric=server_gap value_ms=15975.678 node=server flow=10.1.0.178:4082-10.1.2.143:8082
+metric=server_gap value_ms=15975.433 node=server flow=10.1.0.178:9838-10.1.2.143:8080
+metric=server_gap value_ms=15975.576 node=server flow=10.1.0.178:37186-10.1.2.143:8083
+metric=server_gap value_ms=15975.539 node=server flow=10.1.0.178:53726-10.1.2.143:8081
+metric=server_gap value_ms=15976.244 node=server flow=10.1.0.178:37198-10.1.2.143:8083
+metric=server_gap value_ms=15976.088 node=server flow=10.1.0.178:4094-10.1.2.143:8082
+metric=server_gap value_ms=15976.411 node=server flow=10.1.0.178:4110-10.1.2.143:8082
+metric=server_gap value_ms=15975.771 node=server flow=10.1.0.178:53730-10.1.2.143:8081
+metric=server_gap value_ms=15976.018 node=server flow=10.1.0.178:53732-10.1.2.143:8081
+metric=server_gap value_ms=15975.969 node=server flow=10.1.0.178:9858-10.1.2.143:8080
+metric=server_gap value_ms=15976.346 node=server flow=10.1.0.178:37212-10.1.2.143:8083
+metric=server_gap value_ms=15976.269 node=server flow=10.1.0.178:53744-10.1.2.143:8081
+metric=server_gap value_ms=15976.151 node=server flow=10.1.0.178:9870-10.1.2.143:8080
+metric=server_gap value_ms=15975.625 node=server flow=10.1.0.178:9848-10.1.2.143:8080
+metric=server_gap value_ms=15975.844 node=server flow=10.1.0.178:37190-10.1.2.143:8083
+metric=server_gap value_ms=15975.774 node=server flow=10.1.0.178:4088-10.1.2.143:8082
+metric=server_gap value_ms=15976.334 node=server flow=10.1.0.178:53748-10.1.2.143:8081
+metric=server_gap value_ms=15976.450 node=server flow=10.1.0.178:9888-10.1.2.143:8080
+metric=server_gap value_ms=15976.518 node=server flow=10.1.0.178:9894-10.1.2.143:8080
+metric=server_gap value_ms=15976.474 node=server flow=10.1.0.178:53750-10.1.2.143:8081
+metric=server_gap value_ms=15976.776 node=server flow=10.1.0.178:53766-10.1.2.143:8081
+metric=server_gap value_ms=15976.177 node=server flow=10.1.0.178:9884-10.1.2.143:8080
+metric=server_gap value_ms=15976.318 node=server flow=10.1.0.178:4116-10.1.2.143:8082
+metric=server_gap value_ms=15976.812 node=server flow=10.1.0.178:4136-10.1.2.143:8082
+metric=server_gap value_ms=15976.366 node=server flow=10.1.0.178:37228-10.1.2.143:8083
+metric=server_gap value_ms=15976.809 node=server flow=10.1.0.178:37250-10.1.2.143:8083
+metric=server_gap value_ms=15976.939 node=server flow=10.1.0.178:37256-10.1.2.143:8083
+metric=server_gap value_ms=15976.653 node=server flow=10.1.0.178:4126-10.1.2.143:8082
+metric=server_gap value_ms=15976.743 node=server flow=10.1.0.178:37234-10.1.2.143:8083
+metric=server_gap v--output truncated--
 ```
