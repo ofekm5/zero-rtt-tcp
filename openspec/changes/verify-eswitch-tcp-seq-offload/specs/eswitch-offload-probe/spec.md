@@ -16,15 +16,20 @@ The probe SHALL record the DPU's data-plane state before making any change, so t
 - **THEN** the harness aborts without mutating the DPU
 - **AND** it reports which value could not be read
 
-### Requirement: Hugepage allocation and DPDK port binding
+### Requirement: Hugepage allocation and data-plane port initialisation
 
-The probe SHALL allocate hugepages on the DPU ARM and bind `pf0hpf` as a DPDK port, using only preinstalled tooling.
+The probe SHALL allocate hugepages on the DPU ARM and initialise `pf0hpf` as a data-plane port.
 
-#### Scenario: Hugepages allocated and testpmd binds the port
+#### Scenario: Hugepages allocated and the port initialises
 
-- **WHEN** the harness allocates hugepages on the ARM and launches `dpdk-testpmd` against `pf0hpf`
-- **THEN** `dpdk-testpmd` reaches the `testpmd>` prompt
-- **AND** `show port summary all` lists `pf0hpf` as a bound port
+- **WHEN** the harness allocates hugepages on the ARM and starts the probe against `pf0hpf`
+- **THEN** the probe's startup output reports `pf0hpf` initialised without error
+
+#### Scenario: Probe toolchain is transported, not installed
+
+- **WHEN** the probe program requires a build toolchain absent from the DPU ARM
+- **THEN** it is built inside the DOCA devel container on a host with working DNS
+- **AND** it reaches the DPU as a saved image tarball that is loaded locally
 
 #### Scenario: No network-dependent package installation is attempted
 
@@ -32,24 +37,30 @@ The probe SHALL allocate hugepages on the DPU ARM and bind `pf0hpf` as a DPDK po
 - **THEN** it SHALL NOT invoke `apt`, `pip`, a container registry pull, or any other step requiring DNS resolution from the DPU
 - **AND** any toolchain the harness needs beyond preinstalled tooling arrives as an image built elsewhere and transported to the DPU
 
-### Requirement: Composed transfer-domain rule
+### Requirement: Composed e-switch rule
 
-The probe SHALL install a single `rte_flow` rule in the transfer domain that composes 5-tuple matching, TCP sequence-number modification by a per-flow constant, and egress back toward the host port, with a counter attached.
+The probe SHALL install a single rule in the e-switch domain composing 5-tuple matching, TCP sequence-number modification by a per-flow constant, and egress back toward the host port, with a counter attached.
 
-#### Scenario: Rule is accepted by the PMD
+#### Scenario: Rule is accepted
 
-- **WHEN** the harness issues `flow create` with `transfer`, a 5-tuple pattern, a `modify_field` action targeting `tcp_seq_num` with an ADD or SUB operation, an egress action toward the host port, and a `count` action
-- **THEN** the mlx5 PMD returns a rule ID rather than an error
+- **WHEN** the harness creates a rule in the e-switch domain with a 5-tuple match, a TCP sequence-number modification using an ADD or SUB operation, an egress action toward the host port, and a counter
+- **THEN** the rule-creation call returns a valid handle rather than an error
 
-#### Scenario: Rule is rejected by the PMD
+#### Scenario: Rule is rejected
 
-- **WHEN** `flow create` returns an error instead of a rule ID
-- **THEN** the harness records the verbatim PMD error text
-- **AND** the run concludes with a NO verdict
+- **WHEN** rule creation returns an error instead of a valid handle
+- **THEN** the harness records the verbatim error text
+- **AND** the run proceeds to the cross-check rather than concluding
 
-#### Scenario: DPDK build predates the required field
+#### Scenario: Rule parameters are supplied without rebuilding
 
-- **WHEN** the recorded DPDK version does not support `RTE_FLOW_FIELD_TCP_SEQ_NUM`
+- **WHEN** the operator varies the 5-tuple, the delta, or the egress target
+- **THEN** the probe accepts them as command-line arguments
+- **AND** no rebuild or re-transport of the probe image is required
+
+#### Scenario: Installed build predates the required capability
+
+- **WHEN** the recorded DOCA or DPDK version does not support TCP sequence-number modification
 - **THEN** the harness reports a tooling limitation
 - **AND** it SHALL NOT record the outcome as a hardware NO verdict
 
@@ -59,19 +70,19 @@ The probe SHALL distinguish a rule executed in hardware from a rule serviced by 
 
 #### Scenario: Rule executes in hardware
 
-- **WHEN** traffic matching the rule is generated and the harness reads `flow query <id> count` and testpmd's forwarding statistics
+- **WHEN** traffic matching the rule is generated and the harness reads the rule's hardware counter and the probe's software-queue receive count
 - **THEN** the rule's hit counter increments
-- **AND** testpmd's forwarding statistics show zero packets crossing an ARM core
+- **AND** the probe reports zero packets received on an ARM software queue
 
 #### Scenario: Rule falls back to software
 
-- **WHEN** the rule's hit counter increments but testpmd's forwarding statistics show a nonzero packet count
+- **WHEN** the rule's hit counter increments but the probe reports a nonzero software-queue receive count
 - **THEN** the harness records that the rule was not offloaded
 - **AND** the run SHALL NOT be recorded as a YES verdict
 
 ### Requirement: On-wire rewrite verification
 
-The probe SHALL confirm the sequence-number rewrite by observing returned packets at the traffic source, not by inferring it from PMD return codes or counters.
+The probe SHALL confirm the sequence-number rewrite by observing returned packets at the traffic source, not by inferring it from API return codes or counters.
 
 #### Scenario: Rewrite observed at the sender
 
@@ -97,8 +108,8 @@ The probe SHALL produce a written verdict of YES, NO, or PARTIAL, distinguishing
 #### Scenario: YES verdict
 
 - **WHEN** the rule is accepted, its counter increments with zero software forwarding, and returned packets carry the modified sequence number
-- **THEN** the harness records a YES verdict with the captured evidence, the DPDK version, and the firmware version
-- **AND** it records that the result is indicative pending DOCA Flow confirmation
+- **THEN** the harness records a YES verdict with the captured evidence, the DOCA and DPDK versions, and the firmware version
+- **AND** it records that the result was obtained through the API the companion change is most likely to ship
 
 #### Scenario: PARTIAL verdict distinguishes the failing leg
 
@@ -108,41 +119,36 @@ The probe SHALL produce a written verdict of YES, NO, or PARTIAL, distinguishing
 
 #### Scenario: NO verdict requires the cross-check
 
-- **WHEN** the sequence-number modification action is rejected or performs no rewrite under `rte_flow`
-- **THEN** the harness SHALL NOT record a NO verdict until the DOCA Flow cross-check has run
+- **WHEN** the sequence-number modification action is rejected or performs no rewrite under DOCA Flow
+- **THEN** the harness SHALL NOT record a NO verdict until the `rte_flow` cross-check has run
 - **AND** a NO verdict recorded after a negative cross-check states that no topology change rescues the offload architecture
 
-### Requirement: Conditional DOCA Flow cross-check
+### Requirement: Conditional rte_flow cross-check
 
-Because `rte_flow` and DOCA Flow drive the same hardware steering but do not expose identical action sets, a negative `rte_flow` result SHALL be disambiguated by a DOCA Flow attempt before it is treated as a hardware limitation.
+Because DOCA Flow and `rte_flow` drive the same hardware steering but do not expose identical action sets, a negative DOCA Flow result SHALL be disambiguated by an `rte_flow` attempt before it is treated as a hardware limitation.
 
 #### Scenario: Cross-check runs only on a negative result
 
-- **WHEN** the `rte_flow` probe returns a positive result
-- **THEN** the harness does not run the DOCA Flow cross-check
+- **WHEN** the DOCA Flow probe returns a positive result
+- **THEN** the harness does not run the `rte_flow` cross-check
 
 #### Scenario: Cross-check runs after a negative result
 
-- **WHEN** the `rte_flow` probe fails to accept or fails to apply the sequence-number modification
-- **THEN** the harness runs a minimal DOCA Flow program attempting the same TCP sequence-number modification
-- **AND** that program is built inside the DOCA devel container and transported to the DPU as a saved image, without any registry pull from the DPU
+- **WHEN** the DOCA Flow probe fails to accept or fails to apply the sequence-number modification
+- **THEN** the harness attempts the same TCP sequence-number modification through `rte_flow` using the preinstalled `dpdk-testpmd`
+- **AND** the cross-check requires no build, image transport, or package installation
 
 #### Scenario: Cross-check scope is limited to disambiguation
 
-- **WHEN** the DOCA Flow cross-check runs
+- **WHEN** the `rte_flow` cross-check runs
 - **THEN** it attempts only the sequence-number modification
 - **AND** it SHALL NOT perform hairpin egress, traffic generation, or on-wire capture
 
-#### Scenario: Cross-check succeeds where rte_flow failed
+#### Scenario: Cross-check succeeds where DOCA Flow failed
 
-- **WHEN** the DOCA Flow cross-check applies the modification that `rte_flow` could not
+- **WHEN** the `rte_flow` cross-check applies the modification that DOCA Flow could not
 - **THEN** the harness records a PARTIAL verdict rather than a YES or a NO
-- **AND** it records that the capability exists but is not reachable through `rte_flow` on this build
-
-#### Scenario: Cross-check artifacts are cleaned up
-
-- **WHEN** the cross-check has completed
-- **THEN** any container image loaded onto the DPU for it is removed as part of restoration
+- **AND** it records that the capability exists but is reachable only through `rte_flow` on this build
 
 ### Requirement: Restoration to pre-spike state
 
@@ -151,7 +157,7 @@ The probe SHALL return the DPU to the state recorded in the baseline, and SHALL 
 #### Scenario: DPU restored and verified
 
 - **WHEN** the probe run completes for any verdict
-- **THEN** `pf0hpf` is re-attached to `ovsbr1`, hugepages are freed, and `ens16f0np0` is returned to its recorded state
+- **THEN** `pf0hpf` is re-attached to `ovsbr1`, hugepages are freed, any container image loaded for the probe is removed, and `ens16f0np0` is returned to its recorded state
 - **AND** `ovs-vsctl show` matches the captured baseline
 
 #### Scenario: Restoration is incomplete

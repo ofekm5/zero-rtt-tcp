@@ -2,7 +2,9 @@
 
 Harness lives under a new `experiments/bluefield/probe/` directory. It runs from the developer's machine over the RUNS lab OpenVPN tunnel, driving `10.13.36.16` (DPU ARM) and `10.13.37.10` (x86 host VM) over SSH with the existing `claude_code_ed25519` key.
 
-Verify hints for authoring tasks check the artifact itself (syntax, required content). Tasks whose outcome can only be observed against live lab hardware are marked `manual review` — the sandboxed verifier has no VPN, no SSH key, and no DPU.
+The primary probe is a DOCA Flow program built in the DOCA devel container and transported as a saved image; the `rte_flow` cross-check uses the preinstalled `dpdk-testpmd` and runs only on a NO, per `design.md` D6.
+
+Verify hints for authoring tasks check the artifact itself (syntax, required content). Tasks whose outcome can only be observed against live lab hardware are marked `manual review` — the sandboxed verifier has no VPN, no SSH key, no DPU, and no Docker daemon.
 
 - [ ] 1. Add SSH transport helper for the two probe hosts — verify: `bash -n experiments/bluefield/probe/lib/hosts.sh`
     - File: `experiments/bluefield/probe/lib/hosts.sh`
@@ -11,50 +13,60 @@ Verify hints for authoring tasks check the artifact itself (syntax, required con
 
 - [ ] 2. Capture the pre-mutation DPU baseline — verify: `bash -n experiments/bluefield/probe/baseline.sh && grep -q 'ovs-vsctl show' experiments/bluefield/probe/baseline.sh`
     - File: `experiments/bluefield/probe/baseline.sh`
-    - Outcome: writes `ovs-vsctl show` output, `pf0hpf` bridge membership, ARM hugepage count, the DPDK version found under `/opt/mellanox/dpdk`, and the adapter firmware version to a baseline file, and exits non-zero without mutating the DPU if any value cannot be read. Satisfies the baseline-capture requirement in `specs/eswitch-offload-probe/spec.md`.
+    - Outcome: writes `ovs-vsctl show` output, `pf0hpf` bridge membership, ARM hugepage count, the DOCA and DPDK versions found on the DPU, and the adapter firmware version to a baseline file, and exits non-zero without mutating the DPU if any value cannot be read. Satisfies the baseline-capture requirement in `specs/eswitch-offload-probe/spec.md`.
     - Commit: `feat(bluefield-probe): capture pre-mutation DPU baseline`
 
-- [ ] 3. Bring up hugepages and bind `pf0hpf` under testpmd — verify: `bash -n experiments/bluefield/probe/setup.sh && grep -q 'dpdk-testpmd' experiments/bluefield/probe/setup.sh`
+- [ ] 3. Write the DOCA Flow probe program — verify: `grep -q 'doca_flow' experiments/bluefield/probe/docaprobe/probe.c && grep -q 'argv' experiments/bluefield/probe/docaprobe/probe.c`
+    - File: `experiments/bluefield/probe/docaprobe/probe.c`, `experiments/bluefield/probe/docaprobe/meson.build`
+    - Outcome: builds a DOCA Flow pipe in the e-switch domain composing a 5-tuple match, a TCP sequence-number modification by a per-flow constant, an egress back toward the host port, and a counter — the shape given in `design.md` D1. The 5-tuple, delta and egress target are command-line arguments so rule syntax is iterated by re-running rather than rebuilding. Reports the created handle, the counter value, and its own software-queue receive count, since those are what SC2 and SC3 measure.
+    - Commit: `feat(bluefield-probe): add DOCA Flow seq-rewrite probe program`
+
+- [ ] 4. Build and transport the probe image to the DPU — verify: `bash -n experiments/bluefield/probe/build_image.sh && grep -q 'docker save' experiments/bluefield/probe/build_image.sh`
+    - File: `experiments/bluefield/probe/build_image.sh`, `experiments/bluefield/probe/docaprobe/Dockerfile`
+    - Outcome: builds the probe inside the DOCA devel container — which ships `meson` and `ninja` — on a host with working DNS, saves it to a tarball, transfers it to the DPU and loads it there. Follows the existing `infra/bluefield/deployment/Dockerfile` and `compress_doca_image.sh` pattern. Performs no registry pull or DNS resolution from the DPU, per the transported-toolchain scenario in the spec.
+    - Commit: `feat(bluefield-probe): build and transport probe image to the DPU`
+
+- [ ] 5. Allocate hugepages and initialise the data-plane port — verify: `bash -n experiments/bluefield/probe/setup.sh && grep -q 'pf0hpf' experiments/bluefield/probe/setup.sh`
     - File: `experiments/bluefield/probe/setup.sh`
-    - Outcome: allocates hugepages on the ARM, detaches `pf0hpf` from `ovsbr1`, brings `ens16f0np0` up on the x86 VM, and launches `dpdk-testpmd` so it reaches the `testpmd>` prompt with `pf0hpf` listed in `show port summary all`. Uses only preinstalled tooling — no `apt`, `pip`, or other network-dependent installer, per the spec's no-package-installation scenario. Never touches `oob_net0`.
-    - Commit: `feat(bluefield-probe): allocate hugepages and bind pf0hpf under testpmd`
+    - Outcome: allocates hugepages on the ARM, detaches `pf0hpf` from `ovsbr1`, brings `ens16f0np0` up on the x86 VM, and starts the probe so its output reports `pf0hpf` initialised without error. Never touches `oob_net0`, over which DPU management runs.
+    - Commit: `feat(bluefield-probe): allocate hugepages and initialise pf0hpf`
 
-- [ ] 4. Construct and install the composed transfer-domain rule — verify: `bash -n experiments/bluefield/probe/flow_rule.sh && grep -q 'tcp_seq_num' experiments/bluefield/probe/flow_rule.sh`
+- [ ] 6. Install the composed e-switch rule and capture the result — verify: `bash -n experiments/bluefield/probe/flow_rule.sh && grep -q 'delta' experiments/bluefield/probe/flow_rule.sh`
     - File: `experiments/bluefield/probe/flow_rule.sh`
-    - Outcome: issues a single `flow create` in the `transfer` domain composing a 5-tuple pattern, a `modify_field` action on `tcp_seq_num` with an ADD or SUB operation and a configurable delta, an egress action toward the host port, and a `count` action; captures the rule ID on success and the verbatim PMD error text on rejection. Reads the recorded DPDK version first and reports a tooling limitation rather than a hardware NO when the build predates `RTE_FLOW_FIELD_TCP_SEQ_NUM`. Rule shape is given in `design.md` decision D1.
-    - Commit: `feat(bluefield-probe): install composed transfer-domain seq-rewrite rule`
+    - Outcome: invokes the probe with the 5-tuple, delta and egress target, capturing either the returned handle or the verbatim error text. Reads the recorded DOCA and DPDK versions first and reports a tooling limitation rather than a hardware NO when the build predates TCP sequence-number modification. Attempts `dv_flow_en=2` on the device argument before recording any negative, since `infra/bluefield/deployment/Dockerfile` uses that flag on this hardware and omitting it could produce a false NO.
+    - Commit: `feat(bluefield-probe): install composed e-switch seq-rewrite rule`
 
-- [ ] 5. Generate traffic and capture the return leg from the x86 VM — verify: `bash -n experiments/bluefield/probe/traffic.sh && grep -q 'ens16f0np0' experiments/bluefield/probe/traffic.sh`
+- [ ] 7. Generate traffic and capture the return leg from the x86 VM — verify: `bash -n experiments/bluefield/probe/traffic.sh && grep -q 'ens16f0np0' experiments/bluefield/probe/traffic.sh`
     - File: `experiments/bluefield/probe/traffic.sh`
-    - Outcome: sends TCP packets with a known sequence number out `ens16f0np0` on the x86 VM while capturing on the same interface, and reports the sequence numbers of any returned packets alongside the sequence number sent. Distinguishes three observable outcomes — returned and rewritten, returned unmodified, and nothing returned within the capture window — because `design.md` decision D4 maps them to different verdicts.
+    - Outcome: sends TCP packets with a known sequence number out `ens16f0np0` on the x86 VM while capturing on the same interface, and reports the sequence numbers of any returned packets alongside the sequence number sent. Distinguishes three observable outcomes — returned and rewritten, returned unmodified, and nothing returned within the capture window — because `design.md` D4 maps them to different verdicts.
     - Commit: `feat(bluefield-probe): generate and capture traffic from the host VM`
 
-- [ ] 6. Add the conditional DOCA Flow cross-check — verify: `bash -n experiments/bluefield/probe/crosscheck.sh && grep -q 'docker load' experiments/bluefield/probe/crosscheck.sh`
-    - File: `experiments/bluefield/probe/crosscheck.sh`, `experiments/bluefield/probe/crosscheck/` (minimal DOCA Flow program plus its `meson.build` and `Dockerfile`)
-    - Outcome: runs only when the `rte_flow` probe returned a negative result, and attempts the same TCP sequence-number modification through DOCA Flow to distinguish a silicon limit from an mlx5 PMD exposure gap, per `design.md` D6. The program is built inside the DOCA devel container — which ships `meson` and `ninja` — and transported to the DPU as a saved image following the existing `infra/bluefield/deployment/compress_doca_image.sh` pattern, so the DPU never needs DNS. Scope is disambiguation only: no hairpin, no traffic generation, no capture.
-    - Commit: `feat(bluefield-probe): add conditional DOCA Flow cross-check for negative results`
+- [ ] 8. Add the conditional `rte_flow` cross-check — verify: `bash -n experiments/bluefield/probe/crosscheck.sh && grep -q 'dpdk-testpmd' experiments/bluefield/probe/crosscheck.sh`
+    - File: `experiments/bluefield/probe/crosscheck.sh`
+    - Outcome: runs only when the DOCA Flow probe returned a negative result, and attempts the same TCP sequence-number modification through `rte_flow` using the preinstalled `dpdk-testpmd`, to distinguish a silicon limit from a DOCA Flow exposure gap per `design.md` D6. Requires no build, image transport, or package installation. Scope is disambiguation only: no hairpin, no traffic generation, no capture.
+    - Commit: `feat(bluefield-probe): add conditional rte_flow cross-check for negative results`
 
-- [ ] 7. Evaluate the verification levels and emit a verdict — verify: `bash -n experiments/bluefield/probe/verdict.sh && grep -q 'PARTIAL' experiments/bluefield/probe/verdict.sh`
+- [ ] 9. Evaluate the verification levels and emit a verdict — verify: `bash -n experiments/bluefield/probe/verdict.sh && grep -q 'PARTIAL' experiments/bluefield/probe/verdict.sh`
     - File: `experiments/bluefield/probe/verdict.sh`
-    - Outcome: reads rule acceptance, `flow query <id> count` hits against testpmd's forwarding statistics, the on-wire capture result, and the cross-check result when one was run, then emits YES, NO, or PARTIAL per the decision tables in `design.md` D2, D4 and D6. A YES requires all three `rte_flow` levels to hold and is annotated as indicative pending DOCA Flow confirmation. A NO is emitted only after a negative cross-check. A cross-check that succeeds where `rte_flow` failed yields PARTIAL, recording that the capability exists but is not reachable through `rte_flow` on this build.
+    - Outcome: reads rule acceptance, the hardware counter against the probe's software-queue receive count, the on-wire capture result, and the cross-check result when one was run, then emits YES, NO, or PARTIAL per the decision tables in `design.md` D2, D4 and D6. A YES requires all three levels to hold. A NO is emitted only after a negative cross-check. A cross-check that succeeds where DOCA Flow failed yields PARTIAL, recording that the capability exists but is reachable only through `rte_flow` on this build.
     - Commit: `feat(bluefield-probe): evaluate verification levels and emit verdict`
 
-- [ ] 8. Restore the DPU and verify against the baseline — verify: `bash -n experiments/bluefield/probe/restore.sh && grep -q 'ovsbr1' experiments/bluefield/probe/restore.sh`
+- [ ] 10. Restore the DPU and verify against the baseline — verify: `bash -n experiments/bluefield/probe/restore.sh && grep -q 'ovsbr1' experiments/bluefield/probe/restore.sh`
     - File: `experiments/bluefield/probe/restore.sh`
-    - Outcome: re-attaches `pf0hpf` to `ovsbr1`, frees the hugepages, returns `ens16f0np0` to its recorded state, removes any container image loaded for the cross-check, diffs the resulting `ovs-vsctl show` against the baseline file, and exits non-zero when they differ so an incomplete restoration cannot be reported as success. Runs for every verdict, including failure paths.
+    - Outcome: re-attaches `pf0hpf` to `ovsbr1`, frees the hugepages, removes the loaded probe image, returns `ens16f0np0` to its recorded state, diffs the resulting `ovs-vsctl show` against the baseline file, and exits non-zero when they differ so an incomplete restoration cannot be reported as success. Runs for every verdict, including failure paths.
     - Commit: `feat(bluefield-probe): restore DPU state and verify against baseline`
 
-- [ ] 9. Add the orchestrator that runs the probe end to end — verify: `bash -n experiments/bluefield/probe/run_probe.sh && grep -q 'restore.sh' experiments/bluefield/probe/run_probe.sh`
+- [ ] 11. Add the orchestrator that runs the probe end to end — verify: `bash -n experiments/bluefield/probe/run_probe.sh && grep -q 'restore.sh' experiments/bluefield/probe/run_probe.sh`
     - File: `experiments/bluefield/probe/run_probe.sh`
-    - Outcome: runs baseline, setup, flow rule, traffic, the cross-check when the probe was negative, and verdict in sequence, and invokes `restore.sh` on every exit path including early failure, so the DPU is never left mutated by an aborted run. Writes the verdict and collected evidence under `experiments/bluefield/reports/`.
+    - Outcome: runs baseline, image build and transport, setup, rule installation, traffic, the cross-check when the probe was negative, and verdict in sequence, and invokes `restore.sh` on every exit path including early failure, so the DPU is never left mutated by an aborted run. Writes the verdict and collected evidence under `experiments/bluefield/reports/`.
     - Commit: `feat(bluefield-probe): add end-to-end probe orchestrator`
 
-- [ ] 10. Document the probe and its prerequisites — verify: `test -s experiments/bluefield/probe/README.md && grep -q 'oob_net0' experiments/bluefield/probe/README.md`
+- [ ] 12. Document the probe and its prerequisites — verify: `test -s experiments/bluefield/probe/README.md && grep -q 'oob_net0' experiments/bluefield/probe/README.md`
     - File: `experiments/bluefield/probe/README.md`
     - Outcome: states the two target hosts, the VPN and SSH-key prerequisites, what the probe mutates and how it restores, why management over `oob_net0` is unaffected, how the container image is built elsewhere and transported rather than pulled, and how to read a YES, NO, or PARTIAL verdict including the cross-check branch.
     - Commit: `docs(bluefield-probe): document probe prerequisites and verdict reading`
 
-- [ ] 11. Execute the probe against the runs3 DPU and record the verdict — manual review
+- [ ] 13. Execute the probe against the runs3 DPU and record the verdict — manual review
     - File: `experiments/bluefield/reports/` (verdict document produced by the run)
-    - Outcome: a committed verdict document recording YES, NO, or PARTIAL with the captured `flow create` result, counter and forwarding statistics, the `tcpdump` evidence, the cross-check result when one was run, and the DPDK and firmware versions the result was obtained on; `ovs-vsctl show` on the DPU matches the pre-spike baseline afterwards. This task requires the RUNS lab tunnel and live hardware, so it cannot be checked by the sandboxed verifier.
+    - Outcome: a committed verdict document recording YES, NO, or PARTIAL with the captured rule-creation result, counter and software-receive statistics, the `tcpdump` evidence, the cross-check result when one was run, and the DOCA, DPDK and firmware versions the result was obtained on; `ovs-vsctl show` on the DPU matches the pre-spike baseline afterwards. This task requires the RUNS lab tunnel and live hardware, so it cannot be checked by the sandboxed verifier.
     - Commit: `docs(bluefield-probe): record e-switch TCP seq offload verdict`
