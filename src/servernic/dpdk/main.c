@@ -273,8 +273,12 @@ int main(int argc, char *argv[])
     const uint64_t stats_period = rte_get_tsc_hz() * STATS_INTERVAL_SEC;
     uint64_t next_stats = rte_rdtsc() + stats_period;
     unsigned mempool_low_water = MBUF_POOL_SIZE;  /* min free mbufs observed */
+    uint64_t proc_cycles = 0;   /* cycles spent actually processing packets (capacity-model §9/§12) */
+    uint64_t proc_packets = 0;  /* packets those cycles were spent on — excludes idle-poll spin */
 
     while (running) {
+        uint64_t iter_start = rte_rdtsc();
+
         /* Poll eth1 (DPDK rx_burst, from ClientNIC) */
         uint16_t nb_rx1 = rte_eth_rx_burst(eth1.port_id, 0, rx_bufs1, RX_BURST_SIZE);
         for (uint16_t i = 0; i < nb_rx1; i++) {
@@ -299,6 +303,14 @@ int main(int argc, char *argv[])
         eth1_tx_flush(&eth1);
         eth2_tx_flush(&eth2);
 
+        /* Attribute this iteration's cycles to the packets it processed —
+         * skip empty iterations so idle busy-poll spin doesn't dilute the
+         * per-packet cost (capacity-model.md §9/§12). */
+        if (nb_rx1 || nb_rx2) {
+            proc_cycles  += rte_rdtsc() - iter_start;
+            proc_packets += (uint64_t)nb_rx1 + nb_rx2;
+        }
+
         /* Sample pool headroom only while packets are in flight — that is when
          * the pool actually drains, and it keeps the count off the idle path. */
         if (nb_rx1 || nb_rx2) {
@@ -321,6 +333,11 @@ int main(int argc, char *argv[])
                          g_truncated_frames);
             LOG_INFO("stats buffered: bytes=%" PRIu64 "/%" PRIu64 " (capacity-model §7)",
                      ft.buffered_bytes, (uint64_t)FT_MAX_BUFFERED_BYTES);
+            if (proc_packets)
+                LOG_INFO("stats cycles_per_packet: %.1f (tsc_hz=%" PRIu64
+                         ", packets=%" PRIu64 ", capacity-model §9/§12)",
+                         (double)proc_cycles / (double)proc_packets,
+                         rte_get_tsc_hz(), proc_packets);
             next_stats = now + stats_period;
         }
     }

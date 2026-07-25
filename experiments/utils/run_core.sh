@@ -406,12 +406,17 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     # analyze_metrics.py streams `tcpdump -r` output (tcpdump already wrote these
     # captures, so it is always present) — O(flows) memory, parses 100k+ packets
     # in seconds, no heavy in-RAM pcap load.
+    # At 100k connections the endpoint pcaps are much larger than the smaller
+    # regression-scale runs this 120s timeout was tuned for; override via
+    # ANALYSIS_TIMEOUT for very large captures.
+    local ANALYSIS_TIMEOUT="${ANALYSIS_TIMEOUT:-600}"
+
     log "Packet analysis: Running client-side analysis on Client host capture..."
     local CLIENT_ANALYSIS_RESULT CLIENT_ANALYSIS_STATUS CLIENT_ANALYSIS_STDOUT CLIENT_ANALYSIS_STDERR
     CLIENT_ANALYSIS_RESULT=$(remote_run "$CLIENT_ID" \
         "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
             --client-pcap /tmp/client_side.pcap" \
-        120)
+        "$ANALYSIS_TIMEOUT")
     CLIENT_ANALYSIS_STATUS=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 0)
     CLIENT_ANALYSIS_STDOUT=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 1)
     CLIENT_ANALYSIS_STDERR=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 2)
@@ -421,7 +426,7 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     SERVER_ANALYSIS_RESULT=$(remote_run "$SERVER_ID" \
         "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
             --server-pcap /tmp/server_side.pcap" \
-        120)
+        "$ANALYSIS_TIMEOUT")
     SERVER_ANALYSIS_STATUS=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 0)
     SERVER_ANALYSIS_STDOUT=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 1)
     SERVER_ANALYSIS_STDERR=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 2)
