@@ -69,7 +69,10 @@ void trans_c2s(struct translator *t, const uint8_t *pkt, uint16_t len)
 
     if (!entry->delta_valid) {
         /* Buffer until SYN-ACK arrives and delta is computed */
-        if (ft_buffer_pkt(entry, pkt, len) < 0)
+        int brc = ft_buffer_pkt(t->ft, entry, pkt, len);
+        if (brc == -2)
+            LOG_WARN("c2s: global buffered-bytes ceiling reached (capacity-model §7), dropping packet");
+        else if (brc < 0)
             LOG_WARN("c2s: buffer full (flow PENDING), dropping packet");
         return;
     }
@@ -152,28 +155,5 @@ void trans_s2c(struct translator *t, struct rte_mbuf *mbuf)
     memcpy(eth->src_addr.addr_bytes, t->eth1->mac, 6);
     memcpy(eth->dst_addr.addr_bytes, t->eth1->gw_mac, 6);
 
-    /* Send via DPDK */
-    struct rte_mbuf *m = rte_pktmbuf_alloc(t->eth1->mbuf_pool);
-    if (!m) {
-        LOG_ERR("s2c: mbuf alloc failed");
-        return;
-    }
-    uint8_t *d = rte_pktmbuf_append(m, len);
-    if (!d) {
-        rte_pktmbuf_free(m);
-        return;
-    }
-    memcpy(d, buf, len);
-
-    /* Retry briefly if the TX ring is momentarily full instead of dropping
-     * (a dropped s2c segment also stalls the flow on a TCP RTO). */
-    uint16_t sent = 0;
-    for (int attempt = 0; attempt < 8; attempt++) {
-        sent = rte_eth_tx_burst(t->eth1->port_id, 0, &m, 1);
-        if (sent)
-            break;
-        rte_pause();
-    }
-    if (sent == 0)
-        rte_pktmbuf_free(m);
+    eth1_send(t->eth1, buf, len);
 }

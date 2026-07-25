@@ -11,6 +11,12 @@
 #define FT_SIZE       262144
 #define FT_MAX_BUFFER 64
 
+/* Global ceiling on outstanding buffered bytes across all flows. FT_MAX_BUFFER
+ * alone bounds only per-flow depth — worst case (all flows buffering full)
+ * is ~9.7 GB against 5.25 GiB of RAM (capacity-model.md §7). This sheds new
+ * buffering past the ceiling instead of risking an OOM kill mid-benchmark. */
+#define FT_MAX_BUFFERED_BYTES (1ULL * 1024 * 1024 * 1024) /* 1 GiB */
+
 #define FLOW_STATE_PENDING 0
 #define FLOW_STATE_ACTIVE  1
 
@@ -47,6 +53,7 @@ struct flow_entry {
 /* Hash table */
 struct flow_table {
     struct flow_entry entries[FT_SIZE];
+    uint64_t          buffered_bytes; /* outstanding buffered bytes, all flows */
 };
 
 void              ft_init(struct flow_table *ft);
@@ -54,8 +61,12 @@ struct flow_entry *ft_create(struct flow_table *ft, const struct flow_key *key,
                              uint32_t spoofed_isn, const uint8_t *server_mac);
 struct flow_entry *ft_lookup(struct flow_table *ft, const struct flow_key *key);
 int               ft_set_delta(struct flow_entry *entry, uint32_t real_server_isn);
-int               ft_buffer_pkt(struct flow_entry *entry, const uint8_t *data, uint16_t len);
-int               ft_flush_buffer(struct flow_entry *entry, struct pkt_buffer *out, int *count);
+/* Returns 0 on success, -1 on per-flow FT_MAX_BUFFER exhaustion or malloc
+ * failure, -2 if the global FT_MAX_BUFFERED_BYTES ceiling would be exceeded. */
+int               ft_buffer_pkt(struct flow_table *ft, struct flow_entry *entry,
+                                const uint8_t *data, uint16_t len);
+int               ft_flush_buffer(struct flow_table *ft, struct flow_entry *entry,
+                                  struct pkt_buffer *out, int *count);
 void              ft_extract_key(const uint8_t *pkt, struct flow_key *key);
 void              ft_reverse_key(const struct flow_key *in, struct flow_key *out);
 

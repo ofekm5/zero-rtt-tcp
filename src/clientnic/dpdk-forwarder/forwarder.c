@@ -77,29 +77,7 @@ void forward_c2s(struct forwarder *f, const uint8_t *pkt, uint16_t len)
     memcpy(eth->src_addr.addr_bytes, f->eth1->mac, 6);
     memcpy(eth->dst_addr.addr_bytes, f->eth1->gw_mac, 6);
 
-    struct rte_mbuf *m = rte_pktmbuf_alloc(f->eth1->mbuf_pool);
-    if (!m) {
-        LOG_ERR("c2s: mbuf alloc failed");
-        return;
-    }
-    uint8_t *data = rte_pktmbuf_append(m, len);
-    if (!data) {
-        rte_pktmbuf_free(m);
-        return;
-    }
-    memcpy(data, buf, len);
-
-    /* Bulk c2s egress: retry briefly if the TX ring is momentarily full
-     * instead of silently dropping (a drop here -> client TCP RTO). */
-    uint16_t sent = 0;
-    for (int attempt = 0; attempt < 8; attempt++) {
-        sent = rte_eth_tx_burst(f->eth1->port_id, 0, &m, 1);
-        if (sent)
-            break;
-        rte_pause();
-    }
-    if (sent == 0)
-        rte_pktmbuf_free(m);
+    eth1_send(f->eth1, buf, len);
 }
 
 /* ── Server→Client transparent forward (eth1 DPDK → eth0 raw) ───────────── */

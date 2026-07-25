@@ -63,11 +63,11 @@ report_nic_ttfb() {
 # run_ttfb_measurement <client-iid> <server-ip> <port> <count> <repo-path> [timeout-sec] [label]
 # Runs <count> sequential rounds on the client VM via SSM. Each round opens
 # IPERF_PARALLEL total parallel TCP connections, spread across IPERF_PORTS
-# contiguous server ports ([port .. port+IPERF_PORTS-1]) — one iperf2 process per
-# port, each with -P (IPERF_PARALLEL / IPERF_PORTS). Spreading across multiple
-# destination ports multiplies the ephemeral-port space so the client can actually
-# open 100000 connections from a single source IP.
-# Load generator is iperf2 ONLY — an iperf3 binary shadowing `iperf` is rejected.
+# contiguous server ports ([port .. port+IPERF_PORTS-1]), via
+# experiments/utils/loadgen.py — an asyncio (epoll-driven, single-thread)
+# event-driven load generator. Replaces iperf2's -P N, which spawns N OS
+# threads inside one process (25000 pthreads at 100k/4-ports is not viable at
+# any instance size — see roadmap.md #20 scope item A / capacity-model.md).
 # Sets globals: CLIENT_STDOUT, CLIENT_STDERR
 run_ttfb_measurement() {
     local client_iid="$1" server_ip="$2" port="$3" count="$4" repo="$5"
@@ -75,36 +75,15 @@ run_ttfb_measurement() {
     local parallel="${IPERF_PARALLEL:-100000}"
     local nports="${IPERF_PORTS:-1}"
     [[ "$nports" -lt 1 ]] && nports=1
-    local base="$port"
-    local hi=$(( base + nports - 1 ))
-    local perport=$(( (parallel + nports - 1) / nports ))   # ceil(parallel/nports)
-    local plist="" p
-    for (( p=base; p<=hi; p++ )); do plist="$plist $p"; done
-    plist="${plist# }"
 
     local result
     result=$(ssm_run "$client_iid" \
-        "command -v iperf >/dev/null || { echo 'ERROR: iperf not installed'; exit 1; }
-         if iperf --version 2>&1 | grep -qiE 'iperf[ ]?3'; then
-             echo 'ERROR: iperf3 detected — this experiment requires iperf2'; exit 1
-         fi
-         ulimit -n $((perport + 1024)) 2>/dev/null || true
+        "command -v python3 >/dev/null || { echo 'ERROR: python3 not installed'; exit 1; }
+         ulimit -n 1048576 2>/dev/null || true
          success=0
          for i in \$(seq 1 $count); do
-             echo \"--- Round \$i/$count: $nports port(s) [$base-$hi] x $perport parallel = $((perport * nports)) conns ---\"
-             rm -f /tmp/iperf_round.*.out
-             pids=\"\"
-             for p in $plist; do
-                 iperf -c $server_ip -p \$p -P $perport -n 1M -f m > /tmp/iperf_round.\$p.out 2>&1 &
-                 pids=\"\$pids \$!\"
-             done
-             wait \$pids 2>/dev/null
-             ok=0
-             for p in $plist; do
-                 cat /tmp/iperf_round.\$p.out
-                 grep -q 'bits/sec' /tmp/iperf_round.\$p.out && ok=\$((ok + 1))
-             done
-             [ \$ok -eq $nports ] && success=\$((success + 1))
+             echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections ---\"
+             python3 $repo/experiments/utils/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes 1048576 && success=\$((success + 1))
          done
          echo \"Success: \${success}/$count\"" \
         "$timeout")

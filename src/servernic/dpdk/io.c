@@ -10,6 +10,7 @@
 /* Bounded TX-burst retries on a momentarily full ring. Kept small: on the
  * single-threaded poll loop a long spin causes head-of-line blocking that
  * collapses throughput under load. Drop after a few and let TCP retransmit. */
+#define ETH1_TX_RETRIES 8
 #define ETH2_TX_RETRIES 8
 
 #define RX_RING_SIZE 1024
@@ -94,6 +95,44 @@ int eth1_init(struct eth1_io *io, uint16_t port_id, struct rte_mempool *pool,
     return 0;
 }
 
+void eth1_tx_flush(struct eth1_io *io)
+{
+    if (io->tx_batch_count == 0)
+        return;
+
+    uint16_t sent = 0;
+    for (int attempt = 0; attempt < ETH1_TX_RETRIES && sent < io->tx_batch_count; attempt++) {
+        sent += rte_eth_tx_burst(io->port_id, 0, io->tx_batch + sent,
+                                 io->tx_batch_count - sent);
+        if (sent < io->tx_batch_count)
+            rte_pause();
+    }
+    for (uint16_t i = sent; i < io->tx_batch_count; i++)
+        rte_pktmbuf_free(io->tx_batch[i]);
+    io->tx_batch_count = 0;
+}
+
+int eth1_send(struct eth1_io *io, const uint8_t *buf, uint16_t len)
+{
+    struct rte_mbuf *m = rte_pktmbuf_alloc(io->mbuf_pool);
+    if (!m) {
+        LOG_ERR("eth1: mbuf alloc failed");
+        return -1;
+    }
+
+    uint8_t *data = rte_pktmbuf_append(m, len);
+    if (!data) {
+        rte_pktmbuf_free(m);
+        return -1;
+    }
+    memcpy(data, buf, len);
+
+    io->tx_batch[io->tx_batch_count++] = m;
+    if (io->tx_batch_count >= TX_BATCH_SIZE)
+        eth1_tx_flush(io);
+    return 0;
+}
+
 /* ── eth2: DPDK ENA PMD (Server-facing) ──────────────────────────────────── */
 
 int eth2_init(struct eth2_io *io, uint16_t port_id, struct rte_mempool *pool,
@@ -155,6 +194,23 @@ int eth2_init(struct eth2_io *io, uint16_t port_id, struct rte_mempool *pool,
     return 0;
 }
 
+void eth2_tx_flush(struct eth2_io *io)
+{
+    if (io->tx_batch_count == 0)
+        return;
+
+    uint16_t sent = 0;
+    for (int attempt = 0; attempt < ETH2_TX_RETRIES && sent < io->tx_batch_count; attempt++) {
+        sent += rte_eth_tx_burst(io->port_id, 0, io->tx_batch + sent,
+                                 io->tx_batch_count - sent);
+        if (sent < io->tx_batch_count)
+            rte_pause();
+    }
+    for (uint16_t i = sent; i < io->tx_batch_count; i++)
+        rte_pktmbuf_free(io->tx_batch[i]);
+    io->tx_batch_count = 0;
+}
+
 int eth2_send(struct eth2_io *io, const uint8_t *buf, uint16_t len)
 {
     struct rte_mbuf *m = rte_pktmbuf_alloc(io->mbuf_pool);
@@ -170,18 +226,8 @@ int eth2_send(struct eth2_io *io, const uint8_t *buf, uint16_t len)
     }
     memcpy(data, buf, len);
 
-    /* A dropped frame here (SYN, SYN-ACK flush, or c2s data) costs a TCP RTO;
-     * retry briefly if the ring is momentarily full. */
-    uint16_t sent = 0;
-    for (int attempt = 0; attempt < ETH2_TX_RETRIES; attempt++) {
-        sent = rte_eth_tx_burst(io->port_id, 0, &m, 1);
-        if (sent)
-            break;
-        rte_pause();
-    }
-    if (sent == 0) {
-        rte_pktmbuf_free(m);
-        return -1;
-    }
+    io->tx_batch[io->tx_batch_count++] = m;
+    if (io->tx_batch_count >= TX_BATCH_SIZE)
+        eth2_tx_flush(io);
     return 0;
 }

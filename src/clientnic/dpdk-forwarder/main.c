@@ -15,12 +15,19 @@
 #include "capture.h"
 #include "log.h"
 
-#define MBUF_POOL_SIZE  8191
 #define MBUF_CACHE_SIZE 250
 #define RX_BURST_SIZE   32
+#define RX_RING_SIZE    1024   /* must match io.c */
+#define TX_RING_SIZE    1024   /* must match io.c */
+/* NUM_MBUFS ≥ nb_ports * (nb_rxd + nb_txd + max_burst + nb_lcores * cache),
+ * derived instead of a bare magic number so a third port or deeper ring can't
+ * silently push headroom under the minimum (capacity-model.md §3). */
+#define MBUF_POOL_SIZE  (RTE_MAX((unsigned)(2 * (RX_RING_SIZE + TX_RING_SIZE + \
+                                 RX_BURST_SIZE + MBUF_CACHE_SIZE)), 8191U))
 #define STATS_INTERVAL_SEC 5   /* seconds between periodic per-port stats logs */
 
 static volatile int running = 1;
+static uint64_t g_truncated_frames = 0; /* pkt_len != data_len — see capacity-model.md §5 */
 
 static void signal_handler(int sig)
 {
@@ -266,17 +273,27 @@ int main(int argc, char *argv[])
         for (uint16_t i = 0; i < nb_rx0; i++) {
             uint8_t *data = rte_pktmbuf_mtod(rx_bufs0[i], uint8_t *);
             uint16_t len  = rte_pktmbuf_data_len(rx_bufs0[i]);
+            if (rte_pktmbuf_pkt_len(rx_bufs0[i]) != len)
+                g_truncated_frames++;
             pipeline_feed_eth0(&pipeline, data, len);
             rte_pktmbuf_free(rx_bufs0[i]);
         }
 
         uint16_t nb_rx1 = rte_eth_rx_burst(eth1.port_id, 0, rx_bufs1, RX_BURST_SIZE);
         for (uint16_t i = 0; i < nb_rx1; i++) {
+            if (rte_pktmbuf_pkt_len(rx_bufs1[i]) != rte_pktmbuf_data_len(rx_bufs1[i]))
+                g_truncated_frames++;
             if (capture)
                 pcap_writer_write_mbuf(capture, rx_bufs1[i]);
             pipeline_feed_eth1(&pipeline, rx_bufs1[i]);
             rte_pktmbuf_free(rx_bufs1[i]);
         }
+
+        /* Flush both TX batches once per loop iteration — amortizes the MMIO
+         * doorbell write over up to TX_BATCH_SIZE packets instead of paying
+         * it per packet (capacity-model.md §4/§9). */
+        eth0_tx_flush(&eth0);
+        eth1_tx_flush(&eth1);
 
         /* Sample pool headroom only while packets are in flight — that is when
          * the pool actually drains, and it keeps the count off the idle path. */
@@ -293,11 +310,18 @@ int main(int argc, char *argv[])
             LOG_INFO("stats mempool: avail=%u/%d low-water=%u",
                      rte_mempool_avail_count(mbuf_pool), MBUF_POOL_SIZE,
                      mempool_low_water);
+            if (g_truncated_frames)
+                LOG_WARN("stats: truncated_frames=%" PRIu64 " total"
+                         " — pkt_len != data_len, frame exceeded mbuf dataroom"
+                         " (endpoint MTU > 2034B, capacity-model §5)",
+                         g_truncated_frames);
             next_stats = now + stats_period;
         }
     }
 
     LOG_INFO("Shutting down...");
+    eth0_tx_flush(&eth0);
+    eth1_tx_flush(&eth1);
     pcap_writer_close(capture);
     rte_eth_dev_stop(eth0.port_id);
     rte_eth_dev_close(eth0.port_id);
