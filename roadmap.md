@@ -7,6 +7,7 @@ Tracks open GitHub issues and how they relate to the OpenSpec change pipeline (`
 - `full-dpdk-endpoint-interfaces` (#18) — **code done**, OpenSpec change archived 2026-07-14 (`openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`). Both SmartNICs now run dual-DPDK data-plane ports. **Deploy-gated verification still open** — see [#18 — remaining deploy-gated DoD](#18--remaining-deploy-gated-dod).
 - [#20 — Scale DPDK experiment to 100k parallel connections with 3-NIC SmartNIC topology](https://github.com/ofekm5/zero-rtt-tcp/issues/20) — closed 2026-07-21, tracked here going forward (topology sub-scope already shipped via #18; remaining load-scale work stays open in this doc)
 - [#21 — Run experiment on both DPDK and baseline stacks](https://github.com/ofekm5/zero-rtt-tcp/issues/21) — closed 2026-07-21, tracked here going forward
+- **Infra hand-tailoring** — CDK/runtime properties need to be tuned to the ceilings `docs/capacity-model.md` documents before the #20 100k run is meaningful; not yet started. See [Infra hand-tailoring](#infra-hand-tailoring-per-docscapacity-modelmd).
 
 ## #18 — remaining deploy-gated DoD
 
@@ -64,6 +65,77 @@ Running the 100k target against the capacity model confirmed the premise (endpoi
 - [ ] `experiments/dpdk/run_experiment.sh` completes a 100k run, report under `experiments/dpdk/reports/`
 - [ ] `analyze_metrics.py` shows unimodal `server_gap` at 100k (no bimodal regression)
 - [ ] Measured `cycles_per_packet` documented against offered load
+
+## Infra hand-tailoring (per `docs/capacity-model.md`)
+
+**Goal:** stop deploying `infra/dpdk` with generic/default properties and instead
+hand-tailor every instance size, MTU, sysctl, and DPDK sizing constant to the
+ceilings the capacity model derived — so a 100k-connection run (#20) tests the
+data plane, not an untuned default.
+
+This is infra-as-code + runtime config work, distinct from #20's "run the
+experiment at scale" scope — it's the set of concrete edits the capacity model
+says are needed *before* that run is worth trusting.
+
+### CDK stack (`infra/dpdk/cdk/smartnics_stack.py`)
+- [ ] Upsize Client + Server EC2 instances off `T3.MICRO` (1 GiB RAM caps out at
+      ~20-30k sockets at minimum buffers per capacity-model.md §10) to an
+      `m5.xlarge`-class instance (≥16 GiB) — same gap tracked in #20's original
+      scope, landing it here as the actual CDK diff.
+  - SmartNICs (`c5n.large`, 2 vCPU / 5.25 GiB) stay as-is — capacity-model.md §2
+    confirms they're comfortable; only the endpoints are the ceiling.
+- [ ] Confirm security-group rules once endpoints are upsized: SG currently
+      scopes to `10.1.0.0/16` rather than `0.0.0.0/0`, so Nitro conntrack
+      tracking stays active and `conntrack_allowance_exceeded` (§4) is reachable
+      at 100k — decide whether to widen the rule or budget for the allowance.
+
+### Endpoint runtime tuning (`run_core.sh` / boot-time config on Client + Server)
+- [ ] Pin endpoint MTU to 1500 (matches `SPOOFED_MSS=1460`) instead of the AWS
+      VPC default 9001 — closes the unguarded 2048-byte frame ceiling
+      (capacity-model.md §5) that lets the server send ~9015-byte frames into
+      `trans_s2c`. Same fix already called out under [#18's regression-run
+      criterion](#18--remaining-deploy-gated-dod); this item is the durable
+      infra-config version so it isn't a one-off manual step per run.
+- [ ] Raise kernel limits ahead of 100k connections (capacity-model.md §10,
+      table in "Endpoint limits"): `ulimit -n`/`fs.file-max` > 100,000,
+      `net.core.somaxconn`, `net.ipv4.tcp_max_syn_backlog`,
+      `net.ipv4.tcp_max_tw_buckets`, `net.core.netdev_max_backlog`.
+- [ ] Raise or confirm `net.netfilter.nf_conntrack_max` (default 65,536) above
+      100,000 on both endpoints — `install_iptables()` in both DPDK binaries can
+      load `nf_conntrack`, and its default table silently drops connections at
+      100k in a way indistinguishable from a data-plane bug.
+- [ ] Assert the port-space inequality in `run_core.sh` before every run rather
+      than discovering it as connection failures: `IPERF_PORTS × ephemeral_range
+      ≥ target_connections`, with 2×MSL (60s) TIME_WAIT margin
+      (capacity-model.md §8).
+
+### DPDK sizing constants (`main.c`, `io.c`, `flow_table.h` in both trees)
+- [ ] Derive `NUM_MBUFS` from the ring/port formula instead of the hardcoded
+      `8191` magic number, so a third port or deeper ring can't silently drop
+      headroom below the required minimum (capacity-model.md §3):
+      `RTE_MAX(2 * (RX_RING_SIZE + TX_RING_SIZE + RX_BURST_SIZE + MBUF_CACHE_SIZE), 8191U)`.
+- [ ] Add a global outstanding-buffered-bytes counter + shedding ceiling to
+      ServerNIC's flow table — `FT_MAX_BUFFER=64` per flow has no global cap and
+      a worst case of ~9.7 GB against 5.25 GiB of RAM (capacity-model.md §7).
+- [ ] Batch TX (`struct rte_mbuf *tx[32]` + one `tx_burst` per loop) instead of
+      the current one-packet-per-burst doorbell write — capacity-model.md §4
+      flags this as the likely first throughput wall, ahead of any endpoint or
+      NIC limit.
+
+### Success criteria
+- [ ] Client/Server instance class changed in `smartnics_stack.py` and
+      redeployed (this is a replacement, not update-in-place, like #18's ENI
+      change)
+- [ ] Endpoint MTU pinned to ≤2034B as durable boot-time config, not a manual
+      per-run step
+- [ ] `nf_conntrack_max`, `somaxconn`, `tcp_max_syn_backlog`, `tcp_max_tw_buckets`
+      confirmed ≥ 100k-connection requirements on both endpoints
+- [ ] `NUM_MBUFS` derived from ring sizes in source, not a bare constant
+- [ ] ServerNIC buffered-byte ceiling lands with a shedding policy
+- [ ] TX batching lands in both `forwarder.c`/`translator.c` send paths
+- [ ] Re-run `experiments/dpdk/run_experiment.sh` post-tailoring and confirm the
+      constraints in `docs/capacity-model.md` §11 ("order of investigation") are
+      each individually checked off, not just the top-level pass/fail
 
 ## #21 — Run experiment on both DPDK and baseline stacks
 
