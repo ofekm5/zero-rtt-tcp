@@ -26,11 +26,11 @@ The probe SHALL allocate hugepages on the DPU ARM and bind `pf0hpf` as a DPDK po
 - **THEN** `dpdk-testpmd` reaches the `testpmd>` prompt
 - **AND** `show port summary all` lists `pf0hpf` as a bound port
 
-#### Scenario: No package installation is attempted
+#### Scenario: No network-dependent package installation is attempted
 
 - **WHEN** the harness runs any step on the DPU ARM
-- **THEN** it invokes only tooling already present on the system
-- **AND** it SHALL NOT invoke `apt`, `pip`, or any other network-dependent package installer
+- **THEN** it SHALL NOT invoke `apt`, `pip`, a container registry pull, or any other step requiring DNS resolution from the DPU
+- **AND** any toolchain the harness needs beyond preinstalled tooling arrives as an image built elsewhere and transported to the DPU
 
 ### Requirement: Composed transfer-domain rule
 
@@ -106,11 +106,43 @@ The probe SHALL produce a written verdict of YES, NO, or PARTIAL, distinguishing
 - **THEN** the harness records a PARTIAL verdict naming the egress path as the failing sub-capability
 - **AND** it records that a Scalable Function egress topology is the applicable fallback
 
-#### Scenario: NO verdict is unconditional
+#### Scenario: NO verdict requires the cross-check
 
-- **WHEN** the sequence-number modification action is rejected or performs no rewrite
-- **THEN** the harness records a NO verdict
-- **AND** it records that no topology change rescues the offload architecture
+- **WHEN** the sequence-number modification action is rejected or performs no rewrite under `rte_flow`
+- **THEN** the harness SHALL NOT record a NO verdict until the DOCA Flow cross-check has run
+- **AND** a NO verdict recorded after a negative cross-check states that no topology change rescues the offload architecture
+
+### Requirement: Conditional DOCA Flow cross-check
+
+Because `rte_flow` and DOCA Flow drive the same hardware steering but do not expose identical action sets, a negative `rte_flow` result SHALL be disambiguated by a DOCA Flow attempt before it is treated as a hardware limitation.
+
+#### Scenario: Cross-check runs only on a negative result
+
+- **WHEN** the `rte_flow` probe returns a positive result
+- **THEN** the harness does not run the DOCA Flow cross-check
+
+#### Scenario: Cross-check runs after a negative result
+
+- **WHEN** the `rte_flow` probe fails to accept or fails to apply the sequence-number modification
+- **THEN** the harness runs a minimal DOCA Flow program attempting the same TCP sequence-number modification
+- **AND** that program is built inside the DOCA devel container and transported to the DPU as a saved image, without any registry pull from the DPU
+
+#### Scenario: Cross-check scope is limited to disambiguation
+
+- **WHEN** the DOCA Flow cross-check runs
+- **THEN** it attempts only the sequence-number modification
+- **AND** it SHALL NOT perform hairpin egress, traffic generation, or on-wire capture
+
+#### Scenario: Cross-check succeeds where rte_flow failed
+
+- **WHEN** the DOCA Flow cross-check applies the modification that `rte_flow` could not
+- **THEN** the harness records a PARTIAL verdict rather than a YES or a NO
+- **AND** it records that the capability exists but is not reachable through `rte_flow` on this build
+
+#### Scenario: Cross-check artifacts are cleaned up
+
+- **WHEN** the cross-check has completed
+- **THEN** any container image loaded onto the DPU for it is removed as part of restoration
 
 ### Requirement: Restoration to pre-spike state
 

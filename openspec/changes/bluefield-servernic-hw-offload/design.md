@@ -60,6 +60,22 @@ Hardware rules do not expire on their own. If teardown depended on a software ti
 
 SC3 asserts data packets never reach an ARM core. Proving a negative requires the software side to count what it receives, broken down by classification. The application therefore maintains a counter of packets received that were **not** SYN/SYN-ACK/FIN/RST; that counter staying at zero while rule counters climb is the measurement. Without this instrumentation the criterion could only be argued, not measured.
 
+### D6 — The offload API is an open decision behind a backend boundary
+
+`rte_flow` was originally selected partly because DOCA Flow was believed to require an ARM toolchain that could not be installed. That premise was wrong: the DOCA devel container ships `meson` and `ninja`, and `infra/bluefield/deployment/compress_doca_image.sh` plus `wire-example/build_wire_image.sh --save` already script offline transport. With that objection removed, the remaining arguments do not clearly favour either API:
+
+| | `rte_flow` | DOCA Flow |
+|---|---|---|
+| Fit with existing code | `src/servernic/dpdk/` is plain DPDK | second API in the tree |
+| In-repo precedent | none for offload rules | `syn-punt/src/doca_flow_handler.c` |
+| Fit with this architecture | generic match/action | pipe abstraction built for fast-path-plus-punt |
+| Vendor portability | standard DPDK | NVIDIA only |
+| Vendor support depth | mlx5 PMD exposure varies | NVIDIA's recommended path for BF-3 |
+
+Rather than guess, `offload.c` exposes a narrow backend interface — compose a rule pair from a 5-tuple and a delta, install it, destroy it, read its counter — and the concrete API is chosen once the spike reports which actions each surfaces on this card. If the spike's cross-check finds the capability reachable only through DOCA Flow, that selects the backend without touching the control plane, the flow table, or the teardown logic.
+
+The interface is deliberately narrow: four operations, no leaked API types. A wide interface would be an abstraction whose second implementation never gets written; a four-operation one is small enough to be worth keeping even if only one backend ever ships.
+
 ## Alternatives Considered
 
 ### A. Rule installed at SYN-ACK, two rules per flow, FIN/RST-driven teardown — **recommended**
@@ -88,8 +104,9 @@ Age rules out after an idle period rather than punting FIN and RST.
 
 ## Risks / Trade-offs
 
-- **The spike returns NO** → this change is invalidated, not reduced. It is recorded as a blocking dependency in `proposal.md` rather than a risk to mitigate, because no mitigation exists.
+- **The spike returns NO** → this change is invalidated, not reduced. Recorded as a blocking dependency in `proposal.md` rather than a risk to mitigate, because no mitigation exists. Note that a NO is only recorded after the spike's DOCA Flow cross-check, so it means the silicon cannot do the rewrite — not merely that one API declined to.
 - **The spike returns PARTIAL (return leg fails)** → the egress action changes from returning out `pf0hpf` to forwarding to a Scalable Function representor. `offload.c` is the only affected module; the control plane, flow table, and teardown logic are unchanged. This is why the egress target is a single point in the rule composition rather than spread through the code.
+- **The spike returns PARTIAL (capability reachable only through DOCA Flow)** → selects the DOCA Flow backend behind the D6 interface. Again `offload.c` alone is affected, and the ARM build gains the DOCA devel container step already proven by the spike's cross-check.
 - **Dropped FIN leaks a rule pair** → rule count drifts upward under lossy conditions. Mitigated by making rule count externally observable (SC5) so the leak is detectable, with Alternative C available as a follow-up reclaim mechanism if measurement shows it matters.
 - **Hardware rule capacity is exhausted at scale** → not measured by this change, and out of scope. Recorded here because the two-rules-per-flow decision in D2 halves whatever the ceiling turns out to be, and the 100k-connection goal will meet it.
 - **Shared modules diverge between the two targets** → `flow_table.c` / `syn_handler.c` / `checksum.c` are referenced, not copied, so a T8 protocol fix lands once. The cost is that a change to those modules must build for both targets.
@@ -103,6 +120,8 @@ Additive — nothing is replaced. `src/servernic/dpdk/` and its AWS deployment c
 
 ## Open Questions
 
-- **Does `rte_flow` on this DOCA build express both directions' rewrites as a symmetric rule pair, or does the ack-num modification require different action syntax than seq-num?** The spike proves one direction; the second is assumed symmetric and must be confirmed during implementation.
+- **Which offload API ships?** Resolved by the spike's findings per D6, not assumed. Until then `offload.c` is written against the backend interface.
+- **Does the chosen API on this DOCA build express both directions' rewrites as a symmetric rule pair, or does the ack-num modification require different action syntax than seq-num?** The spike proves one direction; the second is assumed symmetric and must be confirmed during implementation.
+- **Is `dv_flow_en=2` required on the device argument for hardware steering?** The existing `infra/bluefield/deployment/Dockerfile` passes it. If it gates the steering mode the rewrite needs, it belongs in this target's EAL arguments too.
 - **What is the hardware rule capacity on this BF-3, and is it per-port or global?** Not needed for correctness, needed before any scale claim.
 - **Should buffered pre-delta packets be flushed through software rewrite, or re-injected after the rule is live so hardware rewrites them?** The former is simpler and matches the existing x86 implementation; the latter would remove `checksum.c` from the hot path entirely. Deferred to implementation, as it does not change any success criterion.

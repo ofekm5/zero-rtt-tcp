@@ -29,27 +29,32 @@ Verify hints for authoring tasks check the artifact itself (syntax, required con
     - Outcome: sends TCP packets with a known sequence number out `ens16f0np0` on the x86 VM while capturing on the same interface, and reports the sequence numbers of any returned packets alongside the sequence number sent. Distinguishes three observable outcomes — returned and rewritten, returned unmodified, and nothing returned within the capture window — because `design.md` decision D4 maps them to different verdicts.
     - Commit: `feat(bluefield-probe): generate and capture traffic from the host VM`
 
-- [ ] 6. Evaluate the three verification levels and emit a verdict — verify: `bash -n experiments/bluefield/probe/verdict.sh && grep -q 'PARTIAL' experiments/bluefield/probe/verdict.sh`
+- [ ] 6. Add the conditional DOCA Flow cross-check — verify: `bash -n experiments/bluefield/probe/crosscheck.sh && grep -q 'docker load' experiments/bluefield/probe/crosscheck.sh`
+    - File: `experiments/bluefield/probe/crosscheck.sh`, `experiments/bluefield/probe/crosscheck/` (minimal DOCA Flow program plus its `meson.build` and `Dockerfile`)
+    - Outcome: runs only when the `rte_flow` probe returned a negative result, and attempts the same TCP sequence-number modification through DOCA Flow to distinguish a silicon limit from an mlx5 PMD exposure gap, per `design.md` D6. The program is built inside the DOCA devel container — which ships `meson` and `ninja` — and transported to the DPU as a saved image following the existing `infra/bluefield/deployment/compress_doca_image.sh` pattern, so the DPU never needs DNS. Scope is disambiguation only: no hairpin, no traffic generation, no capture.
+    - Commit: `feat(bluefield-probe): add conditional DOCA Flow cross-check for negative results`
+
+- [ ] 7. Evaluate the verification levels and emit a verdict — verify: `bash -n experiments/bluefield/probe/verdict.sh && grep -q 'PARTIAL' experiments/bluefield/probe/verdict.sh`
     - File: `experiments/bluefield/probe/verdict.sh`
-    - Outcome: reads rule acceptance, `flow query <id> count` hits against testpmd's forwarding statistics, and the on-wire capture result, then emits YES, NO, or PARTIAL per the decision table in `design.md` D2 and the branches in D4. A YES requires all three levels to hold and is annotated as indicative pending DOCA Flow confirmation; a PARTIAL names which sub-capability failed and records the Scalable Function egress topology as the applicable fallback; a NO records that no topology change rescues the architecture.
+    - Outcome: reads rule acceptance, `flow query <id> count` hits against testpmd's forwarding statistics, the on-wire capture result, and the cross-check result when one was run, then emits YES, NO, or PARTIAL per the decision tables in `design.md` D2, D4 and D6. A YES requires all three `rte_flow` levels to hold and is annotated as indicative pending DOCA Flow confirmation. A NO is emitted only after a negative cross-check. A cross-check that succeeds where `rte_flow` failed yields PARTIAL, recording that the capability exists but is not reachable through `rte_flow` on this build.
     - Commit: `feat(bluefield-probe): evaluate verification levels and emit verdict`
 
-- [ ] 7. Restore the DPU and verify against the baseline — verify: `bash -n experiments/bluefield/probe/restore.sh && grep -q 'ovsbr1' experiments/bluefield/probe/restore.sh`
+- [ ] 8. Restore the DPU and verify against the baseline — verify: `bash -n experiments/bluefield/probe/restore.sh && grep -q 'ovsbr1' experiments/bluefield/probe/restore.sh`
     - File: `experiments/bluefield/probe/restore.sh`
-    - Outcome: re-attaches `pf0hpf` to `ovsbr1`, frees the hugepages, returns `ens16f0np0` to its recorded state, diffs the resulting `ovs-vsctl show` against the baseline file, and exits non-zero when they differ so an incomplete restoration cannot be reported as success. Runs for every verdict, including failure paths.
+    - Outcome: re-attaches `pf0hpf` to `ovsbr1`, frees the hugepages, returns `ens16f0np0` to its recorded state, removes any container image loaded for the cross-check, diffs the resulting `ovs-vsctl show` against the baseline file, and exits non-zero when they differ so an incomplete restoration cannot be reported as success. Runs for every verdict, including failure paths.
     - Commit: `feat(bluefield-probe): restore DPU state and verify against baseline`
 
-- [ ] 8. Add the orchestrator that runs the probe end to end — verify: `bash -n experiments/bluefield/probe/run_probe.sh && grep -q 'restore.sh' experiments/bluefield/probe/run_probe.sh`
+- [ ] 9. Add the orchestrator that runs the probe end to end — verify: `bash -n experiments/bluefield/probe/run_probe.sh && grep -q 'restore.sh' experiments/bluefield/probe/run_probe.sh`
     - File: `experiments/bluefield/probe/run_probe.sh`
-    - Outcome: runs baseline, setup, flow rule, traffic, and verdict in sequence, and invokes `restore.sh` on every exit path including early failure, so the DPU is never left mutated by an aborted run. Writes the verdict and collected evidence under `experiments/bluefield/reports/`.
+    - Outcome: runs baseline, setup, flow rule, traffic, the cross-check when the probe was negative, and verdict in sequence, and invokes `restore.sh` on every exit path including early failure, so the DPU is never left mutated by an aborted run. Writes the verdict and collected evidence under `experiments/bluefield/reports/`.
     - Commit: `feat(bluefield-probe): add end-to-end probe orchestrator`
 
-- [ ] 9. Document the probe and its prerequisites — verify: `test -s experiments/bluefield/probe/README.md && grep -q 'oob_net0' experiments/bluefield/probe/README.md`
+- [ ] 10. Document the probe and its prerequisites — verify: `test -s experiments/bluefield/probe/README.md && grep -q 'oob_net0' experiments/bluefield/probe/README.md`
     - File: `experiments/bluefield/probe/README.md`
-    - Outcome: states the two target hosts, the VPN and SSH-key prerequisites, what the probe mutates and how it restores, why management over `oob_net0` is unaffected, and how to read a YES, NO, or PARTIAL verdict.
+    - Outcome: states the two target hosts, the VPN and SSH-key prerequisites, what the probe mutates and how it restores, why management over `oob_net0` is unaffected, how the container image is built elsewhere and transported rather than pulled, and how to read a YES, NO, or PARTIAL verdict including the cross-check branch.
     - Commit: `docs(bluefield-probe): document probe prerequisites and verdict reading`
 
-- [ ] 10. Execute the probe against the runs3 DPU and record the verdict — manual review
+- [ ] 11. Execute the probe against the runs3 DPU and record the verdict — manual review
     - File: `experiments/bluefield/reports/` (verdict document produced by the run)
-    - Outcome: a committed verdict document recording YES, NO, or PARTIAL with the captured `flow create` result, counter and forwarding statistics, the `tcpdump` evidence, and the DPDK and firmware versions the result was obtained on; `ovs-vsctl show` on the DPU matches the pre-spike baseline afterwards. This task requires the RUNS lab tunnel and live hardware, so it cannot be checked by the sandboxed verifier.
+    - Outcome: a committed verdict document recording YES, NO, or PARTIAL with the captured `flow create` result, counter and forwarding statistics, the `tcpdump` evidence, the cross-check result when one was run, and the DPDK and firmware versions the result was obtained on; `ovs-vsctl show` on the DPU matches the pre-spike baseline afterwards. This task requires the RUNS lab tunnel and live hardware, so it cannot be checked by the sandboxed verifier.
     - Commit: `docs(bluefield-probe): record e-switch TCP seq offload verdict`

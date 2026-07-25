@@ -5,10 +5,11 @@ The BlueField-3 ARM cores (8× Cortex-A78AE) are slower at software packet proce
 ## Non-Goals
 
 - **Implementing any part of the offloaded ServerNIC.** This change produces a verdict and the evidence behind it, not a data plane. The architecture lives in a separate change that is gated on this one.
-- **Verifying the same capability through DOCA Flow.** Rejected during Socratic questioning in favour of `testpmd`/`rte_flow`, because `meson` and `ninja` are absent on the ARM and broken DNS prevents installing them. Re-proving a positive result through DOCA Flow is a deliberate follow-up, not part of this change.
+- **Using DOCA Flow for the *primary* probe.** `testpmd`/`rte_flow` drives the first pass because it is interactive and needs no build cycle while the rule syntax is still unknown. A minimal DOCA Flow cross-check *is* in scope, but fires **only on a NO result** — see What Changes. Re-proving a *positive* result through DOCA Flow remains a follow-up.
+- **Fixing lab DNS.** The DPU has raw-IP connectivity but no working resolver. The probe does not need one: `dpdk-testpmd` is preinstalled, and the DOCA devel container carrying `meson`/`ninja` is transported as a saved image rather than pulled.
 - **Concurrent or at-scale flows.** One flow answers the capability question. Rule-install rate, flow-table capacity, and throughput are separate experiments.
 - **Any performance or latency measurement.** This is a binary capability probe. A YES here says the hardware *can* do the rewrite, not how fast.
-- **Fixing lab DNS, the ARM toolchain, or `run_core.sh`'s AWS assumptions** (`ec2-user`, `/usr/local/bin/meson`, `aws ec2 describe-instances`) beyond the minimum needed to run this spike. That is deployment work with its own change.
+- **Fixing `run_core.sh`'s AWS assumptions** (`ec2-user`, `/usr/local/bin/meson`, `aws ec2 describe-instances`) or provisioning endpoint VMs. That is deployment work with its own change.
 - **Anything touching the runs4 DPU** (`10.13.36.46`), which requires permission from another student.
 - **Cabling `p0` or requesting a transceiver.** The spike deliberately runs over the `pf0hpf` path that exists today.
 - **Modifying `src/servernic/dpdk/` or `src/clientnic/dpdk-forwarder/`.** No production source file is touched by this change.
@@ -18,7 +19,8 @@ The BlueField-3 ARM cores (8× Cortex-A78AE) are slower at software packet proce
 - **New spike harness** under `experiments/bluefield/` that drives the whole probe end to end: records the pre-spike DPU baseline, allocates hugepages on the ARM, detaches `pf0hpf` from `ovsbr1`, launches `dpdk-testpmd`, installs a composed `rte_flow` rule, generates traffic from the x86 VM, captures the returned packets, and restores the DPU.
 - **A composed `rte_flow` rule** exercising all three properties at once in the transfer domain: 5-tuple match, `modify_field` on `RTE_FLOW_FIELD_TCP_SEQ_NUM` / `TCP_ACK_NUM` with ADD/SUB, and hairpin egress back out `pf0hpf`.
 - **Traffic generation and capture** driven from the x86 VM (`10.13.37.10`) over `ens16f0np0`, so the rewrite is observed on the wire rather than inferred from PMD return codes.
-- **A verdict document** recording YES / NO / PARTIAL with the captured evidence, the exact DPDK and firmware versions it was obtained on, and what it implies for the companion architecture change.
+- **A conditional DOCA Flow cross-check** that runs **only when the `rte_flow` probe returns NO**. Both APIs drive the same mlx5 hardware steering but do not expose identical action sets, so a NO from `rte_flow` is ambiguous — it may be a silicon limit or merely an mlx5 PMD exposure gap. The cross-check distinguishes them before the architecture is abandoned. It is built inside the DOCA devel container, which ships `meson` and `ninja`, transported to the DPU as a saved image using the existing `infra/bluefield/deployment/compress_doca_image.sh` pattern — no DNS required.
+- **A verdict document** recording YES / NO / PARTIAL with the captured evidence, the exact DPDK and firmware versions it was obtained on, the cross-check result when one was run, and what it implies for the companion architecture change.
 - **Restore path** that returns `pf0hpf` to `ovsbr1` and frees hugepages, verified by diffing against the recorded baseline.
 
 ## Success Criteria
