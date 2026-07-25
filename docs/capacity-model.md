@@ -35,23 +35,26 @@ size the flow table; packet rate sizes the mbuf pool.**
 
 ## 2. Hardware baseline
 
-From `infra/dpdk/cdk/smartnics_stack.py`:
+From `infra/dpdk/cdk/smartnics_stack.py` (updated 2026-07-25 — was `t3.micro`
+for Client/Server when this section was first written; see §10, §13):
 
 | VM | Instance | vCPU | RAM | Role |
 |---|---|---|---|---|
-| Client | **t3.micro** | 2 (burstable) | **1 GiB** | unmodified TCP client (iperf) |
+| Client | **m5.xlarge** | 4 | **16 GiB** | unmodified TCP client (event-driven `loadgen.py`) |
 | ClientNIC | c5n.large | 2 | 5.25 GiB | DPDK: spoof SYN-ACK, stamp V |
 | ServerNIC | c5n.large | 2 | 5.25 GiB | DPDK: sole stateful translator |
-| Server | **t3.micro** | 2 (burstable) | **1 GiB** | unmodified TCP server (iperf) |
+| Server | **m5.xlarge** | 4 | **16 GiB** | unmodified TCP server (event-driven `loadgen.py`) |
 
 Each SmartNIC reserves **512 × 2 MiB = 1 GiB of hugepages**
 (`vm.nr_hugepages=512`), leaving ~4.25 GiB of ordinary RAM for the process heap,
 BSS, and page cache. Both DPDK binaries run on a **single lcore** (`-l 0` in
 `experiments/dpdk/{clientnic,servernic}.sh`), so one core busy-polls both ports.
 
-> **Read the endpoint row again.** The t3.micro endpoints are the real ceiling
-> for a 100k-connection test — see §11. The SmartNICs are comfortable; the
-> things generating and terminating the connections are not.
+> **The endpoint row no longer applies.** With the m5.xlarge upsize (§10), the
+> endpoints held 14.8-14.9 GiB free through a live 100k-connection run — they
+> are comfortable. The current ceiling for a 100k-connection test is the
+> SmartNICs' single busy-poll lcore against a burst of 100,000 near-simultaneous
+> connection attempts — see §4, §9, §13.
 
 ---
 
@@ -135,9 +138,18 @@ more slack but adds queueing latency and pins more mbufs (§3). If `imissed` is
 climbing, the answer is a faster loop, **not** a deeper ring — a deeper ring only
 delays the drop.
 
-### The TX doorbell: the likely first throughput wall
+> **This is exactly what broke at the actual 100k run (2026-07-25 — see §13).**
+> `asyncio.gather()` fires all 100,000 connection attempts at once, so the SYN
+> arrival isn't spread over time — it's one enormous burst hitting a ring sized
+> for 32 loop-iterations of slack. `imissed=16891` (ServerNIC) / `imissed=2236`
+> (ClientNIC) is that math playing out for real, even though the *measured*
+> cycles/packet (§9, §13) implies each core has ~40-50× the sustained-throughput
+> headroom the test actually needed. Ring depth vs. burst size, not raw core
+> speed, is the ceiling this system hits first at 100k.
 
-Every send path in this codebase does:
+### The TX doorbell: the likely first throughput wall — ✅ fixed 2026-07-25
+
+Every send path in this codebase used to do:
 
 ```c
 rte_eth_tx_burst(port_id, 0, &m, 1);   // ← one packet per burst
@@ -146,9 +158,12 @@ rte_eth_tx_burst(port_id, 0, &m, 1);   // ← one packet per burst
 `tx_burst` with `nb_pkts = 1` means an **MMIO doorbell write per packet**. This is
 the classic DPDK anti-pattern: the whole point of the burst API is to amortize
 that write over 32 packets. A batched forwarder does millions of pps per core; a
-one-at-a-time forwarder is typically an order of magnitude slower. Before blaming
-anything else for a throughput ceiling, **measure cycles/packet (§12) and batch
-TX** — accumulate into a `struct rte_mbuf *tx[32]` and flush once per loop.
+one-at-a-time forwarder is typically an order of magnitude slower.
+
+**Fixed**: every port now has a `tx_batch[TX_BATCH_SIZE=32]` buffer
+(`eth0_tx_flush`/`eth1_tx_flush`/`eth2_tx_flush` in each tree's `io.c`), flushed
+once per poll-loop iteration instead of once per packet. See §9/§13 for the
+measured cycles/packet this produced.
 
 ### AWS ENA allowances (the invisible ceiling)
 
@@ -180,9 +195,10 @@ They are unreadable on the SmartNIC data ports (DPDK owns them); use
 
 ---
 
-## 5. Frame-size budget: the hard 2048-byte ceiling ⚠
+## 5. Frame-size budget: the hard 2048-byte ceiling — ✅ guarded 2026-07-25
 
-This is the sharpest edge in the system and it is currently **unguarded**.
+This was the sharpest edge in the system and it was, at the time this section
+was first written, **unguarded**.
 
 Every packet-touching path copies through a fixed stack buffer:
 
@@ -220,6 +236,13 @@ Pick one:
 
 Until then, add a loud counter for `pkt_len != data_len` so a silent truncation
 cannot masquerade as a data-plane bug.
+
+**Done (2026-07-25):** option 1 — `run_core.sh` now runs `ip link set eth0 mtu
+1500` on both Client and Server every run, and both DPDK trees' main loops
+increment a `g_truncated_frames` counter whenever `rte_pktmbuf_pkt_len() !=
+rte_pktmbuf_data_len()`, logged as `stats: truncated_frames=...` if it's ever
+nonzero. Confirmed **0** on both SmartNICs during the live 100k-connection run
+(§13) — the invariant holds in practice, not just in theory.
 
 ---
 
@@ -285,7 +308,7 @@ nothing). That alone drops the entry from 1,096 B to ~72 B and the table from
 
 ---
 
-## 7. The buffered-packet cliff ⚠
+## 7. The buffered-packet cliff — ✅ capped 2026-07-25
 
 `buffer[64]` holds *pointers*; `ft_buffer_pkt()` `malloc`s each packet's bytes
 separately. There is **no global cap** on outstanding buffered bytes.
@@ -309,6 +332,17 @@ a 0-RTT client sends only its first segment or two. But:
 **Do before the 100k run:** track outstanding buffered bytes in a global counter,
 log it, and enforce a ceiling that sheds (or refuses to buffer) past a limit.
 A bounded, observable drop beats an OOM kill.
+
+**Done (2026-07-25):** `flow_table.h`/`flow_table.c` added a table-level
+`buffered_bytes` counter and a `FT_MAX_BUFFERED_BYTES = 1 GiB` ceiling.
+`ft_buffer_pkt()` now returns `-2` (distinct from `-1`, the per-flow
+`FT_MAX_BUFFER` cap) and sheds the packet instead of buffering past the
+ceiling; `ft_flush_buffer()` decrements the counter as flows drain. Live
+100k-connection measurement (§13): peaked at **446 MB of the 1 GiB cap** — well
+under the worst case, in the ballpark of the "realistic" 303 MB estimate above,
+plus overhead from the ~31% of flows that stayed PENDING (SYN-ACK never
+arrived) and kept their buffered packets outstanding for the whole run. No
+shedding triggered, no malloc failures.
 
 ---
 
@@ -339,11 +373,12 @@ margin: connections in `TIME_WAIT` still hold their tuple for `2×MSL` (60 s).
 
 ---
 
-## 9. CPU budget
+## 9. CPU budget — ✅ measured 2026-07-25
 
 One lcore (`-l 0`) polls both ports and does, per packet: parse → hash lookup →
 `memcpy` into a 2 KB stack buffer → seq/ack rewrite → IP+TCP checksum recalc →
-`rte_pktmbuf_alloc` → `tx_burst(…, 1)`.
+`rte_pktmbuf_alloc` → batched `tx_burst` (§4, fixed 2026-07-25 — was `tx_burst(…, 1)`
+when this section was first written).
 
 The budget:
 
@@ -351,11 +386,23 @@ The budget:
 required_pps × cycles_per_packet  ≤  rte_get_tsc_hz()      (~3.0e9 on c5n)
 ```
 
-Solve for the ceiling: `max_pps = tsc_hz / cycles_per_packet`. You must **measure**
-`cycles_per_packet` (§12) — do not guess it. As a scale reference, 10 Gbps of
-1500-byte frames is ~833 kpps in one direction, which allows ~3,600 cycles/packet.
-A batched DPDK forwarder lands far under that; a per-packet-doorbell forwarder
-(§4) may not.
+Solve for the ceiling: `max_pps = tsc_hz / cycles_per_packet`. As a scale
+reference, 10 Gbps of 1500-byte frames is ~833 kpps in one direction, which
+allows ~3,600 cycles/packet.
+
+**Measured (§13, live 100k-connection run):**
+
+| | cycles/packet | tsc_hz | implied `max_pps` | packets sampled |
+|---|---|---|---|---|
+| ClientNIC | ≈10,669 | 3.0e9 | ≈281,000 pps | ~889,000 |
+| ServerNIC | ≈12,483 | 3.0e9 | ≈240,000 pps | ~909,000 |
+
+Both land far under the ~3,600 cycles/packet reference ceiling for 10 Gbps —
+the batched TX fix (§4) worked. The measured *sustained* rate the 100k test
+actually produced was only ~5-6k pps, i.e. **~40-50× under** each of these
+ceilings. So per-packet processing cost is not what limits this run — see
+§4 and §13: the real ceiling is burst absorption (RX ring depth vs. 100,000
+near-simultaneous connection attempts), not steady-state cycles/packet.
 
 Also note both SmartNICs are **2 vCPU**, one of which is fully consumed by the
 busy-poll loop. Everything else — SSM agent, the experiment scripts, logging —
@@ -364,9 +411,11 @@ still takes timer interrupts.
 
 ---
 
-## 10. Endpoint limits — where 100k actually breaks first
+## 10. Endpoint limits — ✅ resolved 2026-07-25 (was the binding constraint)
 
-**The t3.micro endpoints are the binding constraint, and it is not close.**
+**This section originally identified the t3.micro endpoints as the binding
+constraint. That has been fixed — see the live-run confirmation below — but
+the arithmetic that predicted it is kept as the worked example.**
 
 A t3.micro has **1 GiB of RAM** and burstable CPU. A single established kernel
 TCP socket costs roughly:
@@ -387,21 +436,24 @@ That is before iperf's own per-connection state, before any socket carries data
 connections will not fit on a t3.micro.** Add burstable-CPU credit exhaustion on
 top and the endpoints will throttle long before the SmartNICs are stressed.
 
-**This is a topology decision, not a tuning knob**: the 100k benchmark needs the
-Client and Server VMs upgraded (an `m5.xlarge`-class instance with ≥16 GiB is a
-reasonable floor), or the target scaled down to what a t3.micro can hold
-(~20–30k connections at minimum buffers, realistically fewer).
+**This was a topology decision, not a tuning knob**, and it's been made:
+Client and Server were upgraded to `m5.xlarge` (16 GiB) in `smartnics_stack.py`
+(PR #27, 2026-07-25). **Confirmed on the live 100k-connection run (§13):**
+14.8-14.9 GiB free RAM throughout on both, zero OOM-kill entries in `dmesg`.
+The endpoints are no longer in the picture at 100k — the SmartNIC single-lcore
+CPU/burst-ring interaction (§4, §9, §13) is now the binding constraint.
 
-Also check on both endpoints, in this order:
+Also check on both endpoints, in this order — **all raised durably in
+`run_core.sh` as of 2026-07-25**:
 
-| Setting | Default | Needed for 100k |
-|---|---|---|
-| `ulimit -n` / `fs.file-max` | 1024 soft | > 100,000 |
-| `net.core.somaxconn` | 4096 | ≥ target accept backlog |
-| `net.ipv4.tcp_max_syn_backlog` | 128–1024 | large — 100k SYNs arrive *at once* |
-| `net.ipv4.tcp_max_tw_buckets` | 65536 | 100k closes ⇒ TIME_WAIT flood |
-| `net.netfilter.nf_conntrack_max` | 65536 | **> 100,000 — see below** |
-| `net.core.netdev_max_backlog` | 1000 | raise under burst |
+| Setting | Default | Needed for 100k | Status |
+|---|---|---|---|
+| `ulimit -n` / `fs.file-max` | 1024 soft | > 100,000 | ✅ `fs.file-max=1048576` |
+| `net.core.somaxconn` | 4096 | ≥ target accept backlog | ✅ `131072` |
+| `net.ipv4.tcp_max_syn_backlog` | 128–1024 | large — 100k SYNs arrive *at once* | ✅ `131072` |
+| `net.ipv4.tcp_max_tw_buckets` | 65536 | 100k closes ⇒ TIME_WAIT flood | ✅ `200000` |
+| `net.netfilter.nf_conntrack_max` | 65536 | **> 100,000 — see below** | ✅ `200000` |
+| `net.core.netdev_max_backlog` | 1000 | raise under burst | ✅ `250000` |
 
 **`nf_conntrack` deserves special attention.** Both binaries call
 `install_iptables()`, which can load the `nf_conntrack` module. Its default table
@@ -434,10 +486,11 @@ all present as "throughput collapsed" but have **opposite fixes**:
 | `rte_mempool_avail_count()` low-water | How close the pool came to empty | Sizing headroom check (§3) |
 
 Plus **cycles/packet**: wrap the loop in `rte_rdtsc()` and divide by packets
-processed; compare against `rte_get_tsc_hz()` (§9).
+processed; compare against `rte_get_tsc_hz()` (§9). **Implemented and measured
+2026-07-25** — see §9, §13.
 
 Plus, for §7: a global counter of outstanding buffered bytes and flow-table live
-entries + max probe length.
+entries + max probe length. **Implemented 2026-07-25** — see §7.
 
 ### On the endpoints, during the run
 
@@ -456,38 +509,104 @@ overrun — a server-side limit, not a forwarder bug.
 Work outside-in; the first ceiling you hit is usually not the one you're staring
 at:
 
-1. **Endpoint RAM / socket count** (§10) — the t3.micro wall.
-2. **Nitro allowances** (§4) — especially `conntrack_allowance_exceeded`.
-3. **Kernel limits** (§10) — backlog, conntrack, fds, TIME_WAIT.
-4. **Port space** (§8) — is `IPERF_PORTS` large enough to be *arithmetically* possible?
-5. **Frame size** (§5) — is anything above 2048 bytes being silently truncated?
-6. **SmartNIC CPU** (§9) — `imissed` climbing, cycles/packet.
-7. **Buffered-packet memory** (§7).
-8. **mbuf pool** (§3) — last, and almost never the problem.
+1. **Endpoint RAM / socket count** (§10) — the t3.micro wall. **✅ Resolved** (m5.xlarge).
+2. **Nitro allowances** (§4) — especially `conntrack_allowance_exceeded`. **✅ Confirmed 0** on both endpoints at 100k.
+3. **Kernel limits** (§10) — backlog, conntrack, fds, TIME_WAIT. **✅ Raised**, none hit.
+4. **Port space** (§8) — is `IPERF_PORTS` large enough to be *arithmetically* possible? **✅ Asserted in `run_core.sh`**, passed (4 × 32,256 ≥ 100,000).
+5. **Frame size** (§5) — is anything above 2048 bytes being silently truncated? **✅ 0 `truncated_frames`**.
+6. **SmartNIC CPU** (§9) — `imissed` climbing, cycles/packet. **← This is where the live 100k run actually stopped (§13).** `imissed` nonzero, `rx_nombuf`/`oerrors` zero, cycles/packet measured and well under budget in steady state — the ceiling is burst absorption (RX ring depth vs. 100k simultaneous SYNs), not per-packet cost.
+7. **Buffered-packet memory** (§7). **✅ Capped**, 446 MB/1 GiB observed, never reached.
+8. **mbuf pool** (§3) — last, and almost never the problem. **✅ Never the problem** — `rx_nombuf=0` throughout.
 
 ---
 
 ## 12. Summary: every constant, where it lives, what it binds
 
+*(Table reflects the stack as originally analyzed. See §13 for the post-fix,
+post-live-run state of each row.)*
+
 | Constant | Value | Defined in | Binds | Headroom at 100k |
 |---|---|---|---|---|
-| `MBUF_POOL_SIZE` | 8191 | `main.c` (both) | Packets in flight | 1.76× (needs 4,660) ✅ |
+| `MBUF_POOL_SIZE` | 8191 → derived formula | `main.c` (both) | Packets in flight | 1.76× (needs 4,660) ✅ |
 | `MBUF_CACHE_SIZE` | 250 | `main.c` (both) | Per-core mbuf cache | ✅ |
 | `RX_BURST_SIZE` | 32 | `main.c` (both) | Drain rate per loop | ✅ |
-| `RX_RING_SIZE` | 1024 | `io.c` (both) | Burst absorption before `imissed` | ✅ |
-| `TX_RING_SIZE` | 1024 | `io.c` (both) | TX queueing | ⚠ 1-pkt bursts (§4) |
+| `RX_RING_SIZE` | 1024 | `io.c` (both) | Burst absorption before `imissed` | ⚠ this is the actual 100k ceiling (§13) |
+| `TX_RING_SIZE` | 1024 | `io.c` (both) | TX queueing | ✅ batched 2026-07-25 (§4) |
 | `FT_SIZE` | 262144 | `flow_table.h` (both) | Max flows (0.38 load @ 100k) | ✅ |
-| `FT_MAX_BUFFER` | 64 | `servernic/flow_table.h` | Buffered pkts **per flow** | ⚠ no global cap (§7) |
-| `buf[2048]` / mbuf dataroom | 2048 B | `translator.c`, `forwarder.c`, … | **Max frame size** | ❌ MTU is 9001 (§5) |
-| `SPOOFED_MSS` | 1460 | `packet_processor.c` | c2s segment size only | ⚠ s2c uncapped (§5) |
+| `FT_MAX_BUFFER` | 64 | `servernic/flow_table.h` | Buffered pkts **per flow** | ✅ global cap added (§7) |
+| `buf[2048]` / mbuf dataroom | 2048 B | `translator.c`, `forwarder.c`, … | **Max frame size** | ✅ MTU pinned 1500 (§5), 0 truncated |
+| `SPOOFED_MSS` | 1460 | `packet_processor.c` | c2s segment size only | ✅ s2c now capped via MTU pin (§5) |
 | `vm.nr_hugepages` | 512 (1 GiB) | `smartnics_stack.py` | DPDK memory | ✅ (18 MiB used) |
-| lcores | 1 (`-l 0`) | `clientnic.sh`, `servernic.sh` | pps ceiling | ⚠ measure (§9) |
+| lcores | 1 (`-l 0`) | `clientnic.sh`, `servernic.sh` | pps ceiling | ✅ measured (§9): ~10.7k/~12.5k cycles/pkt, ~40-50× headroom in steady state |
 | SmartNIC instance | c5n.large | `smartnics_stack.py` | 2 vCPU / 5.25 GiB | ✅ |
-| **Endpoint instance** | **t3.micro** | `smartnics_stack.py` | **1 GiB / 2 burst vCPU** | ❌ **blocks 100k (§10)** |
+| **Endpoint instance** | **m5.xlarge** (was t3.micro) | `smartnics_stack.py` | **16 GiB / 4 vCPU** | ✅ upsized 2026-07-25, confirmed at 100k (§10, §13) |
 
-**Verdict for a 100k run as the stack stands today:** the SmartNICs are sized for
-it (mbufs, flow tables, and hugepages all have margin). Three things block it,
-in order of severity — the **t3.micro endpoints cannot hold 100k sockets in
-1 GiB** (§10), the **2048-byte frame ceiling is unguarded against the default
-9001 MTU** (§5), and the **ServerNIC's buffered-packet allocation is uncapped**
-(§7). All three are fixable; none is fixed by tuning the mbuf pool.
+**Verdict, updated 2026-07-25 (see §13 for full evidence):** every constant this
+table originally flagged has been fixed and re-verified against a live
+100k-connection run — endpoints upsized, frame ceiling guarded, buffered bytes
+capped, TX batched, kernel limits raised, port space asserted. **68,779/100,000
+(68.8%) connections were established.** The remaining 31.2% is not explained by
+any row in this table being wrong — it's `RX_RING_SIZE` doing exactly what §4
+always said it does: absorbing `1024/32 = 32` loop-iterations of burst before
+`imissed` starts counting, and 100,000 near-simultaneous connection attempts is
+a bigger burst than that. Per-packet cost (measured, §9) has ~40-50× headroom in
+steady state, so the fix (if pursued) is burst-side — RSS/multi-queue to spread
+the burst across cores, SYN-cookie-style backpressure, or client-side pacing —
+not another sizing-constant tweak in this table.
+
+---
+
+## 13. Live 100k-connection run — 2026-07-25 (roadmap.md #20)
+
+Every fix this document called for (§4, §5, §7, §9, §10) landed in PR #27 +
+follow-ups, `infra/dpdk` was redeployed with the endpoint upsize, and
+`experiments/dpdk/run_experiment.sh` was run twice at
+`IPERF_PARALLEL=100000 IPERF_PORTS=4`. This section is the answer to "does the
+model hold up against a real run" — it does, and it correctly predicted where
+the run would actually stop.
+
+**Headline: 68,779/100,000 (68.8%) connections established, reproducible**
+(a second independent run landed at 68,717 — within a few hundred connections).
+
+**Per-section confirmation:**
+
+| § | Predicted | Measured 2026-07-25 |
+|---|---|---|
+| §3 mbuf pool | Comfortable, not the constraint | `rx_nombuf=0` throughout — never touched |
+| §4 ring depth | `1024/32=32` iterations of burst slack | `imissed=16891` (ServerNIC) / `2236` (ClientNIC) — burst exceeded that slack, exactly as modeled |
+| §5 frame ceiling | Fixable by MTU pin | `truncated_frames=0` on both — held |
+| §7 buffered bytes | ~303 MB realistic, ~9.7 GB worst case | 446 MB peak (between the two, given ~31% of flows stayed PENDING for the whole run) — capped, no shedding, no malloc failures |
+| §9 CPU budget | Must measure, don't guess | ClientNIC ≈10,669, ServerNIC ≈12,483 cycles/packet — ~40-50× headroom vs. the ~5-6k pps sustained rate the test produced |
+| §10 endpoint RAM | t3.micro blocks 100k | m5.xlarge: 14.8-14.9 GiB free throughout, zero OOM-kills |
+| §4 Nitro allowances | Watch `conntrack_allowance_exceeded` | All five allowance counters read 0 on both endpoints |
+
+**The actual failure mode, precisely:** `asyncio.gather()` in
+`experiments/utils/loadgen.py` fires all 100,000 `open_connection()` calls at
+once — that's the point of an event-driven generator, no thread-per-connection
+throttling. That is an instantaneous SYN burst, not a sustained arrival rate.
+A burst that size overwhelms the 1024-deep RX ring's ~32-iteration absorption
+window before the single busy-poll lcore can drain it, even though that same
+lcore has ~40-50× the *steady-state* throughput this test needed. Concretely:
+
+- A SYN dropped at **ClientNIC**'s ingress (`imissed=2236`) never gets spoofed —
+  the client's own TCP stack retries and eventually hits the ~127-130s default
+  Linux SYN-retry ceiling.
+- A SYN dropped at **ServerNIC**'s ingress (`imissed=16891`), *after* ClientNIC
+  already spoofed a SYN-ACK, leaves the client believing it's connected while
+  ServerNIC has no flow-table entry for it — the client's data is silently
+  dropped (`"c2s: unknown flow, dropping"`) and that connection also eventually
+  times out.
+- `server_gap` (server-side pcap analysis, 277 samples) is tightly clustered at
+  15,974-16,036 ms (σ≈24 ms) — a single mode, not the historical bimodal
+  fast/slow split, just shifted to a high absolute value: the connections that
+  *did* get through were queued behind the same backlog, so they all paid
+  roughly the same multi-second queueing tax.
+
+**What this does and doesn't mean:** the SmartNIC single-lcore architecture is
+not "too slow" in any absolute sense — cycles/packet is nowhere near the
+budget. It cannot absorb a 100,000-connection burst landing in one instant
+without a deeper ring, multiple RX queues (RSS across cores), or the client
+pacing its connection attempts instead of firing them all at once. That is new
+scope (tracked in roadmap.md, not this document) — capacity-model.md's job was
+to predict where the real ceiling would be and let you measure it instead of
+guessing, and per the table above, it did.
