@@ -96,6 +96,25 @@ int eth0_init(struct client_io *io, uint16_t port_id, struct rte_mempool *pool)
     return 0;
 }
 
+/* Flush whatever is queued in one rte_eth_tx_burst() call. Retries briefly on
+ * a momentarily-full ring, then frees whatever the ring never accepted. */
+void eth0_tx_flush(struct client_io *io)
+{
+    if (io->tx_batch_count == 0)
+        return;
+
+    uint16_t sent = 0;
+    for (int attempt = 0; attempt < ETH0_TX_RETRIES && sent < io->tx_batch_count; attempt++) {
+        sent += rte_eth_tx_burst(io->port_id, 0, io->tx_batch + sent,
+                                 io->tx_batch_count - sent);
+        if (sent < io->tx_batch_count)
+            rte_pause();
+    }
+    for (uint16_t i = sent; i < io->tx_batch_count; i++)
+        rte_pktmbuf_free(io->tx_batch[i]);
+    io->tx_batch_count = 0;
+}
+
 int eth0_send(struct client_io *io, const uint8_t *buf, uint16_t len)
 {
     struct rte_mbuf *m = rte_pktmbuf_alloc(io->mbuf_pool);
@@ -111,19 +130,9 @@ int eth0_send(struct client_io *io, const uint8_t *buf, uint16_t len)
     }
     memcpy(data, buf, len);
 
-    /* A dropped frame here (spoofed SYN-ACK or s2c data) costs a TCP RTO;
-     * retry briefly if the ring is momentarily full. */
-    uint16_t sent = 0;
-    for (int attempt = 0; attempt < ETH0_TX_RETRIES; attempt++) {
-        sent = rte_eth_tx_burst(io->port_id, 0, &m, 1);
-        if (sent)
-            break;
-        rte_pause();
-    }
-    if (sent == 0) {
-        rte_pktmbuf_free(m);
-        return -1;
-    }
+    io->tx_batch[io->tx_batch_count++] = m;
+    if (io->tx_batch_count >= TX_BATCH_SIZE)
+        eth0_tx_flush(io);
     return 0;
 }
 
@@ -191,5 +200,43 @@ int eth1_init(struct eth1_io *io, uint16_t port_id, struct rte_mempool *pool,
              io->mac[3], io->mac[4], io->mac[5],
              io->gw_mac[0], io->gw_mac[1], io->gw_mac[2],
              io->gw_mac[3], io->gw_mac[4], io->gw_mac[5]);
+    return 0;
+}
+
+void eth1_tx_flush(struct eth1_io *io)
+{
+    if (io->tx_batch_count == 0)
+        return;
+
+    uint16_t sent = 0;
+    for (int attempt = 0; attempt < ETH0_TX_RETRIES && sent < io->tx_batch_count; attempt++) {
+        sent += rte_eth_tx_burst(io->port_id, 0, io->tx_batch + sent,
+                                 io->tx_batch_count - sent);
+        if (sent < io->tx_batch_count)
+            rte_pause();
+    }
+    for (uint16_t i = sent; i < io->tx_batch_count; i++)
+        rte_pktmbuf_free(io->tx_batch[i]);
+    io->tx_batch_count = 0;
+}
+
+int eth1_send(struct eth1_io *io, const uint8_t *buf, uint16_t len)
+{
+    struct rte_mbuf *m = rte_pktmbuf_alloc(io->mbuf_pool);
+    if (!m) {
+        LOG_ERR("eth1: mbuf alloc failed");
+        return -1;
+    }
+
+    uint8_t *data = rte_pktmbuf_append(m, len);
+    if (!data) {
+        rte_pktmbuf_free(m);
+        return -1;
+    }
+    memcpy(data, buf, len);
+
+    io->tx_batch[io->tx_batch_count++] = m;
+    if (io->tx_batch_count >= TX_BATCH_SIZE)
+        eth1_tx_flush(io);
     return 0;
 }

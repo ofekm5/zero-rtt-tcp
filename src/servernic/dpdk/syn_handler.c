@@ -112,7 +112,7 @@ void syn_handler_handle_syn_ack(struct syn_handler *sh, struct rte_mbuf *mbuf)
     /* Flush buffered client→server packets: rewrite ACK - delta, recalc checksums */
     struct pkt_buffer bufs[FT_MAX_BUFFER];
     int buf_count = 0;
-    ft_flush_buffer(entry, bufs, &buf_count);
+    ft_flush_buffer(sh->ft, entry, bufs, &buf_count);
 
     for (int i = 0; i < buf_count; i++) {
         uint8_t *bpkt = bufs[i].data;

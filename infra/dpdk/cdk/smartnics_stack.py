@@ -292,7 +292,7 @@ class SmartNicsStack(Stack):
             self,
             "ClientInstance",
             instance_type=ec2.InstanceType.of(
-                ec2.InstanceClass.T3, ec2.InstanceSize.MICRO
+                ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE
             ),
             machine_image=ec2.MachineImage.latest_amazon_linux2(),
             vpc=vpc,
@@ -319,7 +319,7 @@ class SmartNicsStack(Stack):
             self,
             "ServerInstance",
             instance_type=ec2.InstanceType.of(
-                ec2.InstanceClass.T3, ec2.InstanceSize.MICRO
+                ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE
             ),
             machine_image=ec2.MachineImage.latest_amazon_linux2(),
             vpc=vpc,

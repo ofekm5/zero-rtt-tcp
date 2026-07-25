@@ -103,21 +103,13 @@ void proc_handle_syn(struct packet_processor *proc,
     }
 
     /* ── Forward original SYN on eth1 with V stamped in ack-num ─────────── */
-    struct rte_mbuf *m = rte_pktmbuf_alloc(proc->eth1->mbuf_pool);
-    if (!m) {
-        LOG_ERR("SYN forward: mbuf alloc failed");
+    uint8_t fwd_buf[2048];
+    if (len > sizeof(fwd_buf))
         return;
-    }
-
-    uint8_t *data = rte_pktmbuf_append(m, len);
-    if (!data) {
-        rte_pktmbuf_free(m);
-        return;
-    }
-    memcpy(data, pkt, len);
+    memcpy(fwd_buf, pkt, len);
 
     /* Rewrite Ether header for middle subnet */
-    struct rte_ether_hdr *fwd_eth = (struct rte_ether_hdr *)data;
+    struct rte_ether_hdr *fwd_eth = (struct rte_ether_hdr *)fwd_buf;
     memcpy(fwd_eth->src_addr.addr_bytes, proc->eth1->mac, 6);
     memcpy(fwd_eth->dst_addr.addr_bytes, proc->eth1->gw_mac, 6);
 
@@ -125,22 +117,13 @@ void proc_handle_syn(struct packet_processor *proc,
      * RFC 9293 §3.10.7.2: a LISTEN-state endpoint ignores ack_seq when ACK
      * flag is clear, so this field is free real estate on a pure SYN.
      * The ServerNIC reads V here, zeros this field, and forwards a clean SYN. */
-    struct rte_ipv4_hdr *fwd_ip  = (struct rte_ipv4_hdr *)(data + 14);
+    struct rte_ipv4_hdr *fwd_ip  = (struct rte_ipv4_hdr *)(fwd_buf + 14);
     struct rte_tcp_hdr  *fwd_tcp = (struct rte_tcp_hdr *)
-                                   (data + 14 + ((fwd_ip->version_ihl & 0x0F) * 4));
+                                   (fwd_buf + 14 + ((fwd_ip->version_ihl & 0x0F) * 4));
     fwd_tcp->recv_ack = htonl(spoofed_isn);
     recalc_tcp_checksum(fwd_ip, fwd_tcp);
 
-    /* A dropped SYN costs a ~1s connect RTO; retry briefly if the ring is full. */
-    uint16_t sent = 0;
-    for (int attempt = 0; attempt < 8; attempt++) {
-        sent = rte_eth_tx_burst(proc->eth1->port_id, 0, &m, 1);
-        if (sent)
-            break;
-        rte_pause();
-    }
-    if (sent == 0)
-        rte_pktmbuf_free(m);
+    eth1_send(proc->eth1, fwd_buf, len);
 
     LOG_INFO("SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x%08x in ack-num",
              spoofed_isn);

@@ -11,6 +11,7 @@ import pytest
 
 FT_SIZE = 1024
 FT_MAX_BUFFER = 64
+FT_MAX_BUFFERED_BYTES = 1024 ** 3  # 1 GiB — capacity-model.md §7
 FLOW_STATE_PENDING = 0
 FLOW_STATE_ACTIVE = 1
 
@@ -58,8 +59,28 @@ class FlowEntry:
 
 
 class FlowTable:
-    def __init__(self):
+    def __init__(self, max_buffered_bytes=FT_MAX_BUFFERED_BYTES):
         self.entries = [FlowEntry() for _ in range(FT_SIZE)]
+        self.buffered_bytes = 0
+        self.max_buffered_bytes = max_buffered_bytes
+
+    def buffer_pkt(self, entry, data):
+        """Mirrors ft_buffer_pkt(ft, entry, data, len): -1 per-flow cap, -2 global cap."""
+        if len(entry.buffer) >= FT_MAX_BUFFER:
+            return -1
+        if self.buffered_bytes + len(data) > self.max_buffered_bytes:
+            return -2
+        entry.buffer.append(bytes(data))
+        self.buffered_bytes += len(data)
+        return 0
+
+    def flush_buffer(self, entry):
+        """Mirrors ft_flush_buffer(ft, entry, out, count): drains entry, decrements global total."""
+        out = list(entry.buffer)
+        freed = sum(len(b) for b in out)
+        entry.buffer = []
+        self.buffered_bytes = max(0, self.buffered_bytes - freed)
+        return out
 
     def create(self, key, spoofed_isn, server_mac):
         idx = _hash_key(*key)
@@ -176,6 +197,52 @@ def test_buffer_overflow_at_cap():
     for _ in range(FT_MAX_BUFFER):
         assert e.buffer_pkt(pkt) == 0
     assert e.buffer_pkt(pkt) == -1  # 65th packet rejected
+
+
+# ─── global buffered-bytes ceiling (capacity-model.md §7) ────────────────────
+
+def test_global_byte_ceiling_sheds_new_buffering():
+    ft = FlowTable(max_buffered_bytes=100)
+    e = ft.create(KEY_A, 1000, MAC)
+    pkt = b"\xAB" * 60
+    assert ft.buffer_pkt(e, pkt) == 0   # 60/100
+    assert ft.buffer_pkt(e, pkt) == -2  # would be 120/100 — shed, not OOM
+    assert ft.buffered_bytes == 60
+
+
+def test_global_byte_ceiling_independent_of_per_flow_cap():
+    """A single flow can be shed by the global ceiling well before FT_MAX_BUFFER."""
+    ft = FlowTable(max_buffered_bytes=30)
+    e = ft.create(KEY_A, 1000, MAC)
+    pkt = b"\xAB" * 60
+    assert ft.buffer_pkt(e, pkt) == -2  # first packet already exceeds the ceiling
+    assert len(e.buffer) == 0
+    assert ft.buffered_bytes == 0
+
+
+def test_flush_decrements_global_byte_counter():
+    ft = FlowTable(max_buffered_bytes=1000)
+    e = ft.create(KEY_A, 1000, MAC)
+    pkt = b"\xAB" * 60
+    ft.buffer_pkt(e, pkt)
+    ft.buffer_pkt(e, pkt)
+    assert ft.buffered_bytes == 120
+    out = ft.flush_buffer(e)
+    assert len(out) == 2
+    assert ft.buffered_bytes == 0
+    # Ceiling headroom is restored — buffering can resume.
+    assert ft.buffer_pkt(e, pkt) == 0
+
+
+def test_global_byte_ceiling_frees_headroom_across_flows():
+    ft = FlowTable(max_buffered_bytes=100)
+    e1 = ft.create(KEY_A, 1000, MAC)
+    e2 = ft.create(KEY_B, 2000, MAC)
+    pkt = b"\xAB" * 60
+    assert ft.buffer_pkt(e1, pkt) == 0    # 60/100
+    assert ft.buffer_pkt(e2, pkt) == -2   # would be 120/100 — flow B shed by flow A's usage
+    ft.flush_buffer(e1)                    # frees flow A's 60 bytes
+    assert ft.buffer_pkt(e2, pkt) == 0     # now fits
 
 
 # ─── hash collision / linear probe ───────────────────────────────────────────

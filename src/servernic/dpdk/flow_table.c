@@ -81,10 +81,13 @@ int ft_set_delta(struct flow_entry *entry, uint32_t real_server_isn)
     return 1;
 }
 
-int ft_buffer_pkt(struct flow_entry *entry, const uint8_t *data, uint16_t len)
+int ft_buffer_pkt(struct flow_table *ft, struct flow_entry *entry,
+                  const uint8_t *data, uint16_t len)
 {
     if (entry->buf_count >= FT_MAX_BUFFER)
-        return -1; /* buffer overflow */
+        return -1; /* per-flow buffer overflow */
+    if (ft->buffered_bytes + len > FT_MAX_BUFFERED_BYTES)
+        return -2; /* global ceiling — shed rather than risk OOM (capacity-model §7) */
     uint8_t *copy = malloc(len);
     if (!copy)
         return -1;
@@ -92,15 +95,21 @@ int ft_buffer_pkt(struct flow_entry *entry, const uint8_t *data, uint16_t len)
     entry->buffer[entry->buf_count].data = copy;
     entry->buffer[entry->buf_count].len  = len;
     entry->buf_count++;
+    ft->buffered_bytes += len;
     return 0;
 }
 
-int ft_flush_buffer(struct flow_entry *entry, struct pkt_buffer *out, int *count)
+int ft_flush_buffer(struct flow_table *ft, struct flow_entry *entry,
+                    struct pkt_buffer *out, int *count)
 {
     *count = entry->buf_count;
-    for (int i = 0; i < entry->buf_count; i++)
+    uint64_t freed_bytes = 0;
+    for (int i = 0; i < entry->buf_count; i++) {
         out[i] = entry->buffer[i];
+        freed_bytes += entry->buffer[i].len;
+    }
     entry->buf_count = 0;
+    ft->buffered_bytes -= (freed_bytes < ft->buffered_bytes) ? freed_bytes : ft->buffered_bytes;
     return 0;
 }
 

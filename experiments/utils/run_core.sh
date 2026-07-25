@@ -51,6 +51,24 @@ run_experiment() {
     local BPF_PORTS="portrange ${SERVER_PORT}-${PORT_HI}"
     log "Load/port plan: $NPORTS port(s) [${SERVER_PORT}-${PORT_HI}], IPERF_PARALLEL=${IPERF_PARALLEL:-100000}"
 
+    # ─── Port-space assertion (capacity-model.md §8) ──────────────────────────
+    # run_core.sh widens the client's ephemeral range to 1024-65535 below, so
+    # the available range is ~64512. Assert IPERF_PORTS * range >= target
+    # connections *before* spending 10+ minutes on a run that can't possibly
+    # open that many sockets from one source IP, with 2xMSL TIME_WAIT margin
+    # (halve the raw range as a safety factor for in-flight TIME_WAIT reuse).
+    local TARGET_CONNS="${IPERF_PARALLEL:-100000}"
+    local EPHEMERAL_RANGE=64512
+    local USABLE_RANGE=$(( EPHEMERAL_RANGE / 2 ))
+    local PORT_SPACE=$(( NPORTS * USABLE_RANGE ))
+    if (( PORT_SPACE < TARGET_CONNS )); then
+        fail "Port-space check: IPERF_PORTS=$NPORTS x usable_range=$USABLE_RANGE = $PORT_SPACE" \
+             " < IPERF_PARALLEL=$TARGET_CONNS — raise IPERF_PORTS before running"
+        return 1
+    else
+        pass "Port-space check: $NPORTS port(s) x $USABLE_RANGE usable range = $PORT_SPACE >= $TARGET_CONNS target"
+    fi
+
     # ─── Pull latest code (clone if missing) ──────────────────────────────────
     # On a fresh stack the CDK user-data clone can fail (e.g. expired token),
     # leaving VMs with no repo. Clone-on-demand here using the GitHub PAT from
@@ -75,15 +93,37 @@ run_experiment() {
     # Client: also widen the ephemeral port range and allow TIME_WAIT reuse so a
     # single source IP can open up to 100k connections across the app ports
     # (default range ~28k ports x N dst ports was the prior 100k bottleneck).
+    # Kernel limits per capacity-model.md §10: fd limit, TIME_WAIT bucket cap,
+    # nf_conntrack (loaded by both DPDK binaries' install_iptables()), and the
+    # backlog queue that absorbs a 100k-SYN burst arriving effectively at once.
     remote_bg "$CLIENT_ID" \
         "sysctl -w net.ipv4.tcp_timestamps=0 net.ipv4.tcp_window_scaling=0 net.ipv4.tcp_sack=0; \
          sysctl -w net.ipv4.ip_local_port_range='1024 65535'; \
-         sysctl -w net.ipv4.tcp_tw_reuse=1"
+         sysctl -w net.ipv4.tcp_tw_reuse=1; \
+         sysctl -w net.ipv4.tcp_max_tw_buckets=200000; \
+         sysctl -w net.core.netdev_max_backlog=250000; \
+         sysctl -w net.netfilter.nf_conntrack_max=200000 2>/dev/null || true; \
+         sysctl -w fs.file-max=1048576"
     # Server: raise the accept/SYN backlog so a 100k SYN burst is not dropped.
     remote_bg "$SERVER_ID" \
         "sysctl -w net.ipv4.tcp_timestamps=0 net.ipv4.tcp_window_scaling=0 net.ipv4.tcp_sack=0; \
-         sysctl -w net.core.somaxconn=131072 net.ipv4.tcp_max_syn_backlog=131072"
+         sysctl -w net.core.somaxconn=131072 net.ipv4.tcp_max_syn_backlog=131072; \
+         sysctl -w net.ipv4.tcp_max_tw_buckets=200000; \
+         sysctl -w net.core.netdev_max_backlog=250000; \
+         sysctl -w net.netfilter.nf_conntrack_max=200000 2>/dev/null || true; \
+         sysctl -w fs.file-max=1048576"
     sleep 2
+
+    # ─── Frame-ceiling fix: pin endpoint MTU to 1500 (capacity-model.md §5) ───
+    # Both DPDK forwarders copy through a fixed 2048-byte buffer and measure
+    # length via rte_pktmbuf_data_len() (first segment only). The AWS VPC
+    # default MTU (9001) lets the server send ~9015-byte frames that arrive as
+    # chained mbufs and get silently truncated. 1500 matches SPOOFED_MSS=1460
+    # and keeps every frame under the 2048-14=2034-byte ceiling.
+    log "Frame-ceiling fix: pinning MTU 1500 on Client and Server eth0..."
+    remote_bg "$CLIENT_ID" "ip link set eth0 mtu 1500"
+    remote_bg "$SERVER_ID" "ip link set eth0 mtu 1500"
+    sleep 1
 
     # ─── Accuracy knobs: offload-off + netem on endpoint NICs ─────────────────
     log "Accuracy knobs: disabling GRO/LRO/TSO/GSO on Client and Server NICs..."
@@ -107,7 +147,7 @@ run_experiment() {
     # ─── Cleanup any leftover processes ───────────────────────────────────────
     log "Cleaning up previous runs..."
     remote_bg "$SERVER_ID" \
-        "pkill -9 -f iperf 2>/dev/null; conntrack -F 2>/dev/null || true; rm -f /tmp/server.log"
+        "pkill -9 -f loadgen.py 2>/dev/null; pkill -9 -f iperf 2>/dev/null; conntrack -F 2>/dev/null || true; rm -f /tmp/server.log"
     remote_bg "$SERVERNIC_ID" \
         "pkill -x servernic-dpdk 2>/dev/null; pkill -f 'servernic/scapy' 2>/dev/null; \
          rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null; iptables -F OUTPUT 2>/dev/null"
@@ -180,7 +220,7 @@ run_experiment() {
     fi
 
     # ─── Step 1: Start Server ─────────────────────────────────────────────────
-    log "Step 1: Starting Server via node script ($NPORTS iperf port(s))..."
+    log "Step 1: Starting Server via node script ($NPORTS load-generator port(s))..."
     remote_bg "$SERVER_ID" \
         "IPERF_PORTS=$NPORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
     sleep 3
