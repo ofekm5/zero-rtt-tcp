@@ -13,9 +13,18 @@
 #                    (default 1800). 100000 conns x 1 MB across a 50 ms-netem path
 #                    moves ~100 GB and takes far longer than the old 120 s cap —
 #                    ssm_run polls up to this value instead of the ~100 s waiter.
+#   IPERF_BYTES    : payload bytes sent per connection (default 1048576 = 1 MB,
+#                    matching the old iperf `-n 1M`). At high connection counts
+#                    this is bandwidth-delay-product bound (no window scaling +
+#                    50ms netem caps a single flow well under 1 MB/s) and the
+#                    aggregate pps across all flows can exceed the single-lcore
+#                    forwarder's throughput (capacity-model.md §4/§9/§11) —
+#                    lower this to validate connection *establishment* at scale
+#                    without also demanding full-throughput transfer per flow.
 IPERF_PARALLEL="${IPERF_PARALLEL:-100000}"
 IPERF_PORTS="${IPERF_PORTS:-4}"
 IPERF_TIMEOUT="${IPERF_TIMEOUT:-1800}"
+IPERF_BYTES="${IPERF_BYTES:-1048576}"
 #
 # Measurement points (all intra-host intervals — no cross-machine clock sync):
 #   - ClientNIC TTFB: stamped in clientnic-dpdk-forwarder (SYN ingress → 1st s2c data byte)
@@ -75,6 +84,7 @@ run_ttfb_measurement() {
     local parallel="${IPERF_PARALLEL:-100000}"
     local nports="${IPERF_PORTS:-1}"
     [[ "$nports" -lt 1 ]] && nports=1
+    local nbytes="${IPERF_BYTES:-1048576}"
 
     local result
     result=$(ssm_run "$client_iid" \
@@ -82,8 +92,8 @@ run_ttfb_measurement() {
          ulimit -n 1048576 2>/dev/null || true
          success=0
          for i in \$(seq 1 $count); do
-             echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections ---\"
-             python3 $repo/experiments/utils/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes 1048576 && success=\$((success + 1))
+             echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections, $nbytes bytes/conn ---\"
+             python3 $repo/experiments/utils/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes && success=\$((success + 1))
          done
          echo \"Success: \${success}/$count\"" \
         "$timeout")
