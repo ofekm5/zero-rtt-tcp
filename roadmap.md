@@ -116,8 +116,8 @@ says are needed *before* that run is worth trusting.
       VPC default 9001 — closes the unguarded 2048-byte frame ceiling
       (capacity-model.md §5) that lets the server send ~9015-byte frames into
       `trans_s2c`. Same fix already called out under [#18's regression-run
-      criterion](#18--remaining-deploy-gated-dod); this item is the durable
-      infra-config version so it isn't a one-off manual step per run.
+      criterion](#18--deploy-gated-dod-verified-2026-07-25); this item is the
+      durable infra-config version so it isn't a one-off manual step per run.
 - [ ] Raise kernel limits ahead of 100k connections (capacity-model.md §10,
       table in "Endpoint limits"): `ulimit -n`/`fs.file-max` > 100,000,
       `net.core.somaxconn`, `net.ipv4.tcp_max_syn_backlog`,
