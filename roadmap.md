@@ -8,6 +8,9 @@ Tracks open GitHub issues and how they relate to the OpenSpec change pipeline (`
 - [#20 — Scale DPDK experiment to 100k parallel connections with 3-NIC SmartNIC topology](https://github.com/ofekm5/zero-rtt-tcp/issues/20) — closed 2026-07-21, tracked here going forward (topology sub-scope already shipped via #18). **100k run executed and measured 2026-07-25** — endpoints upsized to m5.xlarge, event-driven load generator, frame-ceiling/buffer-cap/TX-batch fixes landed (PR #27), 100k-connection run completed with a full report; 68,779/100,000 (68.8%) connections established, remainder explained by a measured single-lcore SmartNIC CPU/burst-capacity ceiling (imissed, cycles_per_packet documented), not by endpoint OOM/stall or a data-plane bug. See [#20 — 100k run executed 2026-07-25](#20--100k-run-executed-2026-07-25) for full evidence.
 - [#21 — Run experiment on both DPDK and baseline stacks](https://github.com/ofekm5/zero-rtt-tcp/issues/21) — closed 2026-07-21, tracked here going forward
 - **Infra hand-tailoring** — CDK/runtime properties tuned to the ceilings `docs/capacity-model.md` documents. **Landed 2026-07-25 as part of #20's PR #27 + follow-ups** (instance upsize, MTU pin, kernel limits, `NUM_MBUFS` derivation, buffered-byte ceiling, TX batching all shipped and verified against a live 100k run). Only the security-group-widening decision remains open. See [Infra hand-tailoring](#infra-hand-tailoring-per-docscapacity-modelmd).
+- **Idea: close the 100k connection-burst gap** — not yet scoped as an OpenSpec change. #20 confirmed the 68.8% ceiling is `RX_RING_SIZE` burst absorption (32 loop-iterations of slack) against a 100k-connection instantaneous SYN burst, not per-packet CPU cost (~40-50× headroom). Deepening the ring only delays the drop, not the fix — see [Idea: close the 100k connection-burst gap](#idea-close-the-100k-connection-burst-gap) for the candidate burst-side approaches.
+- [`verify-eswitch-tcp-seq-offload`](openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) — spike to determine whether the BlueField-3 e-switch can rewrite TCP seq/ack numbers per-flow entirely in hardware (DOCA Flow primary probe, `rte_flow` cross-check on NO). Gates the offload change below.
+- [`bluefield-servernic-hw-offload`](openspec/changes/bluefield-servernic-hw-offload/proposal.md) — proposed DPU-side ServerNIC that offloads post-handshake seq/ack rewriting to the e-switch, keeping the slower ARM cores out of the data path. Blocked on `verify-eswitch-tcp-seq-offload` not returning NO.
 
 ## #18 — deploy-gated DoD verified 2026-07-25
 
@@ -237,3 +240,39 @@ says are needed *before* that run is worth trusting.
 
 ### Sequencing note
 Run this comparison first at whatever scale currently works; re-run at 100k once #20 lands. The two issues are complementary, not blocking: #21 can proceed independently at current scale while #20's scale work is in flight.
+
+## Idea: close the 100k connection-burst gap
+
+**Not yet an OpenSpec change — captured here as a candidate for `spec-planning:openspec-propose-change` once prioritized.**
+
+#20's live 100k run (68,779/100,000 established) traced the shortfall to a specific,
+already-diagnosed cause: `experiments/utils/loadgen.py`'s `asyncio.gather()` fires
+all 100,000 `open_connection()` calls at once, producing an instantaneous SYN burst
+that exceeds what the `RX_RING_SIZE=1024` / `RX_BURST_SIZE=32` ring can absorb
+(`1024/32 = 32` loop-iterations of slack — `docs/capacity-model.md` §4, §12, §13)
+before the single busy-poll lcore drains it. Measured `cycles_per_packet`
+(ClientNIC ≈10,669, ServerNIC ≈12,483 at `tsc_hz=3.0e9`) shows ~40-50× headroom
+in steady state — this is a burst-absorption ceiling, not a per-packet-cost
+ceiling, so a deeper `RX_RING_SIZE` alone only delays the drop rather than fixing
+it (capacity-model.md §4: *"a deeper ring only delays the drop"*), and is also
+bounded by the ENA PMD's hardware descriptor limit.
+
+Three candidate approaches to increase effective parallelism/absorption, none yet
+scoped in detail:
+
+- **RSS/multi-queue** — spread the SYN burst across multiple lcores/RX queues
+  instead of a single busy-poll core, so aggregate drain rate scales with burst
+  size instead of being capped by one core's `RX_BURST_SIZE`-per-iteration rate.
+- **SYN-cookie-style backpressure** — have the SmartNIC signal/shed load before
+  the RX ring overflows, rather than silently dropping via `imissed`, so
+  connection establishment degrades gracefully instead of some fraction
+  timing out via Linux's ~127-130s SYN-retry ceiling.
+- **Client-side connection pacing** — stagger `loadgen.py`'s `asyncio.gather()`
+  burst (e.g. bounded concurrency / ramp-up) so 100k connection attempts arrive
+  as a sustained rate instead of one instantaneous burst, trading test realism
+  for a rate the existing single-lcore ring can already absorb.
+
+### Success criteria (draft, to refine when proposed)
+- [ ] 100k-connection run establishes ≥95% of connections (up from 68.8%)
+- [ ] `imissed` at or near zero on both SmartNICs' client-facing/ServerNIC-facing ports at 100k
+- [ ] Chosen approach documented against `docs/capacity-model.md` §4/§9/§12/§13 with before/after measurements
