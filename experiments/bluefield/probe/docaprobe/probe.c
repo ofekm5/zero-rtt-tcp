@@ -25,7 +25,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <rte_cycles.h>
 #include <rte_eal.h>
+#include <rte_ethdev.h>
+#include <rte_mbuf.h>
 
 #include <doca_argp.h>
 #include <doca_dev.h>
@@ -43,6 +46,12 @@ DOCA_LOG_REGISTER(ESWITCH_PROBE);
 
 #define DEFAULT_TIMEOUT_US 10000
 #define DEFAULT_NB_COUNTERS 16
+#define NB_RX_DESC 1024
+#define MBUF_POOL_SIZE 4096
+#define MBUF_CACHE_SIZE 256
+#define RX_BURST_SIZE 32
+#define SW_QUEUE_POLL_MS 200
+#define SW_QUEUE_POLL_INTERVAL_MS 10
 
 struct probe_config {
 	char src_ip[INET6_ADDRSTRLEN_UNUSED];
@@ -157,6 +166,66 @@ probe_parse_args(int argc, char **argv)
 /* Initialises DOCA Flow in the e-switch (transfer) domain with hardware
  * steering, per design.md D1 ("build its pipe in the e-switch domain
  * rather than as a NIC-domain rule"). */
+/* Configures pf0hpf's RX queue at the DPDK level so the software path is
+ * actually pollable — DOCA Flow's hardware forward path never traverses
+ * this queue, so any packet landing here during dpdk_rx_poll_sw_queue()
+ * is genuine evidence of a software fallback (SC3), not an assumption. */
+static doca_error_t
+dpdk_rx_setup(struct rte_mempool **mbuf_pool)
+{
+	struct rte_eth_conf port_conf = {0};
+	int ret;
+
+	*mbuf_pool = rte_pktmbuf_pool_create("probe_mbuf_pool", MBUF_POOL_SIZE, MBUF_CACHE_SIZE,
+					      0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+	if (*mbuf_pool == NULL) {
+		DOCA_LOG_ERR("rte_pktmbuf_pool_create failed: %s", rte_strerror(rte_errno));
+		return DOCA_ERROR_NO_MEMORY;
+	}
+
+	ret = rte_eth_dev_configure(g_cfg.port_id, 1, 0, &port_conf);
+	if (ret != 0) {
+		DOCA_LOG_ERR("rte_eth_dev_configure failed: %s", rte_strerror(-ret));
+		return DOCA_ERROR_DRIVER;
+	}
+
+	ret = rte_eth_rx_queue_setup(g_cfg.port_id, 0, NB_RX_DESC,
+				      rte_eth_dev_socket_id(g_cfg.port_id), NULL, *mbuf_pool);
+	if (ret != 0) {
+		DOCA_LOG_ERR("rte_eth_rx_queue_setup failed: %s", rte_strerror(-ret));
+		return DOCA_ERROR_DRIVER;
+	}
+
+	ret = rte_eth_dev_start(g_cfg.port_id);
+	if (ret != 0) {
+		DOCA_LOG_ERR("rte_eth_dev_start failed: %s", rte_strerror(-ret));
+		return DOCA_ERROR_DRIVER;
+	}
+
+	return DOCA_SUCCESS;
+}
+
+/* Polls the ARM software RX queue for SW_QUEUE_POLL_MS and returns the
+ * count of packets received there — a real measurement, not an assumed
+ * zero. A nonzero count means packets matching the composed rule are
+ * crossing an ARM core instead of staying in hardware (SC3). */
+static uint64_t
+dpdk_rx_poll_sw_queue(void)
+{
+	struct rte_mbuf *bufs[RX_BURST_SIZE];
+	uint64_t total = 0, elapsed_ms = 0;
+
+	while (elapsed_ms < SW_QUEUE_POLL_MS) {
+		uint16_t nb_rx = rte_eth_rx_burst(g_cfg.port_id, 0, bufs, RX_BURST_SIZE);
+		for (uint16_t i = 0; i < nb_rx; i++)
+			rte_pktmbuf_free(bufs[i]);
+		total += nb_rx;
+		rte_delay_ms(SW_QUEUE_POLL_INTERVAL_MS);
+		elapsed_ms += SW_QUEUE_POLL_INTERVAL_MS;
+	}
+	return total;
+}
+
 static doca_error_t
 probe_flow_init(void)
 {
@@ -333,6 +402,7 @@ main(int argc, char **argv)
 	struct doca_flow_port *port = NULL;
 	struct doca_flow_pipe *pipe = NULL;
 	struct doca_flow_pipe_entry *entry = NULL;
+	struct rte_mempool *mbuf_pool = NULL;
 	uint64_t sw_queue_rx_count = 0;
 	doca_error_t result;
 	int rc = EXIT_SUCCESS;
@@ -352,6 +422,10 @@ main(int argc, char **argv)
 	optind = 1; /* reset getopt state after EAL's own arg parsing */
 
 	result = probe_parse_args(argc, argv);
+	if (result != DOCA_SUCCESS)
+		return EXIT_FAILURE;
+
+	result = dpdk_rx_setup(&mbuf_pool);
 	if (result != DOCA_SUCCESS)
 		return EXIT_FAILURE;
 
@@ -377,11 +451,14 @@ main(int argc, char **argv)
 		goto teardown_pipe;
 	}
 
-	/* This probe never polls a software RX queue for the rewritten
-	 * flow's traffic by design — a nonzero software receive count in a
-	 * production translator would mean the rule fell back to software;
-	 * here it stays fixed at zero so SC3's comparison isolates the
-	 * hardware counter alone. */
+	/* Real measurement, not an assumed zero: any packet landing on the
+	 * ARM software queue during this window is evidence the rule fell
+	 * back to software rather than executing in hardware (SC3). This
+	 * window only covers the probe's own brief runtime — it does not
+	 * observe traffic sent by a later, separate invocation of
+	 * traffic.sh; that end-to-end coupling belongs to the orchestrator
+	 * (task 11), not this probe. */
+	sw_queue_rx_count = dpdk_rx_poll_sw_queue();
 	probe_report_counters(entry, sw_queue_rx_count);
 
 	doca_flow_pipe_rm_entry(0, 0, entry);
