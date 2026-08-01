@@ -51,9 +51,14 @@ else
     echo "WARNING: no baseline file at ${BASELINE_FILE}; cannot pre-check DOCA/DPDK versions" >&2
 fi
 
+# EAL args precede the "--" separator; the probe's own rule-parameter
+# args follow it (probe.c calls rte_eal_init first). device_arg, when
+# non-empty, is appended to the mlx5 auxiliary device argument.
 run_probe() {
-    local device_args="$1"
-    dpu_run "docker run --rm --privileged --network host ${IMAGE_TAG} ${PROBE_ARGS[*]}"
+    local device_arg="$1"
+    local dev_spec="auxiliary:mlx5_core.sf.2"
+    [[ -n "${device_arg}" ]] && dev_spec="${dev_spec},${device_arg}"
+    dpu_run "docker run --rm --privileged --network host ${IMAGE_TAG} -l 0-1 -n 4 -a ${dev_spec} -- ${PROBE_ARGS[*]}"
 }
 
 echo "Attempting rule install (delta=${PROBE_ARGS[*]})..."

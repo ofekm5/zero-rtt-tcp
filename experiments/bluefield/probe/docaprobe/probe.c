@@ -25,6 +25,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <rte_eal.h>
+
 #include <doca_argp.h>
 #include <doca_dev.h>
 #include <doca_error.h>
@@ -334,6 +336,20 @@ main(int argc, char **argv)
 	uint64_t sw_queue_rx_count = 0;
 	doca_error_t result;
 	int rc = EXIT_SUCCESS;
+	int rte_argc;
+
+	/* DPDK EAL args (-l, -n, -a auxiliary:mlx5_core.sf.N[,dv_flow_en=2])
+	 * precede a "--" separator; the probe's own rule-parameter args
+	 * follow it. rte_eal_init consumes its prefix and reports how many
+	 * argv entries it used so the remainder reaches probe_parse_args. */
+	rte_argc = rte_eal_init(argc, argv);
+	if (rte_argc < 0) {
+		fprintf(stderr, "rte_eal_init failed\n");
+		return EXIT_FAILURE;
+	}
+	argc -= rte_argc;
+	argv += rte_argc;
+	optind = 1; /* reset getopt state after EAL's own arg parsing */
 
 	result = probe_parse_args(argc, argv);
 	if (result != DOCA_SUCCESS)
@@ -375,5 +391,6 @@ teardown_port:
 	doca_flow_port_stop(port);
 teardown_flow:
 	doca_flow_destroy();
+	rte_eal_cleanup();
 	return rc;
 }

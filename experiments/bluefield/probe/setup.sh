@@ -32,7 +32,12 @@ vm_run "sudo ip link set ens16f0np0 up" \
     || fail "failed to bring ens16f0np0 up"
 
 echo "Starting the probe container (image ${IMAGE_TAG}) to initialise pf0hpf..."
-dpu_run "docker run --rm --privileged --network host ${IMAGE_TAG} --help" \
-    || fail "probe container failed to start"
+# Placeholder 5-tuple/delta: this run only needs to reach port
+# initialisation (SC1), not install a real rule — flow_rule.sh does that
+# with the caller's actual parameters in a separate invocation.
+PROBE_STARTUP_OUTPUT="$(dpu_run "docker run --rm --privileged --network host ${IMAGE_TAG} -l 0-1 -n 4 -a auxiliary:mlx5_core.sf.2 -- --src-ip 0.0.0.0 --dst-ip 0.0.0.0 --src-port 1 --dst-port 1 --delta 1" 2>&1)" || true
+echo "${PROBE_STARTUP_OUTPUT}"
+echo "${PROBE_STARTUP_OUTPUT}" | grep -q "pf0hpf initialised" \
+    || fail "probe did not report pf0hpf initialised"
 
 echo "Setup complete: hugepages allocated, pf0hpf detached from ovsbr1, ens16f0np0 up."
