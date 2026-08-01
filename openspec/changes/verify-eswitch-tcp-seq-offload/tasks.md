@@ -41,17 +41,17 @@ Verify hints for authoring tasks check the artifact itself (syntax, required con
     - Outcome: sends TCP packets with a known sequence number out `ens16f0np0` on the x86 VM while capturing on the same interface, and reports the sequence numbers of any returned packets alongside the sequence number sent. Distinguishes three observable outcomes — returned and rewritten, returned unmodified, and nothing returned within the capture window — because `design.md` D4 maps them to different verdicts.
     - Commit: `feat(bluefield-probe): generate and capture traffic from the host VM`
 
-- [ ] 8. Add the conditional `rte_flow` cross-check — verify: `bash -n experiments/bluefield/probe/crosscheck.sh && grep -q 'dpdk-testpmd' experiments/bluefield/probe/crosscheck.sh`
+- [x] 8. Add the conditional `rte_flow` cross-check — verify: `bash -n experiments/bluefield/probe/crosscheck.sh && grep -q 'dpdk-testpmd' experiments/bluefield/probe/crosscheck.sh`
     - File: `experiments/bluefield/probe/crosscheck.sh`
     - Outcome: runs only when the DOCA Flow probe returned a negative result, and attempts the same TCP sequence-number modification through `rte_flow` using the preinstalled `dpdk-testpmd`, to distinguish a silicon limit from a DOCA Flow exposure gap per `design.md` D6. Requires no build, image transport, or package installation. Scope is disambiguation only: no hairpin, no traffic generation, no capture.
     - Commit: `feat(bluefield-probe): add conditional rte_flow cross-check for negative results`
 
-- [ ] 9. Evaluate the verification levels and emit a verdict — verify: `bash -n experiments/bluefield/probe/verdict.sh && grep -q 'PARTIAL' experiments/bluefield/probe/verdict.sh`
+- [x] 9. Evaluate the verification levels and emit a verdict — verify: `bash -n experiments/bluefield/probe/verdict.sh && grep -q 'PARTIAL' experiments/bluefield/probe/verdict.sh`
     - File: `experiments/bluefield/probe/verdict.sh`
     - Outcome: reads rule acceptance, the hardware counter against the probe's software-queue receive count, the on-wire capture result, and the cross-check result when one was run, then emits YES, NO, or PARTIAL per the decision tables in `design.md` D2, D4 and D6. A YES requires all three levels to hold. A NO is emitted only after a negative cross-check. A cross-check that succeeds where DOCA Flow failed yields PARTIAL, recording that the capability exists but is reachable only through `rte_flow` on this build.
     - Commit: `feat(bluefield-probe): evaluate verification levels and emit verdict`
 
-- [ ] 10. Restore the DPU and verify against the baseline — verify: `bash -n experiments/bluefield/probe/restore.sh && grep -q 'ovsbr1' experiments/bluefield/probe/restore.sh`
+- [x] 10. Restore the DPU and verify against the baseline — verify: `bash -n experiments/bluefield/probe/restore.sh && grep -q 'ovsbr1' experiments/bluefield/probe/restore.sh`
     - File: `experiments/bluefield/probe/restore.sh`
     - Outcome: re-attaches `pf0hpf` to `ovsbr1`, frees the hugepages, removes the loaded probe image, returns `ens16f0np0` to its recorded state, diffs the resulting `ovs-vsctl show` against the baseline file, and exits non-zero when they differ so an incomplete restoration cannot be reported as success. Runs for every verdict, including failure paths.
     - Commit: `feat(bluefield-probe): restore DPU state and verify against baseline`
