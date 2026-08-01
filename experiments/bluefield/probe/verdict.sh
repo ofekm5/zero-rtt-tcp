@@ -54,8 +54,20 @@ if [[ "${ACCEPTED}" == "yes" ]]; then
 fi
 
 # Level 3: Effective — tcpdump on ens16f0np0 shows returned seq == sent ± delta.
+# traffic.sh reports one of three distinct outcomes (design.md D4); keep
+# them distinguished rather than collapsing to a single EFFECTIVE bit, so
+# a same-port split-horizon rejection (rewrite worked, nothing returned)
+# is not conflated with the rewrite never happening at all.
 EFFECTIVE="no"
-grep -q '^OUTCOME: returned and rewritten' "${TRAFFIC_LOG}" && EFFECTIVE="yes"
+TRAFFIC_OUTCOME="unknown"
+if grep -q '^OUTCOME: returned and rewritten' "${TRAFFIC_LOG}"; then
+    EFFECTIVE="yes"
+    TRAFFIC_OUTCOME="rewritten"
+elif grep -q '^OUTCOME: returned unmodified' "${TRAFFIC_LOG}"; then
+    TRAFFIC_OUTCOME="unmodified"
+elif grep -q '^OUTCOME: nothing returned' "${TRAFFIC_LOG}"; then
+    TRAFFIC_OUTCOME="nothing-returned"
+fi
 
 CROSSCHECK_RESULT="not-run"
 if [[ -n "${CROSSCHECK_LOG}" && -f "${CROSSCHECK_LOG}" ]]; then
@@ -74,6 +86,15 @@ REASON=""
 if [[ "${ACCEPTED}" == "yes" && "${OFFLOADED}" == "yes" && "${EFFECTIVE}" == "yes" ]]; then
     VERDICT="YES"
     REASON="All three verification levels hold: rule accepted, offloaded to hardware, and the rewrite is observed on the wire."
+elif [[ "${ACCEPTED}" == "yes" && "${OFFLOADED}" == "yes" && "${TRAFFIC_OUTCOME}" == "nothing-returned" ]]; then
+    # design.md D4, first sub-case: the rewrite matched and offloaded in
+    # hardware, but nothing came back on the wire — e-switch split-horizon
+    # is the likely cause, not a rewrite failure. The cross-check doesn't
+    # apply here (D6 only disambiguates a DOCA Flow rejection); the named
+    # architectural fallback is a Scalable Function egress instead of
+    # returning out pf0hpf (design.md Alternative C).
+    VERDICT="PARTIAL"
+    REASON="Rule accepted and offloaded (hardware counter incremented, no software fallback), but no packet returned on ens16f0np0 within the capture window — e-switch split-horizon is the likely cause per design.md D4. The composed rewrite is not proven ineffective; the architectural fallback is a Scalable Function as egress instead of returning out pf0hpf (design.md Alternative C)."
 elif [[ "${CROSSCHECK_RESULT}" == "accepted" ]]; then
     VERDICT="PARTIAL"
     REASON="DOCA Flow did not demonstrate the full capability, but the rte_flow cross-check accepted the same rewrite — the capability exists but is reachable only through rte_flow on this build."
@@ -82,7 +103,7 @@ elif [[ "${CROSSCHECK_RESULT}" == "rejected" ]]; then
     REASON="DOCA Flow did not demonstrate the capability and the rte_flow cross-check also rejected the rewrite — not a DOCA Flow exposure gap."
 else
     VERDICT="PARTIAL"
-    REASON="DOCA Flow did not demonstrate the full capability (accepted=${ACCEPTED} offloaded=${OFFLOADED} effective=${EFFECTIVE}) and no cross-check result is available yet to disambiguate — inconclusive pending the cross-check."
+    REASON="DOCA Flow did not demonstrate the full capability (accepted=${ACCEPTED} offloaded=${OFFLOADED} effective=${EFFECTIVE}, traffic-outcome=${TRAFFIC_OUTCOME}) and no cross-check result is available yet to disambiguate — inconclusive pending the cross-check."
 fi
 
 {
@@ -93,6 +114,7 @@ fi
     echo "- Accepted: ${ACCEPTED}"
     echo "- Offloaded: ${OFFLOADED}"
     echo "- Effective: ${EFFECTIVE}"
+    echo "- Traffic outcome: ${TRAFFIC_OUTCOME}"
     echo "- Cross-check: ${CROSSCHECK_RESULT}"
     echo
     echo "## VERDICT: ${VERDICT}"
