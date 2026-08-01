@@ -26,17 +26,17 @@ Verify hints for authoring tasks check the artifact itself (syntax, required con
     - Outcome: builds the probe inside the DOCA devel container — which ships `meson` and `ninja` — on a host with working DNS, saves it to a tarball, transfers it to the DPU and loads it there. Follows the existing `infra/bluefield/deployment/Dockerfile` and `compress_doca_image.sh` pattern. Performs no registry pull or DNS resolution from the DPU, per the transported-toolchain scenario in the spec.
     - Commit: `feat(bluefield-probe): build and transport probe image to the DPU`
 
-- [ ] 5. Allocate hugepages and initialise the data-plane port — verify: `bash -n experiments/bluefield/probe/setup.sh && grep -q 'pf0hpf' experiments/bluefield/probe/setup.sh`
+- [x] 5. Allocate hugepages and initialise the data-plane port — verify: `bash -n experiments/bluefield/probe/setup.sh && grep -q 'pf0hpf' experiments/bluefield/probe/setup.sh`
     - File: `experiments/bluefield/probe/setup.sh`
     - Outcome: allocates hugepages on the ARM, detaches `pf0hpf` from `ovsbr1`, brings `ens16f0np0` up on the x86 VM, and starts the probe so its output reports `pf0hpf` initialised without error. Never touches `oob_net0`, over which DPU management runs.
     - Commit: `feat(bluefield-probe): allocate hugepages and initialise pf0hpf`
 
-- [ ] 6. Install the composed e-switch rule and capture the result — verify: `bash -n experiments/bluefield/probe/flow_rule.sh && grep -q 'delta' experiments/bluefield/probe/flow_rule.sh`
+- [x] 6. Install the composed e-switch rule and capture the result — verify: `bash -n experiments/bluefield/probe/flow_rule.sh && grep -q 'delta' experiments/bluefield/probe/flow_rule.sh`
     - File: `experiments/bluefield/probe/flow_rule.sh`
     - Outcome: invokes the probe with the 5-tuple, delta and egress target, capturing either the returned handle or the verbatim error text. Reads the recorded DOCA and DPDK versions first and reports a tooling limitation rather than a hardware NO when the build predates TCP sequence-number modification. Attempts `dv_flow_en=2` on the device argument before recording any negative, since `infra/bluefield/deployment/Dockerfile` uses that flag on this hardware and omitting it could produce a false NO.
     - Commit: `feat(bluefield-probe): install composed e-switch seq-rewrite rule`
 
-- [ ] 7. Generate traffic and capture the return leg from the x86 VM — verify: `bash -n experiments/bluefield/probe/traffic.sh && grep -q 'ens16f0np0' experiments/bluefield/probe/traffic.sh`
+- [x] 7. Generate traffic and capture the return leg from the x86 VM — verify: `bash -n experiments/bluefield/probe/traffic.sh && grep -q 'ens16f0np0' experiments/bluefield/probe/traffic.sh`
     - File: `experiments/bluefield/probe/traffic.sh`
     - Outcome: sends TCP packets with a known sequence number out `ens16f0np0` on the x86 VM while capturing on the same interface, and reports the sequence numbers of any returned packets alongside the sequence number sent. Distinguishes three observable outcomes — returned and rewritten, returned unmodified, and nothing returned within the capture window — because `design.md` D4 maps them to different verdicts.
     - Commit: `feat(bluefield-probe): generate and capture traffic from the host VM`
