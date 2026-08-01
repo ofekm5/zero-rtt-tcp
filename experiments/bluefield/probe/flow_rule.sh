@@ -25,9 +25,31 @@ IMAGE_TAG="eswitch-probe:latest"
 BASELINE_FILE="${SCRIPT_DIR}/../reports/baseline.txt"
 PROBE_ARGS=()
 
+# design.md's Context confirms DOCA 3.0.0058 with libdoca_flow is the
+# installed, working toolchain on bluefield-runs3-dpu; gotchas.md warns
+# that older DOCA/rte_flow builds may lack raw TCP seq/ack modify
+# entirely. A recorded major version below this is reported as a tooling
+# limitation rather than run through the probe and misread as a hardware
+# NO (design.md Risks).
+MIN_DOCA_MAJOR="${MIN_DOCA_MAJOR:-3}"
+
 fail() {
     echo "ERROR: $1" >&2
     exit 1
+}
+
+# Returns 1 (unsupported) when the recorded DOCA version's major number is
+# below MIN_DOCA_MAJOR; returns 0 (proceed) when it parses as supported or
+# when it cannot be parsed at all (an unparseable version is not evidence
+# of a tooling limitation, so the probe still runs).
+check_doca_version_supported() {
+    local doca_ver="$1" major
+    major="$(echo "${doca_ver}" | grep -oE '^[0-9]+' || true)"
+    if [[ -z "${major}" ]]; then
+        echo "WARNING: could not parse DOCA version '${doca_ver}'; proceeding without a tooling-limitation pre-check" >&2
+        return 0
+    fi
+    [[ "${major}" -ge "${MIN_DOCA_MAJOR}" ]]
 }
 
 while [[ $# -gt 0 ]]; do
@@ -45,8 +67,15 @@ if [[ ${#PROBE_ARGS[@]} -eq 0 ]]; then
 fi
 
 if [[ -f "${BASELINE_FILE}" ]]; then
-    echo "Recorded DOCA version: $(grep -A1 '## DOCA version' "${BASELINE_FILE}" | tail -n1)"
-    echo "Recorded DPDK version: $(grep -A1 '## DPDK version' "${BASELINE_FILE}" | tail -n1)"
+    DOCA_VERSION_STR="$(grep -A1 '## DOCA version' "${BASELINE_FILE}" | tail -n1)"
+    DPDK_VERSION_STR="$(grep -A1 '## DPDK version' "${BASELINE_FILE}" | tail -n1)"
+    echo "Recorded DOCA version: ${DOCA_VERSION_STR}"
+    echo "Recorded DPDK version: ${DPDK_VERSION_STR}"
+
+    if ! check_doca_version_supported "${DOCA_VERSION_STR}"; then
+        echo "RESULT: tooling limitation (DOCA ${DOCA_VERSION_STR} predates DOCA ${MIN_DOCA_MAJOR}.x; TCP seq/ack modify support is not confirmed on this build)"
+        exit 3
+    fi
 else
     echo "WARNING: no baseline file at ${BASELINE_FILE}; cannot pre-check DOCA/DPDK versions" >&2
 fi
