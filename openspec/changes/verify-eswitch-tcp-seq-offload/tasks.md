@@ -16,12 +16,12 @@ Verify hints for authoring tasks check the artifact itself (syntax, required con
     - Outcome: writes `ovs-vsctl show` output, `pf0hpf` bridge membership, ARM hugepage count, the DOCA and DPDK versions found on the DPU, and the adapter firmware version to a baseline file, and exits non-zero without mutating the DPU if any value cannot be read. Satisfies the baseline-capture requirement in `specs/eswitch-offload-probe/spec.md`.
     - Commit: `feat(bluefield-probe): capture pre-mutation DPU baseline`
 
-- [ ] 3. Write the DOCA Flow probe program — verify: `grep -q 'doca_flow' experiments/bluefield/probe/docaprobe/probe.c && grep -q 'argv' experiments/bluefield/probe/docaprobe/probe.c`
+- [x] 3. Write the DOCA Flow probe program — verify: `grep -q 'doca_flow' experiments/bluefield/probe/docaprobe/probe.c && grep -q 'argv' experiments/bluefield/probe/docaprobe/probe.c`
     - File: `experiments/bluefield/probe/docaprobe/probe.c`, `experiments/bluefield/probe/docaprobe/meson.build`
     - Outcome: builds a DOCA Flow pipe in the e-switch domain composing a 5-tuple match, a TCP sequence-number modification by a per-flow constant, an egress back toward the host port, and a counter — the shape given in `design.md` D1. The 5-tuple, delta and egress target are command-line arguments so rule syntax is iterated by re-running rather than rebuilding. Reports the created handle, the counter value, and its own software-queue receive count, since those are what SC2 and SC3 measure.
     - Commit: `feat(bluefield-probe): add DOCA Flow seq-rewrite probe program`
 
-- [ ] 4. Build and transport the probe image to the DPU — verify: `bash -n experiments/bluefield/probe/build_image.sh && grep -q 'docker save' experiments/bluefield/probe/build_image.sh`
+- [x] 4. Build and transport the probe image to the DPU — verify: `bash -n experiments/bluefield/probe/build_image.sh && grep -q 'docker save' experiments/bluefield/probe/build_image.sh`
     - File: `experiments/bluefield/probe/build_image.sh`, `experiments/bluefield/probe/docaprobe/Dockerfile`
     - Outcome: builds the probe inside the DOCA devel container — which ships `meson` and `ninja` — on a host with working DNS, saves it to a tarball, transfers it to the DPU and loads it there. Follows the existing `infra/bluefield/deployment/Dockerfile` and `compress_doca_image.sh` pattern. Performs no registry pull or DNS resolution from the DPU, per the transported-toolchain scenario in the spec.
     - Commit: `feat(bluefield-probe): build and transport probe image to the DPU`
