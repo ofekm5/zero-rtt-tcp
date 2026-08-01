@@ -56,12 +56,12 @@ Verify hints for authoring tasks check the artifact itself (syntax, required con
     - Outcome: re-attaches `pf0hpf` to `ovsbr1`, frees the hugepages, removes the loaded probe image, returns `ens16f0np0` to its recorded state, diffs the resulting `ovs-vsctl show` against the baseline file, and exits non-zero when they differ so an incomplete restoration cannot be reported as success. Runs for every verdict, including failure paths.
     - Commit: `feat(bluefield-probe): restore DPU state and verify against baseline`
 
-- [ ] 11. Add the orchestrator that runs the probe end to end — verify: `bash -n experiments/bluefield/probe/run_probe.sh && grep -q 'restore.sh' experiments/bluefield/probe/run_probe.sh`
+- [x] 11. Add the orchestrator that runs the probe end to end — verify: `bash -n experiments/bluefield/probe/run_probe.sh && grep -q 'restore.sh' experiments/bluefield/probe/run_probe.sh`
     - File: `experiments/bluefield/probe/run_probe.sh`
     - Outcome: runs baseline, image build and transport, setup, rule installation, traffic, the cross-check when the probe was negative, and verdict in sequence, and invokes `restore.sh` on every exit path including early failure, so the DPU is never left mutated by an aborted run. Writes the verdict and collected evidence under `experiments/bluefield/reports/`.
     - Commit: `feat(bluefield-probe): add end-to-end probe orchestrator`
 
-- [ ] 12. Document the probe and its prerequisites — verify: `test -s experiments/bluefield/probe/README.md && grep -q 'oob_net0' experiments/bluefield/probe/README.md`
+- [x] 12. Document the probe and its prerequisites — verify: `test -s experiments/bluefield/probe/README.md && grep -q 'oob_net0' experiments/bluefield/probe/README.md`
     - File: `experiments/bluefield/probe/README.md`
     - Outcome: states the two target hosts, the VPN and SSH-key prerequisites, what the probe mutates and how it restores, why management over `oob_net0` is unaffected, how the container image is built elsewhere and transported rather than pulled, and how to read a YES, NO, or PARTIAL verdict including the cross-check branch.
     - Commit: `docs(bluefield-probe): document probe prerequisites and verdict reading`
