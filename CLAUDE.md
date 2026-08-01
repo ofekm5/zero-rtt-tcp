@@ -108,11 +108,12 @@ Scapy provides:
 - **`observability/`**: eBPF observability implementation (currently disabled) — packet tracing and performance monitoring
 
 ### OpenSpec Change Tracking
-- **`openspec/backlog.yaml`**: Source of truth for which changes are queued/in-progress (managed via the `spec-delivery-loop`/`backlog-manage` skills)
+- **`roadmap.md`**: Source of truth for what is open, queued, or blocked
+- **`openspec/specs/`**: Current-truth capability specs (promoted from archived changes)
 - **`openspec/changes/`**: Experimental spec-driven workflow for tracking development phases
-  - **`full-dpdk-endpoint-interfaces/`**: Move remaining AF_PACKET endpoint interfaces to the DPDK ENA PMD on both SmartNICs
-  - **`aws-to-onprem-full-dpdk-migration/`**: Migration planning from AWS to on-prem Bluefield
-  - Archived changes in `openspec/changes/archive/` (includes the completed T8 ISN-ack-num translation shift, phase-1b iperf3 stress testing, and endpoint-pcap-measurement — the latter's spec was promoted to `openspec/specs/`)
+  - **`verify-eswitch-tcp-seq-offload/`**: Spike — can the BlueField-3 e-switch rewrite TCP seq/ack in hardware?
+  - **`bluefield-servernic-hw-offload/`**: DPU-side ServerNIC offloading seq/ack rewrite to the e-switch (blocked on the spike)
+  - Archived changes in `openspec/changes/archive/` (includes the completed T8 ISN-ack-num translation shift, phase-1b iperf3 stress testing, full-DPDK endpoint interfaces, and endpoint-pcap-measurement — the latter's spec was promoted to `openspec/specs/`)
 
 ### Reference
 - **`.claude/skills/run-experiment/SKILL.md`**: Run-experiment skill (pick mode, run orchestrator, diagnose failures across scapy/dpdk/proxmox/baseline)
@@ -165,8 +166,8 @@ edit `.claude/skills/deploy-infra/request.json`, commit, push; results come back
 4. Reports are written automatically to `experiments/<mode>/reports/`
 
 **Change Management (OpenSpec Workflow):**
-- Active changes tracked in `openspec/backlog.yaml` + `openspec/changes/` with spec-driven proposals, designs, and task lists
-- Use the `spec-planning:propose`, `spec-planning:explore`, `spec-planning:archive`, `spec-delivery-loop:backlog-manage`, and `spec-delivery-loop:spec-delivery-loop` skills
+- Active changes tracked in `openspec/changes/` with spec-driven proposals, designs, and task lists; `roadmap.md` records what is open, queued, or blocked
+- Use the `spec-planning:openspec-propose-change`, `spec-planning:openspec-explore-idea`, `spec-planning:openspec-sync-change`, and `spec-planning:openspec-archive-change` skills; `task-runner:launch-task-runner` implements an approved change
 - Completed changes archived with full context preserved
 
 ## Testing Approach
@@ -300,12 +301,12 @@ observability/                # eBPF observability implementation (currently dis
 ├── ...                        # Packet tracing and performance monitoring
 
 openspec/
-├── backlog.yaml         # Source of truth for queued/in-progress changes
+├── config.yaml           # OpenSpec workflow config
 ├── specs/                # Current-truth capability specs
 ├── changes/              # Experimental spec-driven change tracking
-│   ├── full-dpdk-endpoint-interfaces/       # Move remaining AF_PACKET endpoint ports to DPDK ENA PMD
-│   ├── aws-to-onprem-full-dpdk-migration/   # Migration planning to Bluefield
-│   └── archive/          # Completed changes (DPDK port, SSM tests, T8 translation shift, phase-1b iperf3, endpoint-pcap-measurement, …)
+│   ├── verify-eswitch-tcp-seq-offload/      # Spike: can the BF-3 e-switch rewrite TCP seq/ack in HW?
+│   ├── bluefield-servernic-hw-offload/      # DPU ServerNIC via e-switch offload (blocked on the spike)
+│   └── archive/          # Completed changes (DPDK port, SSM tests, T8 translation shift, phase-1b iperf3, full-DPDK endpoint interfaces, endpoint-pcap-measurement, …)
 
 .claude/skills/deploy-infra/    # Deploy skill + mobile/remote ops (AWS deploy/experiment/destroy via GitHub Actions)
 ├── SKILL.md             # Local + remote deploy instructions
