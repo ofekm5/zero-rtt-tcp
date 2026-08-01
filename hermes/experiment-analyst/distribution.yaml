@@ -1,0 +1,35 @@
+name: experiment-analyst
+version: 0.1.0
+description: Reads committed 0-RTT experiment bundles and reports what happened; read-only, never dispatches a run, never trusts a possibly-truncated statistic.
+hermes_requires: ">=0.12.0"
+author: ofekm5
+license: MIT
+
+# Every secret the profile needs. `hermes profile install` shows these to the
+# user, and .env.EXAMPLE must list exactly this set — the validator enforces it.
+#
+# Deliberately ABSENT: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_PROFILE.
+# This agent reads committed git artifacts. It has no reason to reach AWS and is
+# not given the means to.
+env_requires:
+  - name: CLAUDE_CODE_OAUTH_TOKEN
+    description: Binds this profile to the Claude subscription. See the fleet README on the unofficial-OAuth billing caveat.
+    required: true
+  - name: OPENROUTER_API_KEY
+    description: Buys the fallback model only. Note the analyst-specific caveat in config.yaml — a degraded analysis still reads as an answer.
+    required: true
+  - name: GITHUB_TOKEN
+    description: Fine-grained PAT for ofekm5/zero-rtt-tcp with contents:read ONLY. No actions:write — this agent must not be able to dispatch a run, and no contents:write — it must not be able to commit.
+    required: true
+  - name: ZERO_RTT_REPO_PATH
+    description: Absolute path to the zero-rtt-tcp clone on this box; terminal.cwd resolves to it.
+    required: true
+  - name: TELEGRAM_BOT_TOKEN
+    description: BotFather token for this profile's OWN bot. One bot per profile — Telegram rejects concurrent polling of the same token.
+    required: true
+  - name: TELEGRAM_ALLOWED_USERS
+    description: Your Telegram user id. Without it the bot answers anyone who finds it.
+    required: true
+  - name: TELEGRAM_HOME_CHANNEL
+    description: Chat id the scheduled new-bundle analysis delivers to.
+    required: true

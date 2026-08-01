@@ -31,10 +31,18 @@ IPERF_BYTES="${IPERF_BYTES:-1048576}"
 #   - ServerNIC TTFB: stamped in servernic-dpdk        (SYN ingress → 1st s2c data byte)
 # Each NIC source emits [DIAG] rdtsc samples; the pcap analyzer emits structured lines:
 #   metric=<name> value_ms=<v> node=<n> flow=...
+# or, under --summary, one pre-aggregated line per metric:
+#   summary=<name> node=<n> n=<k> min_ms=.. p50_ms=.. p95_ms=.. p99_ms=.. max_ms=.. mean_ms=..
 
 # summarize_metric <metric> <node> <label>
 # Reads text on stdin, extracts all matching analyzer output lines, prints count +
 # min/mean/median/max in ms. No-op if none found.
+#
+# Prefers a pre-aggregated summary= line when one is present: at 100k-connection
+# scale the per-flow lines cannot survive the transport (AWS SSM truncates
+# StandardOutputContent at 24 KB), so the analyzer aggregates on the capture host
+# and only the summary crosses the wire. Falls back to per-flow lines otherwise,
+# so small runs still report the identical shape.
 # stdin is consumed into an env var so the heredoc can supply the Python script.
 summarize_metric() {
     local metric="$1" node="$2" label="$3" data
@@ -42,11 +50,28 @@ summarize_metric() {
     METRIC_DATA="$data" python3 - "$metric" "$node" "$label" <<'PY'
 import os, sys, re, statistics
 metric, node, label = sys.argv[1], sys.argv[2], sys.argv[3]
-pat_metric = re.compile(r'\bmetric=' + re.escape(metric) + r'\b')
-pat_node   = re.compile(r'\bnode='   + re.escape(node)   + r'\b')
-pat_value  = re.compile(r'\bvalue_ms=([0-9.]+)')
+pat_metric  = re.compile(r'\bmetric='  + re.escape(metric) + r'\b')
+pat_summary = re.compile(r'\bsummary=' + re.escape(metric) + r'\b')
+pat_node    = re.compile(r'\bnode='    + re.escape(node)   + r'\b')
+pat_value   = re.compile(r'\bvalue_ms=([0-9.]+)')
+lines = os.environ.get("METRIC_DATA", "").splitlines()
+
+# Preferred path: the analyzer already aggregated on the capture host.
+for line in lines:
+    if not (pat_summary.search(line) and pat_node.search(line)):
+        continue
+    f = dict(re.findall(r'(\w+)=([0-9.]+)', line))
+    if "n" not in f:
+        continue
+    print(f"  {label}: n={f['n']}  "
+          f"min={float(f.get('min_ms', 0)):.3f}  mean={float(f.get('mean_ms', 0)):.3f}  "
+          f"median={float(f.get('p50_ms', 0)):.3f}  p95={float(f.get('p95_ms', 0)):.3f}  "
+          f"p99={float(f.get('p99_ms', 0)):.3f}  max={float(f.get('max_ms', 0)):.3f} ms")
+    sys.exit(0)
+
+# Fallback: per-flow lines (small runs, or the NIC in-app [DIAG] TTFB channel).
 vals = []
-for line in os.environ.get("METRIC_DATA", "").splitlines():
+for line in lines:
     if not (pat_metric.search(line) and pat_node.search(line)):
         continue
     m = pat_value.search(line)

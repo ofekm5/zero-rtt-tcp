@@ -62,6 +62,13 @@ remote_run()    { ssm_run    "$@"; }
 remote_bg()     { ssm_bg     "$@"; }
 remote_stdout() { ssm_stdout "$@"; }
 
+# SSM silently truncates StandardOutputContent at 24 KB — no error, no marker,
+# the last line is simply cut mid-character. Anything this transport fetches by
+# `cat`-ing a whole file is therefore a prefix once the file passes ~24 KB, which
+# is routine for the NIC logs at 100k connections. run_core.sh uses this to warn
+# when a fetched blob lands at the cap. Unset for uncapped transports (SSH).
+REMOTE_OUTPUT_CAP=24000
+
 # ─── Node discovery (AWS EC2) ─────────────────────────────────────────────────
 # Populates SERVER_ID, SERVERNIC_ID, CLIENTNIC_ID, CLIENT_ID, SERVER_IP.
 discover_nodes() {

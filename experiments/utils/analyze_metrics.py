@@ -12,7 +12,7 @@ multi-GB RAM blow-up of loading a whole pcap into Python objects.
   send_unlock — Time to first payload: first SYN out → first outbound payload>0 segment (client pcap)
   server_gap  — Server-side gap: first SYN-ACK out → first inbound payload>0 segment (server pcap)
 
-Output format (machine-parseable key=value lines):
+Output format (machine-parseable key=value lines), one line per flow:
   metric=fct          value_ms=<v> node=client flow=<srcip:sport-dstip:dport>
   metric=send_unlock  value_ms=<v> node=client flow=<...>
   metric=server_gap   value_ms=<v> node=server flow=<...>
@@ -20,10 +20,22 @@ Output format (machine-parseable key=value lines):
 Missing events produce a flag line and non-zero exit:
   missing=<event_name> flow=<...>
 
+--summary collapses those to a fixed number of aggregate lines instead:
+  summary=fct node=client n=<k> min_ms=<v> p50_ms=<v> p95_ms=<v> p99_ms=<v> max_ms=<v> mean_ms=<v>
+  missing=<event_name> node=<n> count=<k>
+
+Use --summary whenever the output crosses a transport with a size cap. AWS SSM
+truncates StandardOutputContent at 24 KB, which silently discarded all but the
+first ~144 flows of a 68,779-flow run — the per-flow format costs ~170 bytes per
+flow, the summary format is constant-size at any scale. --detail-out keeps the
+full per-flow detail on the capture host, where nothing truncates it.
+
 Usage:
     python3 analyze_metrics.py --client-pcap /tmp/client.pcap
     python3 analyze_metrics.py --client-pcap /tmp/client.pcap --server-pcap /tmp/server.pcap
     python3 analyze_metrics.py --client-pcap /tmp/client.pcap --iperf-csv /tmp/iperf.csv
+    python3 analyze_metrics.py --client-pcap /tmp/client.pcap --summary \
+        --detail-out /tmp/client_metrics.txt
 
 For testing on hosts without tcpdump, pre-captured `tcpdump -r ... -nn -tt`
 text can be fed directly via --client-text / --server-text.
@@ -36,6 +48,11 @@ import subprocess
 import sys
 from collections import namedtuple
 from typing import List, Optional, Tuple
+
+# Per-flow lines cost ~170 bytes/flow. Past this many flows the output is very
+# likely to hit a transport cap somewhere (SSM's 24 KB is the one that bit us),
+# so warn the caller toward --summary rather than let it truncate silently.
+PER_FLOW_WARN_THRESHOLD = 100
 
 # A single parsed TCP/IP packet from tcpdump output.
 Pkt = namedtuple("Pkt", "time src sport dst dport flags length")
@@ -126,7 +143,7 @@ def analyze_client(records) -> Tuple[Optional[str], list]:
             f["last_data"] = p.time
 
     if not order:
-        return None, [{"kind": "missing", "event": "SYN", "flow": "unknown"}]
+        return None, [{"kind": "missing", "event": "SYN", "node": "client", "flow": "unknown"}]
 
     results: list = []
     first_flow: Optional[str] = None
@@ -135,7 +152,7 @@ def analyze_client(records) -> Tuple[Optional[str], list]:
         if first_flow is None:
             first_flow = f["flow"]
         if f["first_payload"] is None:
-            results.append({"kind": "missing", "event": "first_outbound_payload", "flow": f["flow"]})
+            results.append({"kind": "missing", "event": "first_outbound_payload", "node": "client", "flow": f["flow"]})
         else:
             results.append({
                 "kind": "metric", "name": "send_unlock",
@@ -143,7 +160,7 @@ def analyze_client(records) -> Tuple[Optional[str], list]:
                 "node": "client", "flow": f["flow"],
             })
         if f["last_data"] is None:
-            results.append({"kind": "missing", "event": "last_data_or_FIN", "flow": f["flow"]})
+            results.append({"kind": "missing", "event": "last_data_or_FIN", "node": "client", "flow": f["flow"]})
         else:
             results.append({
                 "kind": "metric", "name": "fct",
@@ -181,7 +198,7 @@ def analyze_server(records) -> Tuple[Optional[str], list]:
             f["first_inbound"] = p.time
 
     if not order:
-        return None, [{"kind": "missing", "event": "SYN-ACK", "flow": "unknown"}]
+        return None, [{"kind": "missing", "event": "SYN-ACK", "node": "server", "flow": "unknown"}]
 
     results: list = []
     first_flow: Optional[str] = None
@@ -190,7 +207,7 @@ def analyze_server(records) -> Tuple[Optional[str], list]:
         if first_flow is None:
             first_flow = f["flow"]
         if f["first_inbound"] is None:
-            results.append({"kind": "missing", "event": "first_inbound_payload", "flow": f["flow"]})
+            results.append({"kind": "missing", "event": "first_inbound_payload", "node": "server", "flow": f["flow"]})
         else:
             results.append({
                 "kind": "metric", "name": "server_gap",
@@ -288,19 +305,92 @@ def parse_iperf_csv_duration(csv_path: str) -> Optional[float]:
 # Output
 # --------------------------------------------------------------------------- #
 
-def emit(result: dict) -> None:
+def format_result(result: dict) -> str:
+    """Render one per-flow result as its key=value line (no trailing newline)."""
     if result["kind"] == "metric":
-        print(
+        return (
             f"metric={result['name']}"
             f" value_ms={result['value_ms']:.3f}"
             f" node={result['node']}"
             f" flow={result['flow']}"
         )
-    elif result["kind"] == "missing":
-        print(
-            f"missing={result['event']}"
-            f" flow={result['flow']}"
+    return (
+        f"missing={result['event']}"
+        f" flow={result['flow']}"
+    )
+
+
+def emit(result: dict) -> None:
+    print(format_result(result))
+
+
+def percentile(sorted_vals: List[float], pct: float) -> float:
+    """
+    Linear-interpolated percentile over an already-sorted list.
+
+    Hand-rolled rather than statistics.quantiles() so the result is exact for
+    n=1 (returns the single value) and stable across the Python versions on the
+    AMI, which statistics.quantiles() is not — it raises below n=2.
+    """
+    if not sorted_vals:
+        raise ValueError("percentile of empty sequence")
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    pos = (len(sorted_vals) - 1) * (pct / 100.0)
+    low = int(pos)
+    high = min(low + 1, len(sorted_vals) - 1)
+    frac = pos - low
+    return sorted_vals[low] + (sorted_vals[high] - sorted_vals[low]) * frac
+
+
+def summarize(results: list) -> list:
+    """
+    Collapse per-flow results into a constant number of aggregate lines.
+
+    Emits one summary= line per (metric name, node) that has samples, and one
+    missing= line per (event, node) with a count. Output size depends on the
+    number of distinct metrics, never on the number of flows.
+    """
+    values: dict = {}
+    missing_counts: dict = {}
+    order: list = []
+    missing_order: list = []
+
+    for r in results:
+        if r["kind"] == "metric":
+            key = (r["name"], r["node"])
+            if key not in values:
+                values[key] = []
+                order.append(key)
+            values[key].append(r["value_ms"])
+        else:
+            key = (r["event"], r.get("node", "unknown"))
+            if key not in missing_counts:
+                missing_counts[key] = 0
+                missing_order.append(key)
+            missing_counts[key] += 1
+
+    lines: list = []
+    for name, node in order:
+        vals = sorted(values[(name, node)])
+        lines.append(
+            f"summary={name}"
+            f" node={node}"
+            f" n={len(vals)}"
+            f" min_ms={vals[0]:.3f}"
+            f" p50_ms={percentile(vals, 50):.3f}"
+            f" p95_ms={percentile(vals, 95):.3f}"
+            f" p99_ms={percentile(vals, 99):.3f}"
+            f" max_ms={vals[-1]:.3f}"
+            f" mean_ms={sum(vals) / len(vals):.3f}"
         )
+    for event, node in missing_order:
+        lines.append(
+            f"missing={event}"
+            f" node={node}"
+            f" count={missing_counts[(event, node)]}"
+        )
+    return lines
 
 
 # --------------------------------------------------------------------------- #
@@ -337,6 +427,19 @@ def main() -> int:
         help="iperf2 -yC CSV file (optional). Cross-checks pcap-derived FCT. "
              "Warns if divergence > 10 ms; pcap value remains authoritative.",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Emit constant-size aggregate lines (summary=<metric> ... n/min/p50/p95/p99/max/mean) "
+             "instead of one line per flow. Required at scale: per-flow output is ~170 bytes per "
+             "flow and is silently truncated by AWS SSM's 24 KB StandardOutputContent cap.",
+    )
+    parser.add_argument(
+        "--detail-out",
+        default=None,
+        help="Also write the full per-flow lines to this file on the capture host. "
+             "Pairs with --summary: bounded output over the wire, full detail kept locally.",
+    )
     args = parser.parse_args()
 
     have_client = args.client_pcap is not None or args.client_text is not None
@@ -348,6 +451,36 @@ def main() -> int:
 
     exit_code = 0
     fct_ms: Optional[float] = None
+    detail_fh = None
+    if args.detail_out is not None:
+        try:
+            detail_fh = open(args.detail_out, "w")
+        except OSError as exc:
+            print(f"ERROR: cannot open --detail-out {args.detail_out}: {exc}", file=sys.stderr)
+            return 2
+
+    def report(results: list) -> None:
+        """Write per-flow detail (if requested) and the chosen stdout representation."""
+        nonlocal exit_code
+        if detail_fh is not None:
+            for result in results:
+                detail_fh.write(format_result(result) + "\n")
+        if any(r["kind"] == "missing" for r in results):
+            exit_code = 1
+        if args.summary:
+            for line in summarize(results):
+                print(line)
+            return
+        n_flows = sum(1 for r in results if r["kind"] == "metric")
+        if n_flows > PER_FLOW_WARN_THRESHOLD:
+            print(
+                f"WARNING: emitting {n_flows} per-flow lines (~{n_flows * 170 // 1024} KB). "
+                f"Transports with an output cap (AWS SSM caps StandardOutputContent at 24 KB) "
+                f"will truncate this silently. Use --summary for a constant-size result.",
+                file=sys.stderr,
+            )
+        for result in results:
+            emit(result)
 
     # --- Client pcap (optional) ---
     if have_client:
@@ -363,11 +496,9 @@ def main() -> int:
             print("missing=empty_capture flow=unknown", flush=True)
             return 1
 
+        report(client_results)
         for result in client_results:
-            emit(result)
-            if result["kind"] == "missing":
-                exit_code = 1
-            elif result["name"] == "fct":
+            if result["kind"] == "metric" and result["name"] == "fct":
                 fct_ms = result["value_ms"]
 
     # --- Server pcap (optional) ---
@@ -384,10 +515,10 @@ def main() -> int:
             print("missing=empty_server_capture flow=unknown", flush=True)
             exit_code = 1
         else:
-            for result in server_results:
-                emit(result)
-                if result["kind"] == "missing":
-                    exit_code = 1
+            report(server_results)
+
+    if detail_fh is not None:
+        detail_fh.close()
 
     # --- iperf CSV cross-check (advisory only) ---
     if args.iperf_csv is not None and fct_ms is not None:

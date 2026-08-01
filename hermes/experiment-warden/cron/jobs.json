@@ -1,0 +1,20 @@
+[
+  {
+    "id": "f62f953b",
+    "name": "stack-cost-watch",
+    "prompt": "Dispatch aws-ops.yml with action=status — the only action you may ever dispatch — and determine whether the smartnics stack is up. Then check whether any experiment workflow is in flight or finished recently. Report one line: CLEAR if the stack is down, or if it is up with a run actively using it; STRAGGLER if it is up with nothing using it, in which case say how long it has been up, what that has cost using your configured hourly estimate, and the exact command I should run to tear it down — then stop, because you never destroy anything yourself. If you could not determine the state for any reason (dispatch failed, token expired, GitHub unreachable, your own model degraded to the fallback), report UNKNOWN and say exactly what you could not check. Never go silent: a clean check still sends its one line, and silence from you is the failure you exist to prevent.",
+    "schedule": "0 */3 * * *",
+    "timezone": "Asia/Jerusalem",
+    "enabled": true,
+    "deliver": "telegram"
+  },
+  {
+    "id": "c40b7e12",
+    "name": "fleet-heartbeat",
+    "prompt": "Check whether the runner and analyst have each reported within your configured silence_threshold_hours. Report one line naming any agent that has not — an agent that has gone quiet is indistinguishable from one that is working, which is the whole reason this fleet exists. If both are within threshold, say so in one line. Never go silent. Do not attempt to restart or repair another agent; name what looks dead and stop.",
+    "schedule": "0 9 * * *",
+    "timezone": "Asia/Jerusalem",
+    "enabled": true,
+    "deliver": "telegram"
+  }
+]

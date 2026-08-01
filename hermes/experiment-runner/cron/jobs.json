@@ -1,0 +1,20 @@
+[
+  {
+    "id": "1b8c9328",
+    "name": "in-flight-run-check",
+    "prompt": "Check whether a run-experiment.yml workflow run is currently in progress or finished since your last check. If one finished, report it per your SOUL: run id, conclusion, duration, bundle path under experiments/ci-results/, and the PASS/FAIL check count read from the log tail — not from the exit code. If one is still in flight, report its run id and elapsed time in a single line. If neither, say 'no runs in flight, nothing finished' in one line and stop. Never go silent, and do not dispatch anything from this job — scheduled dispatch is the weekly-regression job's role, not this one.",
+    "schedule": "0 */4 * * *",
+    "timezone": "Asia/Jerusalem",
+    "enabled": true,
+    "deliver": "telegram"
+  },
+  {
+    "id": "7f2a4d61",
+    "name": "weekly-regression-run",
+    "prompt": "Dispatch a regression-scale experiment on the dpdk stack: infra=dpdk, iperf_parallel=100, iperf_ports=1, everything else left empty so the workflow defaults apply. This is deliberately regression scale, not 100k — it is a cheap weekly canary that the stack and data plane still work, not a measurement run. Before dispatching, confirm no other aws-ops run is in flight; if one is, skip this week, say so in one line, and do not queue. After dispatching, watch it per your SOUL and report the outcome. If the stack is not deployed, do NOT deploy it — report that the canary could not run and stop.",
+    "schedule": "0 7 * * 1",
+    "timezone": "Asia/Jerusalem",
+    "enabled": false,
+    "deliver": "telegram"
+  }
+]

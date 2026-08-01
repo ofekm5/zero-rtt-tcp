@@ -1,0 +1,80 @@
+# experiment-warden — mechanical and frequent: dispatch one read-only status
+# action, compare against thresholds, emit one line. It wakes more often than any
+# other profile in the fleet, so a cheap model is not an economy here, it is the
+# difference between a warden that pays for itself and one that costs more than
+# the stragglers it catches.
+model:
+  provider: anthropic
+  default: claude-haiku-4-5-20251001
+
+# Degrade instead of dying when the primary is capped, 429s, or 5xxs.
+# VERIFY THIS KEY LANDS: after install run
+#   hermes config show | grep -A3 fallback
+# The Hermes docs disagree on whether this is top-level or nested under `model:`.
+# If it is absent from the RESOLVED config it is being silently ignored — set it
+# with the interactive `hermes fallback` command instead, which writes it wherever
+# this version expects.
+#
+# THIS FALLBACK IS LOAD-BEARING AND MUST NOT BE REMOVED QUIETLY.
+# This profile exists to break silence about a stack that is costing money. If it
+# dies on a 429 instead of degrading, it produces exactly the silence I would read
+# as "nothing is running". A dead warden is worse than no warden. Whoever removes
+# this must say so out loud, in the same change.
+fallback_providers:
+  - provider: openrouter
+    model: anthropic/claude-haiku-4.5
+
+agent:
+  api_max_retries: 0 # fail over fast rather than churn against a capped session
+  reasoning_effort: low # threshold comparison, not analysis
+
+# `local`: needs the gh CLI auth state to persist across container lifetimes and
+# reads no untrusted web content.
+terminal:
+  backend: local
+  cwd: ${ZERO_RTT_REPO_PATH}
+  timeout: 180
+
+memory:
+  memory_enabled: true # tracks how long a straggler has been up, and last-seen
+                       # report times for the runner and analyst
+  write_approval: false
+
+# Highest-frequency profile in the fleet — a loop here is the most expensive
+# possible failure. Cap hard.
+tool_loop_guardrails:
+  hard_stop_enabled: true
+  loop_caps:
+    max_web_searches: 0
+    max_subagents: 0
+
+skills:
+  config:
+    experiment-warden:
+      # The only workflow action this profile may dispatch. Read-only by design.
+      allowed_action: status
+      workflow: aws-ops.yml
+      stack_name: smartnics_stack
+      region: eu-central-1
+      # Flag a sibling agent as possibly dead after this much silence.
+      silence_threshold_hours: 24
+      # Escalate once a stack has been up this long with no run using it.
+      straggler_alarm_hours: 2
+      # TODO (needs you): your actual blended hourly cost for the 4-VM stack
+      # (2x m5.xlarge + 2 others + ENIs + data). Left EMPTY on purpose — an
+      # invented figure would make every escalation message quietly wrong, and
+      # this agent's whole leverage is that its cost claims are believable.
+      hourly_cost_estimate:
+
+gateway:
+  platforms:
+    telegram:
+      extra:
+        allow_from: ${TELEGRAM_ALLOWED_USERS}
+        # Two-sided routing: this profile owns /cost. It must ALSO stay silent on
+        # ^/run (runner) and ^/analyze (analyst). Verify all three halves with
+        # `hermes config show` after installing the fleet.
+        require_mention: true
+        mention_patterns:
+          - "^/cost"
+        disable_link_previews: true

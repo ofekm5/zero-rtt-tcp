@@ -1,0 +1,35 @@
+name: experiment-runner
+version: 0.1.0
+description: Dispatches and watches 0-RTT experiment runs via GitHub Actions; holds no AWS credentials and never interprets results.
+hermes_requires: ">=0.12.0"
+author: ofekm5
+license: MIT
+
+# Every secret the profile needs. `hermes profile install` shows these to the
+# user, and .env.EXAMPLE must list exactly this set — the validator enforces it.
+#
+# Deliberately ABSENT: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_PROFILE.
+# This fleet reaches AWS only by dispatching GitHub Actions, which holds the OIDC
+# role. That is the isolation boundary — adding an AWS secret here removes it.
+env_requires:
+  - name: CLAUDE_CODE_OAUTH_TOKEN
+    description: Binds this profile to the Claude subscription. See the fleet README on the unofficial-OAuth billing caveat before relying on it for a high-frequency agent.
+    required: true
+  - name: OPENROUTER_API_KEY
+    description: Buys the fallback model only. Load-bearing — this agent polls paid EC2 runs and must degrade rather than die mid-run.
+    required: true
+  - name: GITHUB_TOKEN
+    description: Fine-grained PAT for ofekm5/zero-rtt-tcp with actions:write (dispatch run-experiment.yml) and contents:read. Must NOT carry contents:write — this agent never commits.
+    required: true
+  - name: ZERO_RTT_REPO_PATH
+    description: Absolute path to the zero-rtt-tcp clone on this box; terminal.cwd resolves to it.
+    required: true
+  - name: TELEGRAM_BOT_TOKEN
+    description: BotFather token for this profile's OWN bot. One bot per profile — Telegram rejects concurrent polling of the same token.
+    required: true
+  - name: TELEGRAM_ALLOWED_USERS
+    description: Your Telegram user id. Without it the bot answers anyone who finds it.
+    required: true
+  - name: TELEGRAM_HOME_CHANNEL
+    description: Chat id the scheduled run-status job delivers to.
+    required: true

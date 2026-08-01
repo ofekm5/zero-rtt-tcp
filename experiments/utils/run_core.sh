@@ -22,10 +22,29 @@
 #   - source experiments/utils/measure.sh  (before sourcing run_core.sh)
 #   - REPO_PATH, SERVER_PORT, CONNECTIONS, FAILURES set by caller
 #
+# Optional:
+#   REMOTE_OUTPUT_CAP — byte ceiling this transport imposes on remote_stdout
+#                       (SSM: 24000). Unset/0 means uncapped (SSH).
+#
 # Usage:
 #   source "$(dirname "$0")/../utils/run_core.sh"
 #   run_experiment <servernic_eth1_mac> <clientnic_eth1_mac> <server_eth0_mac> \
 #                  <clientnic_eth2_mac> <servernic_eth2_mac>
+
+# warn_if_truncated <text> <label>
+# The transport's output cap is silent — a fetched blob that lands at the ceiling
+# is a prefix, not the whole file, and every grep/count run against it is scoped
+# to that prefix. Say so, loudly, instead of reporting statistics over a fragment.
+warn_if_truncated() {
+    local text="$1" label="$2" size
+    [[ "${REMOTE_OUTPUT_CAP:-0}" -gt 0 ]] || return 0
+    size=${#text}
+    # Within 512 bytes of the cap: treat as truncated. The cap trims mid-line, so
+    # an exact match is not guaranteed.
+    if (( size >= REMOTE_OUTPUT_CAP - 512 )); then
+        warn "$label: fetched ${size} bytes, at this transport's ${REMOTE_OUTPUT_CAP}-byte output cap — content is TRUNCATED. Counts and greps below cover only the captured prefix. Read the full file on the node."
+    fi
+}
 
 # run_experiment <servernic_eth1_mac> <clientnic_eth1_mac> <server_eth0_mac>
 #                <clientnic_eth2_mac> <servernic_eth2_mac>
@@ -254,6 +273,7 @@ run_experiment() {
         local SERVERNIC_LOG_EARLY
         SERVERNIC_LOG_EARLY=$(remote_stdout "$SERVERNIC_ID" \
             "cat /tmp/servernic.log 2>/dev/null || echo '(no log)'" 30)
+        warn_if_truncated "$SERVERNIC_LOG_EARLY" "ServerNIC early log (/tmp/servernic.log)"
         echo "--- ServerNIC early log ---"
         echo "$SERVERNIC_LOG_EARLY"
         echo "---------------------------"
@@ -348,6 +368,7 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     log "Step 6: Verifying server received data..."
     local SERVER_LOG
     SERVER_LOG=$(remote_stdout "$SERVER_ID" "cat /tmp/server.log" 30)
+    warn_if_truncated "$SERVER_LOG" "Server log (/tmp/server.log)"
     echo "--- Server log ---"
     echo "$SERVER_LOG"
     echo "------------------"
@@ -364,11 +385,13 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     local SERVERNIC_LOG CLIENTNIC_LOG
     SERVERNIC_LOG=$(remote_stdout "$SERVERNIC_ID" \
         "cat /tmp/servernic.log 2>/dev/null || echo '(no log)'" 30)
+    warn_if_truncated "$SERVERNIC_LOG" "ServerNIC log (/tmp/servernic.log)"
     echo "--- ServerNIC log ---"
     echo "$SERVERNIC_LOG"
     echo "---------------------"
 
     CLIENTNIC_LOG=$(remote_stdout "$CLIENTNIC_ID" "cat /tmp/clientnic.log" 30)
+    warn_if_truncated "$CLIENTNIC_LOG" "ClientNIC log (/tmp/clientnic.log)"
     echo "--- ClientNIC DPDK log ---"
     echo "$CLIENTNIC_LOG"
     echo "--------------------------"
@@ -400,7 +423,16 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     # SSM caps StandardOutputContent at 24 KB and inline command params at 8 KB,
     # so the 20–40 MB endpoint pcaps cannot be shipped between hosts. Instead, run
     # analyze_metrics.py locally on the endpoint host that owns each capture and
-    # collect only the small (~100 byte) key=value text output:
+    # collect only the small key=value text output.
+    #
+    # That 24 KB cap applies to the ANALYZER OUTPUT too, which is why --summary is
+    # mandatory here and not an optimization: per-flow lines cost ~170 bytes each,
+    # so a 68,779-flow run emitted ~11 MB and SSM silently returned only the first
+    # 144 flows — mid-line, with no error — making every reported percentile a
+    # statistic over an arbitrary 0.2% prefix. --summary aggregates on the capture
+    # host and crosses the wire at a constant ~250 bytes; --detail-out keeps the
+    # full per-flow lines on the endpoint for anyone who needs them.
+    # Metrics collected:
     #   • Client host eth0 capture (/tmp/client_side.pcap) → fct + send_unlock
     #   • Server host eth0 capture (/tmp/server_side.pcap) → server_gap
     # analyze_metrics.py streams `tcpdump -r` output (tcpdump already wrote these
@@ -415,7 +447,8 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     local CLIENT_ANALYSIS_RESULT CLIENT_ANALYSIS_STATUS CLIENT_ANALYSIS_STDOUT CLIENT_ANALYSIS_STDERR
     CLIENT_ANALYSIS_RESULT=$(remote_run "$CLIENT_ID" \
         "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
-            --client-pcap /tmp/client_side.pcap" \
+            --client-pcap /tmp/client_side.pcap \
+            --summary --detail-out /tmp/client_metrics_per_flow.txt" \
         "$ANALYSIS_TIMEOUT")
     CLIENT_ANALYSIS_STATUS=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 0)
     CLIENT_ANALYSIS_STDOUT=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 1)
@@ -425,7 +458,8 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     local SERVER_ANALYSIS_RESULT SERVER_ANALYSIS_STATUS SERVER_ANALYSIS_STDOUT SERVER_ANALYSIS_STDERR
     SERVER_ANALYSIS_RESULT=$(remote_run "$SERVER_ID" \
         "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
-            --server-pcap /tmp/server_side.pcap" \
+            --server-pcap /tmp/server_side.pcap \
+            --summary --detail-out /tmp/server_metrics_per_flow.txt" \
         "$ANALYSIS_TIMEOUT")
     SERVER_ANALYSIS_STATUS=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 0)
     SERVER_ANALYSIS_STDOUT=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 1)
@@ -448,8 +482,20 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
        ! echo "$ANALYSIS_STDOUT" | grep -q "^missing="; then
         pass "Packet analysis: all endpoint metrics computed"
     else
+        # In --summary mode each missing= line carries count=<k> flows, so sum those
+        # rather than counting lines — otherwise 31k unestablished flows report as "2".
         local NMISSING
-        NMISSING=$(printf '%s' "$ANALYSIS_STDOUT" | grep -c '^missing=' || true)
+        NMISSING=$(printf '%s' "$ANALYSIS_STDOUT" | python3 -c '
+import sys, re
+total = lines = 0
+for line in sys.stdin:
+    if not line.startswith("missing="):
+        continue
+    lines += 1
+    m = re.search(r"\bcount=(\d+)", line)
+    total += int(m.group(1)) if m else 1
+print(total if lines else 0)
+' 2>/dev/null || echo "?")
         fail "Packet analysis: $NMISSING missing metric event(s) (client=$CLIENT_ANALYSIS_STATUS server=$SERVER_ANALYSIS_STATUS)"
     fi
 
