@@ -17,6 +17,7 @@
  * it against the installed doca_flow.h on bluefield-runs3-dpu.
  */
 
+#include <arpa/inet.h>
 #include <getopt.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -65,6 +66,21 @@ static struct probe_config g_cfg = {
 	.direction = "sub",
 	.port_id = 0,
 };
+
+/* Parses a dotted-quad IPv4 string into network-byte-order form, matching
+ * doca_flow_ip4_addr's expected representation. */
+static doca_error_t
+probe_parse_ipv4(const char *ip_str, uint32_t *out_be)
+{
+	struct in_addr addr;
+
+	if (inet_pton(AF_INET, ip_str, &addr) != 1) {
+		DOCA_LOG_ERR("Invalid IPv4 address: %s", ip_str);
+		return DOCA_ERROR_INVALID_VALUE;
+	}
+	*out_be = addr.s_addr;
+	return DOCA_SUCCESS;
+}
 
 static void
 usage(const char *prog)
@@ -191,12 +207,22 @@ probe_pipe_create(struct doca_flow_port *port, struct doca_flow_pipe **pipe)
 	struct doca_flow_fwd fwd = {0};
 	struct doca_flow_fwd fwd_miss = {0};
 	struct doca_flow_pipe_cfg pipe_cfg = {0};
+	uint32_t src_ip_be, dst_ip_be;
 	doca_error_t result;
+
+	result = probe_parse_ipv4(g_cfg.src_ip, &src_ip_be);
+	if (result != DOCA_SUCCESS)
+		return result;
+	result = probe_parse_ipv4(g_cfg.dst_ip, &dst_ip_be);
+	if (result != DOCA_SUCCESS)
+		return result;
 
 	match.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
 	match.parser_meta.outer_l4_type = DOCA_FLOW_L4_META_TCP;
 	match.outer.l3_type = DOCA_FLOW_L3_TYPE_IP4;
 	match.outer.l4_type_ext = DOCA_FLOW_L4_TYPE_EXT_TCP;
+	match.outer.ip4.src_ip = src_ip_be;
+	match.outer.ip4.dst_ip = dst_ip_be;
 	match.outer.tcp.l4_port.src_port = rte_cpu_to_be_16(g_cfg.src_port);
 	match.outer.tcp.l4_port.dst_port = rte_cpu_to_be_16(g_cfg.dst_port);
 
@@ -240,8 +266,18 @@ probe_entry_add(struct doca_flow_port *port, struct doca_flow_pipe *pipe,
 	struct doca_flow_actions actions = {0};
 	struct doca_flow_monitor monitor = {0};
 	struct doca_flow_fwd fwd = {0};
+	uint32_t src_ip_be, dst_ip_be;
 	doca_error_t result;
 
+	result = probe_parse_ipv4(g_cfg.src_ip, &src_ip_be);
+	if (result != DOCA_SUCCESS)
+		return result;
+	result = probe_parse_ipv4(g_cfg.dst_ip, &dst_ip_be);
+	if (result != DOCA_SUCCESS)
+		return result;
+
+	match.outer.ip4.src_ip = src_ip_be;
+	match.outer.ip4.dst_ip = dst_ip_be;
 	match.outer.tcp.l4_port.src_port = rte_cpu_to_be_16(g_cfg.src_port);
 	match.outer.tcp.l4_port.dst_port = rte_cpu_to_be_16(g_cfg.dst_port);
 
