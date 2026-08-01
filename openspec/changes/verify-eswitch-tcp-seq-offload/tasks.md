@@ -6,12 +6,12 @@ The primary probe is a DOCA Flow program built in the DOCA devel container and t
 
 Verify hints for authoring tasks check the artifact itself (syntax, required content). Tasks whose outcome can only be observed against live lab hardware are marked `manual review` — the sandboxed verifier has no VPN, no SSH key, no DPU, and no Docker daemon.
 
-- [ ] 1. Add SSH transport helper for the two probe hosts — verify: `bash -n experiments/bluefield/probe/lib/hosts.sh`
+- [x] 1. Add SSH transport helper for the two probe hosts — verify: `bash -n experiments/bluefield/probe/lib/hosts.sh`
     - File: `experiments/bluefield/probe/lib/hosts.sh`
     - Outcome: sourcing the file exposes `dpu_run` and `vm_run` helpers that execute a command on `10.13.36.16` and `10.13.37.10` respectively using `~/.ssh/claude_code_ed25519` with `IdentitiesOnly=yes` and `BatchMode=yes`, and return the remote exit status. Host addresses and usernames (`ubuntu` on the DPU, `bluefieldadmin` on the VM) are overridable by environment variable.
     - Commit: `feat(bluefield-probe): add SSH transport helpers for DPU and host VM`
 
-- [ ] 2. Capture the pre-mutation DPU baseline — verify: `bash -n experiments/bluefield/probe/baseline.sh && grep -q 'ovs-vsctl show' experiments/bluefield/probe/baseline.sh`
+- [x] 2. Capture the pre-mutation DPU baseline — verify: `bash -n experiments/bluefield/probe/baseline.sh && grep -q 'ovs-vsctl show' experiments/bluefield/probe/baseline.sh`
     - File: `experiments/bluefield/probe/baseline.sh`
     - Outcome: writes `ovs-vsctl show` output, `pf0hpf` bridge membership, ARM hugepage count, the DOCA and DPDK versions found on the DPU, and the adapter firmware version to a baseline file, and exits non-zero without mutating the DPU if any value cannot be read. Satisfies the baseline-capture requirement in `specs/eswitch-offload-probe/spec.md`.
     - Commit: `feat(bluefield-probe): capture pre-mutation DPU baseline`
