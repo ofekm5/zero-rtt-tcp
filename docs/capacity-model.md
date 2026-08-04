@@ -358,7 +358,7 @@ net.ipv4.ip_local_port_range   default: 32768–60999  →  28,232 ports
 So the invariant is:
 
 ```
-IPERF_PORTS × ephemeral_range_size  ≥  target_connections   (with TIME_WAIT margin)
+LOAD_PORTS × ephemeral_range_size  ≥  target_connections   (with TIME_WAIT margin)
 ```
 
 | Ephemeral range | Ports available | Server ports needed for 100k |
@@ -366,7 +366,7 @@ IPERF_PORTS × ephemeral_range_size  ≥  target_connections   (with TIME_WAIT m
 | default `32768–60999` | 28,232 | **4** |
 | widened `1024–65535` | 64,512 | **2** |
 
-This is precisely what `PORT_COUNT` / `IPERF_PORTS` exist for, and why both
+This is precisely what `PORT_COUNT` / `LOAD_PORTS` exist for, and why both
 binaries take `--port-count`. Assert the inequality in `run_core.sh` before the
 run rather than discovering it as mysterious connection failures. Leave real
 margin: connections in `TIME_WAIT` still hold their tuple for `2×MSL` (60 s).
@@ -512,7 +512,7 @@ at:
 1. **Endpoint RAM / socket count** (§10) — the t3.micro wall. **✅ Resolved** (m5.xlarge).
 2. **Nitro allowances** (§4) — especially `conntrack_allowance_exceeded`. **✅ Confirmed 0** on both endpoints at 100k.
 3. **Kernel limits** (§10) — backlog, conntrack, fds, TIME_WAIT. **✅ Raised**, none hit.
-4. **Port space** (§8) — is `IPERF_PORTS` large enough to be *arithmetically* possible? **✅ Asserted in `run_core.sh`**, passed (4 × 32,256 ≥ 100,000).
+4. **Port space** (§8) — is `LOAD_PORTS` large enough to be *arithmetically* possible? **✅ Asserted in `run_core.sh`**, passed (4 × 32,256 ≥ 100,000).
 5. **Frame size** (§5) — is anything above 2048 bytes being silently truncated? **✅ 0 `truncated_frames`**.
 6. **SmartNIC CPU** (§9) — `imissed` climbing, cycles/packet. **← This is where the live 100k run actually stopped (§13).** `imissed` nonzero, `rx_nombuf`/`oerrors` zero, cycles/packet measured and well under budget in steady state — the ceiling is burst absorption (RX ring depth vs. 100k simultaneous SYNs), not per-packet cost.
 7. **Buffered-packet memory** (§7). **✅ Capped**, 446 MB/1 GiB observed, never reached.
@@ -561,7 +561,7 @@ not another sizing-constant tweak in this table.
 Every fix this document called for (§4, §5, §7, §9, §10) landed in PR #27 +
 follow-ups, `infra/dpdk` was redeployed with the endpoint upsize, and
 `experiments/dpdk/run_experiment.sh` was run twice at
-`IPERF_PARALLEL=100000 IPERF_PORTS=4`. This section is the answer to "does the
+`LOAD_PARALLEL=100000 LOAD_PORTS=4`. This section is the answer to "does the
 model hold up against a real run" — it does, and it correctly predicted where
 the run would actually stop.
 

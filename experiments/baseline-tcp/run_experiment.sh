@@ -28,11 +28,20 @@ export PYTHONIOENCODING=utf-8
 source "$(dirname "$0")/../utils/ssm.sh"
 # shellcheck source=../utils/measure.sh
 source "$(dirname "$0")/../utils/measure.sh"
+# shellcheck source=../utils/endpoint.sh
+source "$(dirname "$0")/../utils/endpoint.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
-# Number of measurement ROUNDS (each round opens IPERF_PARALLEL connections across
-# IPERF_PORTS ports — see measure.sh). Default 1 round of 100000 parallel conns.
+
+# Transport shims — endpoint.sh is written against the generic remote_* names so
+# the same code drives this stack and the 0-RTT stack (run_core.sh).
+remote_run()    { ssm_run    "$@"; }
+remote_bg()     { ssm_bg     "$@"; }
+remote_stdout() { ssm_stdout "$@"; }
+REMOTE_OUTPUT_CAP=24000
+# Number of measurement ROUNDS (each round opens LOAD_PARALLEL connections across
+# LOAD_PORTS ports — see measure.sh). Default 1 round of 100000 parallel conns.
 # Override rounds via env: CONNECTIONS=5 ./run_experiment.sh
 BASELINE_CONNECTIONS="${CONNECTIONS:-1}"
 
@@ -110,17 +119,25 @@ sleep 2
 
 # ─── Step 2: Cleanup any leftover server processes ───────────────────────────
 log "Step 2: Cleaning up any leftover server processes..."
-ssm_bg "$SERVER_ID" "pkill -f 'iperf -s' 2>/dev/null; rm -f /tmp/server.log"
+ssm_bg "$SERVER_ID" "pkill -f loadgen.py 2>/dev/null; rm -f /tmp/server.log"
 sleep 2
 
 
+# ─── Step 2b: Endpoint tuning — identical to the 0-RTT stack ─────────────────
+# The whole point of this run is to be compared against experiments/dpdk. Any
+# endpoint parameter that differs between the two — emulated RTT, offloads, MTU,
+# TCP options, kernel limits — becomes a confound indistinguishable from 0-RTT
+# benefit or cost. endpoint_tune() is the same function run_core.sh calls.
+endpoint_tune "$CLIENT_ID" "$SERVER_ID"
+
+
 # ─── Step 3: Start Server ─────────────────────────────────────────────────────
-# SSM commands don't inherit this orchestrator's env, so pass IPERF_PORTS through
+# SSM commands don't inherit this orchestrator's env, so pass LOAD_PORTS through
 # explicitly — otherwise the remote server.sh falls back to its own default and may
 # listen on a different port set than the client (measure.sh) dials into.
-log "Step 3: Starting Server ($IPERF_PORTS iperf port(s))..."
+log "Step 3: Starting Server ($LOAD_PORTS load-generator port(s))..."
 ssm_bg "$SERVER_ID" \
-    "IPERF_PORTS=$IPERF_PORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+    "LOAD_PORTS=$LOAD_PORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
 sleep 3
 
 LISTEN_CHECK=$(ssm_stdout "$SERVER_ID" "ss -tlnp | grep $SERVER_PORT && echo LISTENING || echo NOT_LISTENING" 30)
@@ -132,31 +149,43 @@ else
 fi
 
 
-# ─── Step 4: Run baseline TTFB measurements ──────────────────────────────────
-log "Step 4: Running baseline TTFB ($BASELINE_CONNECTIONS connections)..."
-run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" "$BASELINE_CONNECTIONS" "$REPO_PATH" "${IPERF_TIMEOUT:-1800}" "Baseline TTFB"
+# ─── Step 3b: Start endpoint captures ────────────────────────────────────────
+# Without these the baseline produces no send_unlock/FCT at all, and the 0-RTT
+# claim — a *difference* between two stacks — has only one side measured.
+PORT_HI=$(( SERVER_PORT + LOAD_PORTS - 1 ))
+endpoint_capture_start "$CLIENT_ID" "$SERVER_ID" "portrange ${SERVER_PORT}-${PORT_HI}"
 
-# Aggregate client-side latency (no NIC data plane in baseline — kernel forwarding).
-METRICS_SUMMARY=$(
-    echo "$CLIENT_STDOUT" | summarize_metric "ttfb" "client" "Client TTFB"
-    echo "$CLIENT_STDOUT" | summarize_metric "fct"  "client" "Client FCT "
-)
+
+# ─── Step 4: Run baseline measurements ───────────────────────────────────────
+log "Step 4: Running baseline load ($BASELINE_CONNECTIONS round(s))..."
+run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" "$BASELINE_CONNECTIONS" "$REPO_PATH" "${LOAD_TIMEOUT:-1800}" "Baseline"
+
+sleep 3
+
+
+# ─── Step 5: Stop captures + Server, analyze, collect logs ───────────────────
+log "Step 5: Stopping captures and Server..."
+endpoint_capture_stop "$CLIENT_ID" "$SERVER_ID"
+ssm_bg "$SERVER_ID" "pkill -f loadgen.py 2>/dev/null || true"
+sleep 2
+
+log "Packet analysis: analyzing each endpoint capture on its own host..."
+endpoint_analyze "$CLIENT_ID" "$SERVER_ID" "$REPO_PATH"
+
+# Same metric set, same ordering, same helper as the 0-RTT run — so the two
+# reports can be read side by side without re-deriving what each row means.
+# There is no NIC in-app TTFB block here: the baseline has no data plane.
+METRICS_SUMMARY=$(endpoint_latency_summary "${ENDPOINT_METRICS:-}")
 echo "--- Latency summary ---"
 echo "$METRICS_SUMMARY"
 echo "-----------------------"
-
-
-# ─── Step 5: Stop Server and collect logs ────────────────────────────────────
-log "Step 5: Stopping Server and collecting logs..."
-ssm_bg "$SERVER_ID" "pkill -f 'iperf -s' 2>/dev/null || true"
-sleep 2
 
 SERVER_LOG=$(ssm_stdout "$SERVER_ID" "cat /tmp/server.log" 30)
 echo "--- Server log ---"
 echo "$SERVER_LOG"
 echo "------------------"
 
-if echo "$SERVER_LOG" | grep -qiE "Accepted|bytes|connection"; then
+if echo "$SERVER_LOG" | grep -qiE "Received|bytes|connection"; then
     pass "Server received data from client"
 else
     fail "Server log shows no received data"
@@ -186,19 +215,40 @@ if [[ $FAILURES -eq 0 ]]; then OVERALL_RESULT="ALL PASSED ✅"; else OVERALL_RES
     echo ""
     echo "**Mode**: Plain TCP (no 0-RTT middleware)"
     echo "**Infra**: \`infra/baseline\` CDK stack (BaselineStack) — 4× t3.micro, kernel forwarding"
-    echo "**Connections**: $BASELINE_CONNECTIONS sequential"
     echo "**Overall result**: $OVERALL_RESULT"
     echo ""
-    echo "## Latency Summary (Client TTFB + FCT)"
+    echo "## Load Parameters"
+    echo ""
+    echo "These must match the 0-RTT run being compared against, or the comparison"
+    echo "is confounded. Both stacks read them from \`experiments/utils/measure.sh\`"
+    echo "and configure endpoints via \`experiments/utils/endpoint.sh\`."
+    echo ""
+    echo "| Parameter | Value |"
+    echo "|---|---|"
+    echo "| Rounds | $BASELINE_CONNECTIONS |"
+    echo "| \`LOAD_PARALLEL\` | $LOAD_PARALLEL |"
+    echo "| \`LOAD_PORTS\` | $LOAD_PORTS |"
+    echo "| \`LOAD_BYTES\` | $LOAD_BYTES |"
+    echo "| \`LOAD_RATE\` | $LOAD_RATE conn/s |"
+    echo "| \`LOAD_CONCURRENCY\` | $LOAD_CONCURRENCY |"
+    echo "| \`NETEM_RTT_MS\` | $NETEM_RTT_MS (Server egress only) |"
+    echo ""
+    echo "## Latency Summary"
     echo ""
     echo '```'
     echo "$METRICS_SUMMARY"
     echo '```'
     echo ""
-    echo "## TTFB Measurements"
+    echo "## Client Output"
     echo ""
     echo '```'
     echo "$CLIENT_STDOUT"
+    echo '```'
+    echo ""
+    echo "## Endpoint Packet Analysis"
+    echo ""
+    echo '```'
+    echo "${ENDPOINT_METRICS:-}"
     echo '```'
     echo ""
     echo "## Server Log"
@@ -212,7 +262,11 @@ if [[ $FAILURES -eq 0 ]]; then OVERALL_RESULT="ALL PASSED ✅"; else OVERALL_RES
     echo "- Traffic path: Client → ClientNIC (kernel forward) → ServerNIC (kernel forward) → Server"
     echo "- ClientNIC: ip_forward=1, static route 10.1.2.0/24 via 10.1.1.1 dev eth1"
     echo "- ServerNIC: ip_forward=1, static route 10.1.0.0/24 via 10.1.1.1 dev eth0"
-    echo "- Compare TTFB min/mean/p99 against experiments/dpdk/reports/ for 0-RTT benefit"
+    echo "- Emulated RTT is applied entirely on the Server VM's egress, so the leg"
+    echo "  0-RTT short-circuits carries the full \`NETEM_RTT_MS\`. See endpoint.sh."
+    echo "- **Compare \`Send unlock\` against \`experiments/dpdk/reports/\`** — that is"
+    echo "  the metric the 0-RTT mechanism acts on. FCT and server gap are"
+    echo "  throughput-bound and move with payload size and loss."
 } > "$REPORT_FILE"
 
 log "Report saved to $REPORT_FILE"

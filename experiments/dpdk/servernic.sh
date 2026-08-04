@@ -31,7 +31,7 @@ DPDK_BUILD="$REPO_PATH/src/servernic/dpdk/builddir"
 BINARY="$DPDK_BUILD/servernic-dpdk"
 SERVER_PORT=8080
 # Number of contiguous app ports to translate (SERVER_PORT .. +PORT_COUNT-1).
-# Must match the iperf load spread (IPERF_PORTS) and the ClientNIC --port-count.
+# Must match the load spread (LOAD_PORTS) and the ClientNIC --port-count.
 PORT_COUNT="${PORT_COUNT:-1}"
 REGION="eu-central-1"
 

@@ -45,7 +45,7 @@ DPDK_BUILD="$REPO_PATH/src/clientnic/dpdk-forwarder/builddir"
 BINARY="$DPDK_BUILD/clientnic-dpdk-forwarder"
 SERVER_PORT=8080
 # Number of contiguous app ports to 0-RTT-process (SERVER_PORT .. +PORT_COUNT-1).
-# Must match the iperf load spread (IPERF_PORTS) and the ServerNIC --port-count.
+# Must match the load spread (LOAD_PORTS) and the ServerNIC --port-count.
 PORT_COUNT="${PORT_COUNT:-1}"
 PORT_HI=$(( SERVER_PORT + PORT_COUNT - 1 ))
 REGION="eu-central-1"

@@ -15,10 +15,10 @@ set -uo pipefail
 
 REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
-# Number of contiguous ports to listen on (SERVER_PORT .. SERVER_PORT+IPERF_PORTS-1).
+# Number of contiguous ports to listen on (SERVER_PORT .. SERVER_PORT+LOAD_PORTS-1).
 # The client spreads its parallel connections across these to clear the per-port
 # ephemeral-port ceiling. Must match the data plane's --port-count.
-IPERF_PORTS="${IPERF_PORTS:-4}"
+LOAD_PORTS="${LOAD_PORTS:-4}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 log() { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}"; }
@@ -44,9 +44,9 @@ sudo -u ec2-user git -C "$REPO_PATH" fetch origin main 2>&1 \
 
 # ─── Pre-flight ───────────────────────────────────────────────────────────────
 MY_IP=$(hostname -I | awk '{print $1}')
-SERVER_PORT_HI=$(( SERVER_PORT + IPERF_PORTS - 1 ))
+SERVER_PORT_HI=$(( SERVER_PORT + LOAD_PORTS - 1 ))
 log "Server VM IP: $MY_IP"
-log "Will listen on 0.0.0.0:${SERVER_PORT}-${SERVER_PORT_HI} ($IPERF_PORTS port(s))"
+log "Will listen on 0.0.0.0:${SERVER_PORT}-${SERVER_PORT_HI} ($LOAD_PORTS port(s))"
 echo ""
 
 # ─── Start the load-generator server (single asyncio process, all ports) ─────
@@ -55,4 +55,4 @@ echo ""
 log "Starting load-generator server on ports ${SERVER_PORT}-${SERVER_PORT_HI} — press Ctrl+C to stop."
 echo ""
 exec python3 "$REPO_PATH/experiments/utils/loadgen.py" --mode server \
-    --port "$SERVER_PORT" --port-count "$IPERF_PORTS"
+    --port "$SERVER_PORT" --port-count "$LOAD_PORTS"

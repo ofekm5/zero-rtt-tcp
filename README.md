@@ -102,39 +102,49 @@ cd infra/dpdk      # or infra/scapy
 
 Both scripts discover all 4 VMs via AWS SSM, pull latest code, rebuild if needed, start services in the correct order, run a client connection, capture packets, and validate 0-RTT behavior with `validate_0rtt_capture.py`. Exit code = number of failures.
 
-### iperf Stress Testing
+### Load Generation
 
-iperf (v2) is the traffic generator for load and stress testing. The 0-RTT translation layer is traffic-agnostic — iperf flows pass through ClientNIC unchanged.
+`experiments/utils/loadgen.py` is the traffic generator — a single-thread asyncio
+(epoll-driven) TCP client/server. The 0-RTT translation layer is traffic-agnostic;
+these flows pass through ClientNIC unchanged.
+
+iperf2 was the original generator and has been removed: `-P N` spawns N OS threads
+(25k threads/process at this project's scale is not viable), and it had no arrival
+pacing, so per-connection latency measured queueing rather than the network path.
 
 **Manual run (DPDK stack):** node scripts, in startup order:
 
 | Script | VM | What it does |
 |--------|----|--------------|
-| `experiments/nodes/server.sh` | Server | Starts `iperf -s` listeners on the port range |
+| `experiments/nodes/server.sh` | Server | Starts one asyncio listener across the port range |
 | `experiments/dpdk/servernic.sh` | ServerNIC | Builds + starts `servernic-dpdk` (T8 translator) |
 | `experiments/dpdk/clientnic.sh` | ClientNIC | Builds + starts `clientnic-dpdk-forwarder` |
-| `experiments/nodes/client.sh` | Client | Auto-discovers server IP, drives iperf flows |
+| `experiments/nodes/client.sh` | Client | Auto-discovers server IP, drives load |
 
-**Test scenarios** (`src/client-app/iperf_client.sh`):
+**Load knobs** (`experiments/utils/measure.sh` is the single source of truth):
 
-| # | Scenario | Key flags | Purpose |
-|---|----------|-----------|---------|
-| 01 | Baseline single flow | `-t 10` | Throughput reference |
-| 02 | Sequential connections ×5 | `-t 5` ×5 loops | Repeated SYN / flow-table churn |
-| 03 | Parallel 4 streams | `-t 10 -P 4` | Moderate multi-stream load |
-| 04 | Parallel 16 streams | `-t 10 -P 16` | High multi-stream load |
-| 05 | Bulk 100 MB | `-n 100M` | Large transfer correctness |
-| 06 | Bulk 1 GB | `-n 1G` | Sustained seq-rewrite under bulk data |
-| 07 | Burst — 100 short conns | `-n 64K` ×100 loops | Hammers SYN path; most relevant to 0-RTT |
-| 08 | Simultaneous bidir | `-t 10 -d` | Full-duplex seq/ack rewriting |
-| 09 | Sequential bidir | `-t 10 -r` | Upload then download |
-| 10 | UDP flood 1 Gbps | `-u -b 1G -t 10` | NIC interrupt / buffer stress |
-| 11 | UDP flood 100 Mbps | `-u -b 100M -t 10` | Moderate UDP baseline |
-| 12 | Stress 32 streams / 60 s | `-t 60 -P 32` | Sustained high-concurrency load |
-| 13 | Large window 256 K | `-t 10 -w 256K` | Buffering under seq-number translation |
-| 14 | Large window 1 M | `-t 10 -w 1M` | Max-window buffering stress |
+| Knob | Default | Purpose |
+|------|---------|---------|
+| `LOAD_PARALLEL` | 100000 | Total TCP connections per round |
+| `LOAD_PORTS` | 4 | Contiguous server ports the load is spread across |
+| `LOAD_RATE` | 2000 conn/s | **Arrival pacing** — spreads SYNs so latency is measurable |
+| `LOAD_BYTES` | 1024 | One segment, so FCT ≈ handshake + 1 RTT |
+| `LOAD_CONCURRENCY` | 2000 | In-flight connection ceiling |
+| `LOAD_TIMEOUT` | 1800 s | Must exceed `LOAD_PARALLEL / LOAD_RATE` |
+| `NETEM_RTT_MS` | 100 | Emulated WAN RTT, applied on the **Server** egress only |
 
-Results are saved as text files in `/tmp/iperf_results/` on the Client VM, with a throughput summary printed at the end.
+### Two experiments, not one
+
+| Script | Question | Reads as |
+|--------|----------|----------|
+| `experiments/dpdk/run_experiment.sh` | Does 0-RTT remove one RTT? | Latency — `Send unlock` is the headline metric |
+| `experiments/dpdk/run_stress.sh` | Where does the data plane break? | Capacity — establishment success rate and throughput only |
+| `experiments/baseline-tcp/run_experiment.sh` | What does plain TCP cost? | The comparison point; same knobs, same endpoint setup |
+
+Fusing latency and capacity into one run answers neither: a burst makes every
+latency sample queue-dominated, and a success rate depressed by endpoint resource
+exhaustion says nothing about whether sequence-number translation is correct. See
+`experiments/measurement-methodology-review.md`.
 
 ## Quick Start (manual, on the VMs)
 

@@ -18,13 +18,22 @@ per-port-fan-out shape closely enough that run_core.sh/measure.sh need no
 downstream changes (analyze_metrics.py works from tcpdump captures, not from
 this tool's own output).
 
+Arrival pacing (--rate) is what makes per-connection latency measurable.
+Without it every connection is created in the same event-loop iteration, so
+all --parallel SYNs reach the wire effectively at once; each flow's measured
+latency then includes queueing behind every other SYN, i.e. it reports the
+data plane's SYN service rate rather than the round-trip the 0-RTT spoof
+eliminates. --rate spreads the same total connection count over time, which
+turns a saturation event into N independent latency samples. --rate 0
+restores the old all-at-once burst for deliberate stress runs.
+
 Server mode: listens on --port-count contiguous ports starting at --port,
 drains each connection until EOF, then closes it.
 
 Usage:
     python3 loadgen.py --mode server --port 8080 --port-count 4
     python3 loadgen.py --mode client --host 10.1.2.4 --port 8080 --port-count 4 \
-        --parallel 100000 --bytes 1048576
+        --parallel 100000 --bytes 1024 --rate 2000 --concurrency-limit 2000
 """
 
 import argparse
@@ -58,17 +67,39 @@ async def _client_conn(host, port, nbytes, sem, results):
                 pass
 
 
-async def run_client(host, ports, parallel, nbytes, concurrency_limit):
+async def run_client(host, ports, parallel, nbytes, concurrency_limit, rate=0.0):
+    """Open `parallel` connections, paced at `rate` connections/sec (0 = burst).
+
+    Pacing schedules connection i for t0 + i/rate on an absolute timeline rather
+    than sleeping 1/rate between spawns, so per-sleep overhead cannot accumulate
+    into drift over a 100k-connection run. When the loop falls behind schedule
+    the delay goes non-positive and the spawn happens immediately — the requested
+    rate becomes a ceiling, not a guarantee, which is why the achieved rate is
+    reported below: a large gap means the pacing target was unreachable and the
+    run degraded toward a burst.
+    """
     sem = asyncio.Semaphore(concurrency_limit)
     results = {"ok": 0, "fail": 0}
-    tasks = [
-        _client_conn(host, ports[i % len(ports)], nbytes, sem, results)
-        for i in range(parallel)
-    ]
+    tasks = []
     t0 = time.monotonic()
+    for i in range(parallel):
+        if rate > 0:
+            delay = (t0 + i / rate) - time.monotonic()
+            if delay > 0:
+                await asyncio.sleep(delay)
+        tasks.append(asyncio.ensure_future(
+            _client_conn(host, ports[i % len(ports)], nbytes, sem, results)))
+    spawn_end = time.monotonic()
     await asyncio.gather(*tasks)
     dt = time.monotonic() - t0
+    spawn_dt = spawn_end - t0
     mbps = (results["ok"] * nbytes * 8 / 1e6 / dt) if dt > 0 else 0.0
+    achieved = (parallel / spawn_dt) if spawn_dt > 0 else float("inf")
+    pacing = (f"burst (unpaced), achieved {achieved:.0f} conn/s"
+              if rate <= 0 else
+              f"rate={rate:g} conn/s requested, {achieved:.0f} conn/s achieved "
+              f"over {spawn_dt:.3f}s")
+    print(f"Arrival: {pacing}")
     print(f"Transfer complete: {results['ok']}/{parallel} connections ok, "
           f"{results['fail']} failed, duration={dt:.3f}s, ~{mbps:.1f} Mbits/sec")
     print(f"Success: {results['ok']}/{parallel}")
@@ -166,7 +197,7 @@ def _parse_ports(base, count):
     return list(range(base, base + max(count, 1)))
 
 
-def main():
+def _build_parser():
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mode", choices=["client", "server"], required=True)
@@ -175,12 +206,23 @@ def main():
     ap.add_argument("--port-count", type=int, default=1)
     ap.add_argument("--parallel", type=int, default=100000,
                      help="total connections spread across --port-count ports (client mode)")
-    ap.add_argument("--bytes", type=int, default=1024 * 1024,
-                     help="payload bytes sent per connection (client mode)")
+    ap.add_argument("--bytes", type=int, default=1024,
+                     help="payload bytes sent per connection (client mode). "
+                          "Default 1024 = one segment, so flow completion time is "
+                          "dominated by the handshake the 0-RTT spoof shortens "
+                          "rather than by bulk transfer")
+    ap.add_argument("--rate", type=float, default=0.0,
+                     help="connection arrival rate in connections/sec (client "
+                          "mode). 0 = all at once (burst). Pace arrivals to "
+                          "measure per-connection latency; burst to stress-test")
     ap.add_argument("--concurrency-limit", type=int, default=None,
                      help="cap on simultaneously in-flight connect() attempts "
                           "(default: --parallel, i.e. no throttling)")
-    args = ap.parse_args()
+    return ap
+
+
+def main():
+    args = _build_parser().parse_args()
 
     ports = _parse_ports(args.port, args.port_count)
 
@@ -193,7 +235,8 @@ def main():
         return 2
 
     limit = args.concurrency_limit or args.parallel
-    return asyncio.run(run_client(args.host, ports, args.parallel, args.bytes, limit))
+    return asyncio.run(run_client(args.host, ports, args.parallel, args.bytes,
+                                  limit, args.rate))
 
 
 if __name__ == "__main__":

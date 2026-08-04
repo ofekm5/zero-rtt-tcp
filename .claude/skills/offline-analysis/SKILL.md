@@ -104,7 +104,7 @@ For every failed check, work only from the saved data:
 3. **Map to known patterns** — check the symptom against
    `.claude/skills/run-experiment/references/troubleshooting.md` (SSM daemon
    detachment, kernel-vs-Scapy race, MAC re-capture loop, swapped SEQ/ACK fields,
-   GW-MAC resolution, scapy-dir shadowing, `IPERF_TIMEOUT`/`IPERF_PARALLEL` balance).
+   GW-MAC resolution, scapy-dir shadowing, `LOAD_TIMEOUT`/`LOAD_PARALLEL` balance).
    Name the matching pattern and its documented fix.
 4. **If the data is insufficient** to reach a root cause (e.g. the relevant log was
    truncated by SSM's cap, or a pcap that only lives on the VM is needed), say

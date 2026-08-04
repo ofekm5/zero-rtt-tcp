@@ -133,8 +133,7 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 
 **AWS EC2 Platform:**
 - [x] ServerNIC stateless forwarder (`src/servernic/scapy/main.py`) — deprecated, feasibility PoC only
-- [x] Client iperf traffic generator (`src/client-app/iperf_client.sh`)
-- [x] Server iperf listener (`src/server-app/iperf_server.sh`)
+- [x] Client/Server load generator (`experiments/utils/loadgen.py`) — asyncio, paced arrivals; replaced iperf2
 - [x] ClientNIC Scapy implementation (`src/clientnic/scapy/`) — deprecated, feasibility PoC only
 - [x] ClientNIC DPDK forwarder (`src/clientnic/dpdk-forwarder/`) — T8 variant, live: spoof + stamp V + transparent forward
 - [x] ServerNIC DPDK implementation (`src/servernic/dpdk/`) — T8 sole translator, live: V extraction, delta, buffering, seq/ack rewrite
@@ -188,8 +187,8 @@ edit `.claude/skills/deploy-infra/request.json`, commit, push; results come back
 - Expected improvement: 1-RTT reduction (50-200ms depending on network latency)
 - Test with simulated high-latency networks
 
-### iperf Timeout / Parallelism Balance
-See `.claude/skills/run-experiment/references/troubleshooting.md` ("IPERF_TIMEOUT / IPERF_PARALLEL Balance") — `IPERF_TIMEOUT` and `IPERF_PARALLEL` are coupled and must be kept in sync.
+### Load Timeout / Parallelism Balance
+See `.claude/skills/run-experiment/references/troubleshooting.md` ("LOAD_TIMEOUT / LOAD_PARALLEL Balance") — `LOAD_TIMEOUT` and `LOAD_PARALLEL` are coupled and must be kept in sync.
 
 ## Important Constraints
 
@@ -215,8 +214,7 @@ See `.claude/skills/run-experiment/references/troubleshooting.md` ("IPERF_TIMEOU
 ```
 src/
 ├── client-app/
-│   ├── iperf_client.sh     # iperf2 test-scenario suite (client side)
-│   └── README.md
+│   └── README.md           # client side: driven by experiments/utils/loadgen.py
 │
 ├── clientnic/
 │   ├── validate_0rtt_capture.py  # pcap analysis: spoofed SYN-ACK, ISN delta, checksums
@@ -267,8 +265,7 @@ src/
 │       └── tests/                # Python unit tests (no DPDK required)
 │
 └── server-app/
-    ├── iperf_server.sh     # iperf2 listener (server side)
-    └── README.md
+    └── README.md           # server side: driven by experiments/utils/loadgen.py
 
 experiments/
 ├── scapy/              # Deprecated Scapy stack: run_experiment.sh + clientnic.sh/servernic.sh node scripts

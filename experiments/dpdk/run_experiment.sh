@@ -45,8 +45,8 @@ SERVER_PORT=8080
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-# Number of measurement ROUNDS (each round opens IPERF_PARALLEL connections across
-# IPERF_PORTS ports — see experiments/utils/measure.sh). Default 1 round of 100000.
+# Number of measurement ROUNDS (each round opens LOAD_PARALLEL connections across
+# LOAD_PORTS ports — see experiments/utils/measure.sh). Default 1 round of 100000.
 # Override via env: CONNECTIONS=3 ./run_experiment.sh
 CONNECTIONS="${CONNECTIONS:-1}"
 
@@ -219,7 +219,34 @@ fi
     echo "**Node scripts**: \`experiments/dpdk/\` (clientnic/servernic), \`experiments/nodes/\` (client/server)"
     echo "**Overall result**: $OVERALL_RESULT"
     echo ""
-    echo "## Latency Summary (TTFB @ 3 points + FCT)"
+    if [[ "${LOAD_RATE:-2000}" == "0" ]]; then
+        echo "> **CAPACITY RUN — \`LOAD_RATE=0\`.** Connections arrived as a single"
+        echo "> burst, so every flow's latency includes queueing behind the rest of"
+        echo "> the batch. Valid readings: establishment success rate and data-plane"
+        echo "> throughput. **Not** valid: any 0-RTT latency claim. For a latency"
+        echo "> run use \`run_experiment.sh\` with the default paced arrival."
+        echo ""
+    fi
+    echo "## Load Parameters"
+    echo ""
+    echo "Must match the baseline run being compared against — see"
+    echo "\`experiments/baseline-tcp/reports/\`."
+    echo ""
+    echo "| Parameter | Value |"
+    echo "|---|---|"
+    echo "| Rounds | $CONNECTIONS |"
+    echo "| \`LOAD_PARALLEL\` | $LOAD_PARALLEL |"
+    echo "| \`LOAD_PORTS\` | $LOAD_PORTS |"
+    echo "| \`LOAD_BYTES\` | $LOAD_BYTES |"
+    echo "| \`LOAD_RATE\` | $LOAD_RATE conn/s |"
+    echo "| \`LOAD_CONCURRENCY\` | $LOAD_CONCURRENCY |"
+    echo "| \`NETEM_RTT_MS\` | $NETEM_RTT_MS (Server egress only) |"
+    echo ""
+    echo "## Latency Summary"
+    echo ""
+    echo "\`Send unlock\` is the primary result: first SYN out → first payload out,"
+    echo "which is exactly what the spoofed SYN-ACK unblocks. Compare it against the"
+    echo "baseline's \`Send unlock\`; the expected saving is one \`NETEM_RTT_MS\`."
     echo ""
     echo '```'
     echo "${CORE_METRICS_SUMMARY:-}"

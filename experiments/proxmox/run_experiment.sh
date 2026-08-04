@@ -41,7 +41,7 @@ source "$(dirname "$0")/../utils/run_core.sh"
 
 REPO_PATH="/home/user/zero-rtt-tcp"
 SERVER_PORT=8080
-# Measurement ROUNDS (each round opens IPERF_PARALLEL conns across IPERF_PORTS
+# Measurement ROUNDS (each round opens LOAD_PARALLEL conns across LOAD_PORTS
 # ports — see experiments/utils/measure.sh). Default 1 round of 100000.
 CONNECTIONS="${CONNECTIONS:-1}"
 

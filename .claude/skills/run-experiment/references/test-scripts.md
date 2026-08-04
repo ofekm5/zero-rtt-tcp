@@ -10,13 +10,21 @@ their own report to `<mode>/reports/` and exit with the failure count.
 | `experiments/proxmox/run_experiment.sh` | DPDK T8 0-RTT | SSH gateway | `analyze_metrics.py` | `experiments/proxmox/reports/` |
 | `experiments/baseline-tcp/run_experiment.sh` | plain TCP | AWS SSM | (none) | `experiments/baseline-tcp/reports/` |
 
-**Load generator**: iperf2 only (`iperf -s` / `iperf -c … -P <N>`); an `iperf3` binary
-is rejected. `IPERF_PARALLEL` (default 100000) total connections per round are spread
-across `IPERF_PORTS` (default 4) contiguous server ports — one `iperf -s` per port,
-one `iperf -c -P (PARALLEL/PORTS)` per port — so a single client IP can clear the
-~28K-per-tuple ephemeral-port ceiling. The DPDK data plane covers the same range via
-`--port-count` (runner passes `IPERF_PORTS`). `CONNECTIONS` = number of rounds
+**Load generator**: `experiments/utils/loadgen.py` (asyncio, single thread; iperf has
+been removed). `LOAD_PARALLEL` (default 100000) total connections per round are spread
+round-robin across `LOAD_PORTS` (default 4) contiguous server ports, so a single client
+IP can clear the ~28K-per-tuple ephemeral-port ceiling. `LOAD_RATE` (default 2000
+conn/s) paces arrivals — without it every flow's latency includes queueing behind the
+whole batch; `LOAD_RATE=0` is a capacity run only. `LOAD_BYTES` (default 1024) is one
+segment so FCT ≈ handshake + 1 RTT. The DPDK data plane covers the same port range via
+`--port-count` (runner passes `LOAD_PORTS`). `CONNECTIONS` = number of rounds
 (default 1). Scapy is pinned to single-port/low-parallel.
+
+**Endpoint setup is shared**: `experiments/utils/endpoint.sh` applies sysctls, MTU,
+offloads, netem, captures and analysis identically for the DPDK and baseline stacks,
+so the two are comparable. Emulated RTT (`NETEM_RTT_MS`, default 100) sits entirely on
+the **Server** egress — see that file for why splitting it across both endpoints
+halved the measurable 0-RTT saving.
 
 Shared building blocks under `experiments/utils/`:
 - `run_core.sh` — transport-agnostic `run_experiment()`; the whole DPDK/Proxmox flow.
@@ -45,7 +53,7 @@ Shared building blocks under `experiments/utils/`:
 | 1 | Start Server (`experiments/nodes/server.sh`) | `ss -tlnp` shows `:8080` |
 | 2 | Start ServerNIC (Scapy forwarder) + route + iptables DROP | `ip_forward == 1` |
 | 3 | tcpdump eth0+eth1, start `src/clientnic/scapy/main.py` | `ip_forward == 1` |
-| 4 | `run_ttfb_measurement` (3 rounds × `IPERF_PARALLEL` parallel streams) | `Success: 3/3` |
+| 4 | `run_ttfb_measurement` (3 rounds × `LOAD_PARALLEL` parallel streams) | `Success: 3/3` |
 | 5 | Stop tcpdump | (always) |
 | 6 | Read `/tmp/server.log` | Contains `Received`/`bytes` |
 | 7 | Read `/tmp/clientnic.log` | Contains `delta`/`flow created`/`SYN received`/`spoofed` |
@@ -90,7 +98,7 @@ CONNECTIONS=10 ./experiments/proxmox/run_experiment.sh   # RUNS lab via gateway
 | 2 | Start ServerNIC (`experiments/dpdk/servernic.sh`, env MACs) | `pgrep servernic-dpdk` + `ip_forward==1` |
 | 3 | Start ClientNIC (`experiments/dpdk/clientnic.sh <GW_MAC>`) | `pgrep clientnic-dpdk-forwarder` + `ip_forward==1` |
 | 3b | tcpdump on **Client host** + **Server host** (nano ts, `-s 128`) | (capture) |
-| 4 | `run_ttfb_measurement` — CONNECTIONS rounds × `IPERF_PARALLEL` parallel iperf2 streams (default 100000) | `Success: N/N` |
+| 4 | `run_ttfb_measurement` — CONNECTIONS rounds × `LOAD_PARALLEL` parallel iperf2 streams (default 100000) | `Success: N/N` |
 | 5 | Stop captures + SIGTERM both DPDK binaries | (always) |
 | 6 | Read `/tmp/server.log` | Contains `Received`/`bytes` |
 | 7 | Collect ClientNIC + ServerNIC logs | ClientNIC: `flow created`/`spoofed SYN-ACK`/`V=`; ServerNIC warns if no activity |

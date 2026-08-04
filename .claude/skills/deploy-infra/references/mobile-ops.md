@@ -30,9 +30,9 @@ read  .claude/skills/deploy-infra/results/latest.md ◄──commit──  resul
 | `action` | `status` \| `deploy` \| `experiment` \| `destroy` | what to run |
 | `variant` | `dpdk` \| `scapy` \| `baseline` | picks `infra/<variant>` and `experiments/<variant>` (`baseline` → `experiments/baseline-tcp`) |
 | `connections` | e.g. `"1"` | `CONNECTIONS` — measurement rounds (empty = script default 1) |
-| `iperf_parallel` | e.g. `"100"` | `IPERF_PARALLEL` — TCP connections per round (empty = 100000) |
-| `iperf_ports` | e.g. `"1"` | `IPERF_PORTS` (empty = 4) |
-| `iperf_timeout` | e.g. `"120"` | `IPERF_TIMEOUT` seconds — **lower this when `iperf_parallel` is small** so failures surface fast |
+| `iperf_parallel` | e.g. `"100"` | `LOAD_PARALLEL` — TCP connections per round (empty = 100000) |
+| `iperf_ports` | e.g. `"1"` | `LOAD_PORTS` (empty = 4) |
+| `iperf_timeout` | e.g. `"120"` | `LOAD_TIMEOUT` seconds — **lower this when `iperf_parallel` is small** so failures surface fast |
 | `nonce` | any string | bump it to re-run an otherwise identical request (a push needs a diff) |
 
 ## Playbook from a phone (Claude Code mobile session on this repo)

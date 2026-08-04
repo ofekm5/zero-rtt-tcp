@@ -28,13 +28,13 @@ on:
         description: "experiment: measurement rounds (CONNECTIONS, default 1)"
         default: ""
       iperf_parallel:
-        description: "experiment: parallel TCP connections per round (IPERF_PARALLEL, default 100000)"
+        description: "experiment: parallel TCP connections per round (LOAD_PARALLEL, default 100000)"
         default: ""
       iperf_ports:
-        description: "experiment: server ports to spread load across (IPERF_PORTS, default 4)"
+        description: "experiment: server ports to spread load across (LOAD_PORTS, default 4)"
         default: ""
       iperf_timeout:
-        description: "experiment: seconds per round before SSM gives up (IPERF_TIMEOUT, default 1800; lower it when iperf_parallel is small)"
+        description: "experiment: seconds per round before SSM gives up (LOAD_TIMEOUT, default 1800; lower it when iperf_parallel is small)"
         default: ""
   push:
     paths:
@@ -66,16 +66,16 @@ jobs:
             ACTION='${{ inputs.action }}'
             VARIANT='${{ inputs.variant }}'
             CONNECTIONS='${{ inputs.connections }}'
-            IPERF_PARALLEL='${{ inputs.iperf_parallel }}'
-            IPERF_PORTS='${{ inputs.iperf_ports }}'
-            IPERF_TIMEOUT='${{ inputs.iperf_timeout }}'
+            LOAD_PARALLEL='${{ inputs.iperf_parallel }}'
+            LOAD_PORTS='${{ inputs.iperf_ports }}'
+            LOAD_TIMEOUT='${{ inputs.iperf_timeout }}'
           else
             ACTION=$(jq -r '.action // "status"' .claude/skills/deploy-infra/request.json)
             VARIANT=$(jq -r '.variant // "dpdk"' .claude/skills/deploy-infra/request.json)
             CONNECTIONS=$(jq -r '.connections // ""' .claude/skills/deploy-infra/request.json)
-            IPERF_PARALLEL=$(jq -r '.iperf_parallel // ""' .claude/skills/deploy-infra/request.json)
-            IPERF_PORTS=$(jq -r '.iperf_ports // ""' .claude/skills/deploy-infra/request.json)
-            IPERF_TIMEOUT=$(jq -r '.iperf_timeout // ""' .claude/skills/deploy-infra/request.json)
+            LOAD_PARALLEL=$(jq -r '.iperf_parallel // ""' .claude/skills/deploy-infra/request.json)
+            LOAD_PORTS=$(jq -r '.iperf_ports // ""' .claude/skills/deploy-infra/request.json)
+            LOAD_TIMEOUT=$(jq -r '.iperf_timeout // ""' .claude/skills/deploy-infra/request.json)
           fi
           case "$ACTION" in status|deploy|experiment|destroy) ;; *)
             echo "::error::unknown action '$ACTION'"; exit 1 ;; esac
@@ -88,11 +88,11 @@ jobs:
             echo "variant=$VARIANT"
             echo "exp_dir=$EXP_DIR"
             echo "connections=$CONNECTIONS"
-            echo "iperf_parallel=$IPERF_PARALLEL"
-            echo "iperf_ports=$IPERF_PORTS"
-            echo "iperf_timeout=$IPERF_TIMEOUT"
+            echo "iperf_parallel=$LOAD_PARALLEL"
+            echo "iperf_ports=$LOAD_PORTS"
+            echo "iperf_timeout=$LOAD_TIMEOUT"
           } >> "$GITHUB_OUTPUT"
-          echo "Request: action=$ACTION variant=$VARIANT connections=$CONNECTIONS parallel=$IPERF_PARALLEL ports=$IPERF_PORTS timeout=$IPERF_TIMEOUT"
+          echo "Request: action=$ACTION variant=$VARIANT connections=$CONNECTIONS parallel=$LOAD_PARALLEL ports=$LOAD_PORTS timeout=$LOAD_TIMEOUT"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -125,9 +125,9 @@ jobs:
         run: |
           chmod +x experiments/${{ steps.req.outputs.exp_dir }}/run_experiment.sh
           if [ -n "${{ steps.req.outputs.connections }}" ];    then export CONNECTIONS='${{ steps.req.outputs.connections }}'; fi
-          if [ -n "${{ steps.req.outputs.iperf_parallel }}" ]; then export IPERF_PARALLEL='${{ steps.req.outputs.iperf_parallel }}'; fi
-          if [ -n "${{ steps.req.outputs.iperf_ports }}" ];    then export IPERF_PORTS='${{ steps.req.outputs.iperf_ports }}'; fi
-          if [ -n "${{ steps.req.outputs.iperf_timeout }}" ];  then export IPERF_TIMEOUT='${{ steps.req.outputs.iperf_timeout }}'; fi
+          if [ -n "${{ steps.req.outputs.iperf_parallel }}" ]; then export LOAD_PARALLEL='${{ steps.req.outputs.iperf_parallel }}'; fi
+          if [ -n "${{ steps.req.outputs.iperf_ports }}" ];    then export LOAD_PORTS='${{ steps.req.outputs.iperf_ports }}'; fi
+          if [ -n "${{ steps.req.outputs.iperf_timeout }}" ];  then export LOAD_TIMEOUT='${{ steps.req.outputs.iperf_timeout }}'; fi
           set +e
           ./experiments/${{ steps.req.outputs.exp_dir }}/run_experiment.sh 2>&1 | tee /tmp/experiment.log
           RC=${PIPESTATUS[0]}

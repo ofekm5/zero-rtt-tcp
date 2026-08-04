@@ -27,15 +27,24 @@ log() { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}"; }
 # ─── Pre-flight ────────────────────────────────────────────────────────────────
 command -v python3 >/dev/null || { echo -e "${RED}ERROR: python3 not installed${NC}"; exit 1; }
 
-# Total parallel connections per flow, spread across IPERF_PORTS contiguous
+# Total parallel connections per flow, spread across LOAD_PORTS contiguous
 # server ports so one source IP can clear the per-port ephemeral ceiling.
 # experiments/utils/loadgen.py opens every connection as an asyncio coroutine
 # on one thread (epoll-driven) rather than one OS thread per connection.
-# Override: IPERF_PARALLEL=N IPERF_PORTS=M ./client.sh
-IPERF_PARALLEL="${IPERF_PARALLEL:-100000}"
-IPERF_PORTS="${IPERF_PORTS:-4}"
-[ "$IPERF_PORTS" -lt 1 ] && IPERF_PORTS=1
-PORT_HI=$(( SERVER_PORT + IPERF_PORTS - 1 ))
+#
+# Defaults mirror experiments/utils/measure.sh — keep the two in sync, since a
+# manual run that differs from the orchestrated one is not comparable to it.
+# LOAD_RATE paces arrivals so each connection's latency reflects the path
+# rather than queueing behind the rest of the batch; LOAD_BYTES is one segment
+# so flow completion time is dominated by the handshake 0-RTT shortens.
+# Override: LOAD_PARALLEL=N LOAD_PORTS=M LOAD_RATE=R ./client.sh
+LOAD_PARALLEL="${LOAD_PARALLEL:-100000}"
+LOAD_PORTS="${LOAD_PORTS:-4}"
+LOAD_BYTES="${LOAD_BYTES:-1024}"
+LOAD_RATE="${LOAD_RATE:-2000}"
+LOAD_CONCURRENCY="${LOAD_CONCURRENCY:-2000}"
+[ "$LOAD_PORTS" -lt 1 ] && LOAD_PORTS=1
+PORT_HI=$(( SERVER_PORT + LOAD_PORTS - 1 ))
 ulimit -n 1048576 2>/dev/null || true
 
 # ─── Discover server IP ───────────────────────────────────────────────────────
@@ -64,20 +73,27 @@ CONN=0
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║  0-RTT Interactive iperf Client                  ║${NC}"
+echo -e "${CYAN}║  0-RTT Interactive Load Generator                 ║${NC}"
 echo -e "${CYAN}║  Server: ${SERVER_IP}:${SERVER_PORT}                        ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
-echo "Each flow opens $IPERF_PARALLEL connections across ports ${SERVER_PORT}-${PORT_HI}"
-echo "($IPERF_PORTS port(s)). Press Enter for a new flow, Ctrl+C to quit."
+echo "Each flow opens $LOAD_PARALLEL connections across ports ${SERVER_PORT}-${PORT_HI}"
+echo "($LOAD_PORTS port(s)) at ${LOAD_RATE} conn/s, $LOAD_BYTES bytes/conn,"
+echo "max $LOAD_CONCURRENCY in flight. Press Enter for a new flow, Ctrl+C to quit."
+if [ "$LOAD_RATE" = "0" ]; then
+    echo ""
+    echo -e "${RED}LOAD_RATE=0: connections arrive as one burst — stress mode.${NC}"
+    echo -e "${RED}Latency from this run includes SYN queueing; do not read it as a 0-RTT result.${NC}"
+fi
 echo ""
 
 while IFS= read -r _input; do
     CONN=$((CONN + 1))
-    echo -e "${GREEN}─── Flow #${CONN} (${IPERF_PORTS} ports, $IPERF_PARALLEL total) ──────────${NC}"
+    echo -e "${GREEN}─── Flow #${CONN} (${LOAD_PORTS} ports, $LOAD_PARALLEL total) ──────────${NC}"
     python3 "$REPO_PATH/experiments/utils/loadgen.py" --mode client \
-        --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$IPERF_PORTS" \
-        --parallel "$IPERF_PARALLEL" --bytes 1048576
+        --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
+        --parallel "$LOAD_PARALLEL" --bytes "$LOAD_BYTES" \
+        --rate "$LOAD_RATE" --concurrency-limit "$LOAD_CONCURRENCY"
     echo ""
     echo "Press Enter for flow #$((CONN + 1)), or Ctrl+C to quit."
     echo ""

@@ -22,6 +22,10 @@
 #   - source experiments/utils/measure.sh  (before sourcing run_core.sh)
 #   - REPO_PATH, SERVER_PORT, CONNECTIONS, FAILURES set by caller
 #
+# Sources experiments/utils/endpoint.sh itself: endpoint tuning, capture and
+# analysis are shared verbatim with the plain-TCP baseline so the two stacks
+# differ only in the data plane under test.
+#
 # Optional:
 #   REMOTE_OUTPUT_CAP — byte ceiling this transport imposes on remote_stdout
 #                       (SSM: 24000). Unset/0 means uncapped (SSH).
@@ -30,6 +34,9 @@
 #   source "$(dirname "$0")/../utils/run_core.sh"
 #   run_experiment <servernic_eth1_mac> <clientnic_eth1_mac> <server_eth0_mac> \
 #                  <clientnic_eth2_mac> <servernic_eth2_mac>
+
+# shellcheck source=./endpoint.sh
+source "$(dirname "${BASH_SOURCE[0]}")/endpoint.sh"
 
 # warn_if_truncated <text> <label>
 # The transport's output cap is silent — a fetched blob that lands at the ceiling
@@ -61,28 +68,28 @@ run_experiment() {
     local CLIENTNIC_ETH2_MAC="$4"     # ClientNIC eth2: ClientNIC's own client-facing port
     local SERVERNIC_ETH2_MAC="$5"     # ServerNIC eth2: ServerNIC's own server-facing port
 
-    # Port range the load is spread across (see measure.sh IPERF_PORTS). The data
+    # Port range the load is spread across (see measure.sh LOAD_PORTS). The data
     # plane (clientnic-dpdk-forwarder + servernic-dpdk) is told to cover the same
     # range via --port-count; endpoint captures filter the same range.
-    local NPORTS="${IPERF_PORTS:-1}"
+    local NPORTS="${LOAD_PORTS:-1}"
     [[ "$NPORTS" -lt 1 ]] && NPORTS=1
     local PORT_HI=$(( SERVER_PORT + NPORTS - 1 ))
     local BPF_PORTS="portrange ${SERVER_PORT}-${PORT_HI}"
-    log "Load/port plan: $NPORTS port(s) [${SERVER_PORT}-${PORT_HI}], IPERF_PARALLEL=${IPERF_PARALLEL:-100000}"
+    log "Load/port plan: $NPORTS port(s) [${SERVER_PORT}-${PORT_HI}], LOAD_PARALLEL=${LOAD_PARALLEL:-100000}, LOAD_BYTES=${LOAD_BYTES:-1024}, LOAD_RATE=${LOAD_RATE:-2000} conn/s, LOAD_CONCURRENCY=${LOAD_CONCURRENCY:-2000}"
 
     # ─── Port-space assertion (capacity-model.md §8) ──────────────────────────
     # run_core.sh widens the client's ephemeral range to 1024-65535 below, so
-    # the available range is ~64512. Assert IPERF_PORTS * range >= target
+    # the available range is ~64512. Assert LOAD_PORTS * range >= target
     # connections *before* spending 10+ minutes on a run that can't possibly
     # open that many sockets from one source IP, with 2xMSL TIME_WAIT margin
     # (halve the raw range as a safety factor for in-flight TIME_WAIT reuse).
-    local TARGET_CONNS="${IPERF_PARALLEL:-100000}"
+    local TARGET_CONNS="${LOAD_PARALLEL:-100000}"
     local EPHEMERAL_RANGE=64512
     local USABLE_RANGE=$(( EPHEMERAL_RANGE / 2 ))
     local PORT_SPACE=$(( NPORTS * USABLE_RANGE ))
     if (( PORT_SPACE < TARGET_CONNS )); then
-        fail "Port-space check: IPERF_PORTS=$NPORTS x usable_range=$USABLE_RANGE = $PORT_SPACE" \
-             " < IPERF_PARALLEL=$TARGET_CONNS — raise IPERF_PORTS before running"
+        fail "Port-space check: LOAD_PORTS=$NPORTS x usable_range=$USABLE_RANGE = $PORT_SPACE" \
+             " < LOAD_PARALLEL=$TARGET_CONNS — raise LOAD_PORTS before running"
         return 1
     else
         pass "Port-space check: $NPORTS port(s) x $USABLE_RANGE usable range = $PORT_SPACE >= $TARGET_CONNS target"
@@ -107,66 +114,16 @@ run_experiment() {
     done
     sleep 20
 
-    # ─── Disable TCP options on Client + Server ───────────────────────────────
-    log "Disabling TCP timestamps/window-scaling/SACK on Client and Server..."
-    # Client: also widen the ephemeral port range and allow TIME_WAIT reuse so a
-    # single source IP can open up to 100k connections across the app ports
-    # (default range ~28k ports x N dst ports was the prior 100k bottleneck).
-    # Kernel limits per capacity-model.md §10: fd limit, TIME_WAIT bucket cap,
-    # nf_conntrack (loaded by both DPDK binaries' install_iptables()), and the
-    # backlog queue that absorbs a 100k-SYN burst arriving effectively at once.
-    remote_bg "$CLIENT_ID" \
-        "sysctl -w net.ipv4.tcp_timestamps=0 net.ipv4.tcp_window_scaling=0 net.ipv4.tcp_sack=0; \
-         sysctl -w net.ipv4.ip_local_port_range='1024 65535'; \
-         sysctl -w net.ipv4.tcp_tw_reuse=1; \
-         sysctl -w net.ipv4.tcp_max_tw_buckets=200000; \
-         sysctl -w net.core.netdev_max_backlog=250000; \
-         sysctl -w net.netfilter.nf_conntrack_max=200000 2>/dev/null || true; \
-         sysctl -w fs.file-max=1048576"
-    # Server: raise the accept/SYN backlog so a 100k SYN burst is not dropped.
-    remote_bg "$SERVER_ID" \
-        "sysctl -w net.ipv4.tcp_timestamps=0 net.ipv4.tcp_window_scaling=0 net.ipv4.tcp_sack=0; \
-         sysctl -w net.core.somaxconn=131072 net.ipv4.tcp_max_syn_backlog=131072; \
-         sysctl -w net.ipv4.tcp_max_tw_buckets=200000; \
-         sysctl -w net.core.netdev_max_backlog=250000; \
-         sysctl -w net.netfilter.nf_conntrack_max=200000 2>/dev/null || true; \
-         sysctl -w fs.file-max=1048576"
-    sleep 2
-
-    # ─── Frame-ceiling fix: pin endpoint MTU to 1500 (capacity-model.md §5) ───
-    # Both DPDK forwarders copy through a fixed 2048-byte buffer and measure
-    # length via rte_pktmbuf_data_len() (first segment only). The AWS VPC
-    # default MTU (9001) lets the server send ~9015-byte frames that arrive as
-    # chained mbufs and get silently truncated. 1500 matches SPOOFED_MSS=1460
-    # and keeps every frame under the 2048-14=2034-byte ceiling.
-    log "Frame-ceiling fix: pinning MTU 1500 on Client and Server eth0..."
-    remote_bg "$CLIENT_ID" "ip link set eth0 mtu 1500"
-    remote_bg "$SERVER_ID" "ip link set eth0 mtu 1500"
-    sleep 1
-
-    # ─── Accuracy knobs: offload-off + netem on endpoint NICs ─────────────────
-    log "Accuracy knobs: disabling GRO/LRO/TSO/GSO on Client and Server NICs..."
-    remote_bg "$CLIENT_ID" \
-        "ethtool -K eth0 gro off lro off tso off gso off 2>/dev/null || true"
-    remote_bg "$SERVER_ID" \
-        "ethtool -K eth0 gro off lro off tso off gso off 2>/dev/null || true"
-
-    log "Accuracy knobs: applying tc netem 50ms delay on Client and Server egress..."
-    # netem default queue limit is 1000 pkts; at ~100ms RTT a window's worth of
-    # 100 parallel flows exceeds that and tail-drops, manufacturing loss. Raise
-    # the limit so netem emulates pure delay, not delay+loss.
-    remote_bg "$CLIENT_ID" \
-        "tc qdisc del dev eth0 root 2>/dev/null || true; \
-         tc qdisc add dev eth0 root netem delay 50ms limit 1000000 2>/dev/null || true"
-    remote_bg "$SERVER_ID" \
-        "tc qdisc del dev eth0 root 2>/dev/null || true; \
-         tc qdisc add dev eth0 root netem delay 50ms limit 1000000 2>/dev/null || true"
-    sleep 2
+    # ─── Endpoint tuning (shared with the baseline stack) ─────────────────────
+    # sysctls, MTU, offloads and netem all live in experiments/utils/endpoint.sh
+    # so the baseline runs byte-identical setup — see that file's header for why
+    # the emulated RTT sits entirely on the Server's egress.
+    endpoint_tune "$CLIENT_ID" "$SERVER_ID"
 
     # ─── Cleanup any leftover processes ───────────────────────────────────────
     log "Cleaning up previous runs..."
     remote_bg "$SERVER_ID" \
-        "pkill -9 -f loadgen.py 2>/dev/null; pkill -9 -f iperf 2>/dev/null; conntrack -F 2>/dev/null || true; rm -f /tmp/server.log"
+        "pkill -9 -f loadgen.py 2>/dev/null; conntrack -F 2>/dev/null || true; rm -f /tmp/server.log"
     remote_bg "$SERVERNIC_ID" \
         "pkill -x servernic-dpdk 2>/dev/null; pkill -f 'servernic/scapy' 2>/dev/null; \
          rm -f /tmp/servernic.log; iptables -F FORWARD 2>/dev/null; iptables -F OUTPUT 2>/dev/null"
@@ -241,7 +198,7 @@ run_experiment() {
     # ─── Step 1: Start Server ─────────────────────────────────────────────────
     log "Step 1: Starting Server via node script ($NPORTS load-generator port(s))..."
     remote_bg "$SERVER_ID" \
-        "IPERF_PORTS=$NPORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+        "LOAD_PORTS=$NPORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
     sleep 3
 
     local LISTEN_CHECK
@@ -322,41 +279,18 @@ run_experiment() {
     fi
 
     # ─── Step 3b: Start endpoint captures ────────────────────────────────────
-    log "Step 3b: Starting endpoint tcpdump captures (Client host + Server host)..."
-    remote_run "$CLIENT_ID" \
-        "pkill tcpdump 2>/dev/null || true; rm -f /tmp/client_side.pcap" 30 > /dev/null
-    remote_run "$SERVER_ID" \
-        "pkill tcpdump 2>/dev/null || true; rm -f /tmp/server_side.pcap" 30 > /dev/null
-
-    _hiprec_start() {
-        local iid="$1" iface="$2" filter="$3" outfile="$4"
-        remote_bg "$iid" "
-if tcpdump --time-stamp-precision=nano -d -i lo 2>/dev/null | grep -q .; then
-    HIPREC_FLAG='--time-stamp-precision=nano'
-elif tcpdump -j adapter -d -i lo 2>/dev/null | grep -q .; then
-    HIPREC_FLAG='-j adapter'
-else
-    HIPREC_FLAG=''
-fi
-tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tmp/tcpdump_hiprec.log 2>&1 &
-"
-    }
-
-    _hiprec_start "$CLIENT_ID" "eth0" "tcp $BPF_PORTS" "/tmp/client_side.pcap"
-    _hiprec_start "$SERVER_ID" "eth0" "tcp $BPF_PORTS" "/tmp/server_side.pcap"
-    sleep 2
+    endpoint_capture_start "$CLIENT_ID" "$SERVER_ID" "$BPF_PORTS"
 
     # ─── Step 4: Run client test ──────────────────────────────────────────────
     log "Step 4: Running client test ($CONNECTIONS connection(s))..."
     run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" \
-        "$CONNECTIONS" "$REPO_PATH" "${IPERF_TIMEOUT:-1800}"
+        "$CONNECTIONS" "$REPO_PATH" "${LOAD_TIMEOUT:-1800}"
 
     sleep 3
 
     # ─── Step 5: Stop captures and binaries ───────────────────────────────────
     log "Step 5: Stopping packet captures and DPDK binaries..."
-    remote_run "$CLIENT_ID"   "pkill tcpdump 2>/dev/null || true; sleep 1" 30 > /dev/null
-    remote_run "$SERVER_ID"   "pkill tcpdump 2>/dev/null || true; sleep 1" 30 > /dev/null
+    endpoint_capture_stop "$CLIENT_ID" "$SERVER_ID"
     remote_run "$CLIENTNIC_ID" "pkill tcpdump 2>/dev/null || true; sleep 1" 30 > /dev/null
     remote_run "$CLIENTNIC_ID" \
         "pkill -f clientnic-dpdk-forwarder 2>/dev/null || true; sleep 2" 30 > /dev/null
@@ -409,113 +343,34 @@ tcpdump \$HIPREC_FLAG -i $iface -nn -s 128 '$filter' -w $outfile </dev/null >/tm
     fi
 
     # ─── Packet capture analysis ──────────────────────────────────────────────
-    log "Packet analysis: Collecting endpoint pcap sizes..."
-
-    local CLIENT_PCAP_SIZE SERVER_PCAP_SIZE
-    CLIENT_PCAP_SIZE=$(remote_stdout "$CLIENT_ID" \
-        "ls -lh /tmp/client_side.pcap 2>&1 || echo 'pcap file not found'" 30)
-    SERVER_PCAP_SIZE=$(remote_stdout "$SERVER_ID" \
-        "ls -lh /tmp/server_side.pcap 2>&1 || echo 'pcap file not found'" 30)
-    echo "  client_side.pcap: $CLIENT_PCAP_SIZE"
-    echo "  server_side.pcap: $SERVER_PCAP_SIZE"
-
-    # ─── Option A: analyze each large pcap on its own host ────────────────────
-    # SSM caps StandardOutputContent at 24 KB and inline command params at 8 KB,
-    # so the 20–40 MB endpoint pcaps cannot be shipped between hosts. Instead, run
-    # analyze_metrics.py locally on the endpoint host that owns each capture and
-    # collect only the small key=value text output.
-    #
-    # That 24 KB cap applies to the ANALYZER OUTPUT too, which is why --summary is
-    # mandatory here and not an optimization: per-flow lines cost ~170 bytes each,
-    # so a 68,779-flow run emitted ~11 MB and SSM silently returned only the first
-    # 144 flows — mid-line, with no error — making every reported percentile a
-    # statistic over an arbitrary 0.2% prefix. --summary aggregates on the capture
-    # host and crosses the wire at a constant ~250 bytes; --detail-out keeps the
-    # full per-flow lines on the endpoint for anyone who needs them.
-    # Metrics collected:
-    #   • Client host eth0 capture (/tmp/client_side.pcap) → fct + send_unlock
-    #   • Server host eth0 capture (/tmp/server_side.pcap) → server_gap
-    # analyze_metrics.py streams `tcpdump -r` output (tcpdump already wrote these
-    # captures, so it is always present) — O(flows) memory, parses 100k+ packets
-    # in seconds, no heavy in-RAM pcap load.
-    # At 100k connections the endpoint pcaps are much larger than the smaller
-    # regression-scale runs this 120s timeout was tuned for; override via
-    # ANALYSIS_TIMEOUT for very large captures.
-    local ANALYSIS_TIMEOUT="${ANALYSIS_TIMEOUT:-600}"
-
-    log "Packet analysis: Running client-side analysis on Client host capture..."
-    local CLIENT_ANALYSIS_RESULT CLIENT_ANALYSIS_STATUS CLIENT_ANALYSIS_STDOUT CLIENT_ANALYSIS_STDERR
-    CLIENT_ANALYSIS_RESULT=$(remote_run "$CLIENT_ID" \
-        "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
-            --client-pcap /tmp/client_side.pcap \
-            --summary --detail-out /tmp/client_metrics_per_flow.txt" \
-        "$ANALYSIS_TIMEOUT")
-    CLIENT_ANALYSIS_STATUS=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 0)
-    CLIENT_ANALYSIS_STDOUT=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 1)
-    CLIENT_ANALYSIS_STDERR=$(echo "$CLIENT_ANALYSIS_RESULT" | json_idx 2)
-
-    log "Packet analysis: Running server-side analysis on Server host capture..."
-    local SERVER_ANALYSIS_RESULT SERVER_ANALYSIS_STATUS SERVER_ANALYSIS_STDOUT SERVER_ANALYSIS_STDERR
-    SERVER_ANALYSIS_RESULT=$(remote_run "$SERVER_ID" \
-        "python3 $REPO_PATH/experiments/utils/analyze_metrics.py \
-            --server-pcap /tmp/server_side.pcap \
-            --summary --detail-out /tmp/server_metrics_per_flow.txt" \
-        "$ANALYSIS_TIMEOUT")
-    SERVER_ANALYSIS_STATUS=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 0)
-    SERVER_ANALYSIS_STDOUT=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 1)
-    SERVER_ANALYSIS_STDERR=$(echo "$SERVER_ANALYSIS_RESULT" | json_idx 2)
-
-    # Merge the two key=value outputs into one block for downstream summarizing.
-    local ANALYSIS_STDOUT
-    ANALYSIS_STDOUT=$(printf '%s\n%s' "$CLIENT_ANALYSIS_STDOUT" "$SERVER_ANALYSIS_STDOUT")
-
-    echo "--- Endpoint metric analysis ---"
-    echo "client (status: $CLIENT_ANALYSIS_STATUS):"
-    echo "$CLIENT_ANALYSIS_STDOUT"
-    [[ -n "$CLIENT_ANALYSIS_STDERR" ]] && echo "  stderr: $CLIENT_ANALYSIS_STDERR"
-    echo "server (status: $SERVER_ANALYSIS_STATUS):"
-    echo "$SERVER_ANALYSIS_STDOUT"
-    [[ -n "$SERVER_ANALYSIS_STDERR" ]] && echo "  stderr: $SERVER_ANALYSIS_STDERR"
-    echo "--------------------------------"
-
-    if [[ "$CLIENT_ANALYSIS_STATUS" == "Success" && "$SERVER_ANALYSIS_STATUS" == "Success" ]] && \
-       ! echo "$ANALYSIS_STDOUT" | grep -q "^missing="; then
-        pass "Packet analysis: all endpoint metrics computed"
-    else
-        # In --summary mode each missing= line carries count=<k> flows, so sum those
-        # rather than counting lines — otherwise 31k unestablished flows report as "2".
-        local NMISSING
-        NMISSING=$(printf '%s' "$ANALYSIS_STDOUT" | python3 -c '
-import sys, re
-total = lines = 0
-for line in sys.stdin:
-    if not line.startswith("missing="):
-        continue
-    lines += 1
-    m = re.search(r"\bcount=(\d+)", line)
-    total += int(m.group(1)) if m else 1
-print(total if lines else 0)
-' 2>/dev/null || echo "?")
-        fail "Packet analysis: $NMISSING missing metric event(s) (client=$CLIENT_ANALYSIS_STATUS server=$SERVER_ANALYSIS_STATUS)"
-    fi
-
-    local ENDPOINT_METRICS="$ANALYSIS_STDOUT"
+    # Sets ENDPOINT_METRICS. Shared with the baseline stack — see endpoint.sh.
+    log "Packet analysis: analyzing each endpoint capture on its own host..."
+    endpoint_analyze "$CLIENT_ID" "$SERVER_ID" "$REPO_PATH"
 
     # ─── Latency metrics ──────────────────────────────────────────────────────
-    log "Latency metrics: aggregating TTFB + FCT + endpoint pcap metrics..."
+    # send_unlock leads; FCT and server_gap are explicitly demoted to secondary.
+    # The old summary also piped $CLIENT_STDOUT through summarize_metric for
+    # "ttfb" and "fct" — but loadgen.py emits no metric= lines at all, so those
+    # two rows printed "no samples found" on every run since the iperf→loadgen
+    # migration. Removed rather than left to read as missing data.
+    log "Latency metrics: aggregating NIC in-app TTFB + endpoint pcap metrics..."
     local METRICS_SUMMARY
     METRICS_SUMMARY=$(
+        endpoint_latency_summary "${ENDPOINT_METRICS:-}"
+        echo "  ── Data-plane internal (in-app rdtsc, not client-observed) ──"
         report_nic_ttfb "$CLIENTNIC_LOG" "clientnic"
         report_nic_ttfb "$SERVERNIC_LOG" "servernic"
-        echo "$CLIENT_STDOUT" | summarize_metric "ttfb" "client" "Client TTFB   "
-        echo "$CLIENT_STDOUT" | summarize_metric "fct"  "client" "Client FCT    "
-        echo "${ENDPOINT_METRICS:-}" | summarize_metric "fct"         "client" "Pcap FCT      "
-        echo "${ENDPOINT_METRICS:-}" | summarize_metric "send_unlock" "client" "Send unlock   "
-        echo "${ENDPOINT_METRICS:-}" | summarize_metric "server_gap"  "server" "Server gap    "
     )
     echo "--- Latency summary ---"
     echo "$METRICS_SUMMARY"
     echo "-----------------------"
+
+    # A capacity run's latency figures are not 0-RTT results — say so here, in
+    # the run output, rather than relying on whoever reads the report to recall
+    # which knobs were set. See experiments/dpdk/run_stress.sh.
+    if [[ "${LOAD_RATE:-2000}" == "0" ]]; then
+        warn "CAPACITY RUN (LOAD_RATE=0): the latency block above includes SYN queueing behind the whole burst. Valid readings from this run: establishment success rate and data-plane throughput. NOT valid: any 0-RTT latency claim."
+    fi
 
     if echo "$METRICS_SUMMARY" | grep -q "clientnic TTFB.*n=[1-9]"; then
         pass "Metrics: ClientNIC in-app TTFB samples collected"
