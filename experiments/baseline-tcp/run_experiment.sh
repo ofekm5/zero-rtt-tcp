@@ -80,11 +80,23 @@ done
 
 
 # ─── Pull latest code ─────────────────────────────────────────────────────────
-log "Pulling latest code on all VMs..."
+# REPO_REF defaults to main; must match whatever the 0-RTT run used, or the two
+# stacks are running different harness code and the comparison is meaningless.
+# Hard reset rather than pull: a merge conflict from VM-local drift would leave
+# the node on unknown code with only a swallowed error to show for it.
+REPO_REF="${REPO_REF:-main}"
+log "Syncing all VMs to origin/${REPO_REF}..."
+[[ "$REPO_REF" != "main" ]] && warn "REPO_REF=${REPO_REF} — VMs are running a NON-MAIN ref"
 for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
-    ssm_bg "$iid" "git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; sudo -u ec2-user git -C $REPO_PATH pull origin main 2>&1 || true"
+    ssm_bg "$iid" "git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; \
+                   sudo -u ec2-user git -C $REPO_PATH fetch origin $REPO_REF 2>&1 && \
+                   sudo -u ec2-user git -C $REPO_PATH reset --hard origin/$REPO_REF 2>&1 || true"
 done
-sleep 5
+sleep 10
+
+for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
+    log "  $iid HEAD: $(ssm_stdout "$iid" "git -C $REPO_PATH rev-parse --short HEAD 2>/dev/null || echo NOREPO" 30 | tr -d '[:space:]')"
+done
 
 
 # ─── Step 1: Pre-flight checks on NIC VMs ────────────────────────────────────
@@ -137,7 +149,7 @@ endpoint_tune "$CLIENT_ID" "$SERVER_ID"
 # listen on a different port set than the client (measure.sh) dials into.
 log "Step 3: Starting Server ($LOAD_PORTS load-generator port(s))..."
 ssm_bg "$SERVER_ID" \
-    "LOAD_PORTS=$LOAD_PORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+    "LOAD_PORTS=$LOAD_PORTS REPO_REF=$REPO_REF setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
 sleep 3
 
 LISTEN_CHECK=$(ssm_stdout "$SERVER_ID" "ss -tlnp | grep $SERVER_PORT && echo LISTENING || echo NOT_LISTENING" 30)

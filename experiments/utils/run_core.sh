@@ -99,20 +99,39 @@ run_experiment() {
     # On a fresh stack the CDK user-data clone can fail (e.g. expired token),
     # leaving VMs with no repo. Clone-on-demand here using the GitHub PAT from
     # Secrets Manager (nanoclaw/github-token) so the run is self-healing.
-    log "Pulling latest code on all VMs (cloning if missing)..."
+    #
+    # REPO_REF selects which ref the VMs run. It defaults to main, so normal runs
+    # are unchanged — but a harness change cannot be validated on real infra
+    # before it is merged unless the VMs can be pointed at its branch, and
+    # merging unexercised measurement code to main is the wrong order.
+    local ref="${REPO_REF:-main}"
+    log "Syncing all VMs to origin/${ref} (cloning if missing)..."
+    [[ "$ref" != "main" ]] && warn "REPO_REF=${ref} — VMs are running a NON-MAIN ref"
     for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
         remote_bg "$iid" \
             "git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; \
              if [ -d $REPO_PATH/.git ]; then \
-                 sudo -u ec2-user git -C $REPO_PATH fetch origin main 2>&1 && \
-                 sudo -u ec2-user git -C $REPO_PATH reset --hard origin/main 2>&1 || true; \
+                 sudo -u ec2-user git -C $REPO_PATH fetch origin $ref 2>&1 && \
+                 sudo -u ec2-user git -C $REPO_PATH reset --hard origin/$ref 2>&1 || true; \
              else \
                  GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"'); \
                  sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git\" $REPO_PATH 2>&1 || true; \
+                 sudo -u ec2-user git -C $REPO_PATH checkout $ref 2>&1 || true; \
                  chown -R ec2-user:ec2-user $REPO_PATH 2>/dev/null || true; \
              fi"
     done
     sleep 20
+
+    # Confirm the VMs actually landed on the requested ref. A failed fetch is
+    # swallowed by `|| true` above (deliberately — a stale checkout beats an
+    # aborted run), so without this check the run would silently measure
+    # whatever code the VM happened to already have.
+    local vm_head
+    for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
+        vm_head=$(remote_stdout "$iid" \
+            "git -C $REPO_PATH rev-parse --short HEAD 2>/dev/null || echo NOREPO" 30)
+        log "  $iid HEAD: $(echo "$vm_head" | tr -d '[:space:]')"
+    done
 
     # ─── Endpoint tuning (shared with the baseline stack) ─────────────────────
     # sysctls, MTU, offloads and netem all live in experiments/utils/endpoint.sh
@@ -198,7 +217,7 @@ run_experiment() {
     # ─── Step 1: Start Server ─────────────────────────────────────────────────
     log "Step 1: Starting Server via node script ($NPORTS load-generator port(s))..."
     remote_bg "$SERVER_ID" \
-        "LOAD_PORTS=$NPORTS setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+        "LOAD_PORTS=$NPORTS REPO_REF=$ref setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
     sleep 3
 
     local LISTEN_CHECK
@@ -215,7 +234,7 @@ run_experiment() {
     log "Step 2: Starting ServerNIC DPDK binary via node script..."
     remote_bg "$SERVERNIC_ID" \
         "SKIP_BUILD=1 PORT_COUNT=$NPORTS CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC \
-         CLIENT_PORT_MAC=$GW_MAC SERVER_PORT_MAC=$SERVERNIC_ETH2_MAC \
+         CLIENT_PORT_MAC=$GW_MAC SERVER_PORT_MAC=$SERVERNIC_ETH2_MAC REPO_REF=$ref \
          setsid bash $REPO_PATH/experiments/dpdk/servernic.sh \
          < /dev/null >> /tmp/servernic.log 2>&1 &"
     sleep 5
@@ -251,7 +270,7 @@ run_experiment() {
     sleep 1
 
     remote_bg "$CLIENTNIC_ID" \
-        "SKIP_BUILD=1 PORT_COUNT=$NPORTS \
+        "SKIP_BUILD=1 PORT_COUNT=$NPORTS REPO_REF=$ref \
          CLIENT_PORT_MAC=$CLIENTNIC_ETH2_MAC SERVER_PORT_MAC=$CLIENTNIC_ETH1_MAC \
          setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC \
          < /dev/null >> /tmp/clientnic.log 2>&1 &"

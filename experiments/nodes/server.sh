@@ -37,9 +37,12 @@ ulimit -n 1048576 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
 log "Open-file limit (ulimit -n): $(ulimit -n)"
 
 # ─── Pull latest code ─────────────────────────────────────────────────────────
-log "Syncing code to origin/main (hard reset — discards VM-local drift)..."
-sudo -u ec2-user git -C "$REPO_PATH" fetch origin main 2>&1 \
-    && sudo -u ec2-user git -C "$REPO_PATH" reset --hard origin/main 2>&1 \
+# REPO_REF defaults to main; override to run a branch (e.g. to validate a
+# harness change on real infra before merging it).
+REPO_REF="${REPO_REF:-main}"
+log "Syncing code to origin/${REPO_REF} (hard reset — discards VM-local drift)..."
+sudo -u ec2-user git -C "$REPO_PATH" fetch origin "$REPO_REF" 2>&1 \
+    && sudo -u ec2-user git -C "$REPO_PATH" reset --hard "origin/$REPO_REF" 2>&1 \
     || log "WARNING: git sync failed — using current checkout"
 
 # ─── Pre-flight ───────────────────────────────────────────────────────────────
