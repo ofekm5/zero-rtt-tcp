@@ -39,6 +39,8 @@ Running `run_probe.sh` end to end:
 3. Brings `ens16f0np0` up on the x86 VM.
 4. Loads the probe's Docker image on the DPU (see "Container transport"
    below).
+5. Leaves a detached probe container running for the duration of the hold
+   window (see "The hold window" below).
 
 Every one of these is reverted by `restore.sh`, which `run_probe.sh` invokes
 on every exit path — including early failure — via a `trap ... EXIT`, so an
@@ -65,6 +67,36 @@ invoked from), saves the built image to a tarball with `docker save`, `scp`s
 it to the DPU, and `docker load`s it there. No registry pull and no DNS
 resolution ever happen on the DPU itself. This follows the same pattern as
 `infra/bluefield/deployment/Dockerfile` and `compress_doca_image.sh`.
+
+## The hold window
+
+A flow rule only proves anything while packets are actually crossing it, so
+the rule install and the traffic generation must overlap. `flow_rule.sh`
+starts the probe **detached** (`docker run -d`) and returns as soon as the
+container prints `RULE INSTALLED`; the probe then keeps its pipe entry alive
+for `--hold-secs` (default 30) while `traffic.sh` sends and captures. Only
+after that does `run_probe.sh` read the hardware counter and the ARM
+software-queue count out of `docker logs` and append them to `flow_rule.log`,
+where `verdict.sh` evaluates them.
+
+That ordering is the whole point: reading the counter at install time — before
+any packet exists — would report zero on every run regardless of what the
+hardware did, making a `YES` verdict unreachable. Tune the window with
+`PROBE_HOLD_SECS` if `traffic.sh`'s capture window is lengthened; it must
+comfortably exceed the capture plus SSH round-trip latency.
+
+The container is deliberately **not** `--rm`: it has to survive its own exit
+so its counters can be read. `restore.sh` removes it.
+
+## Capture direction
+
+`traffic.sh` transmits and captures on the same interface (`ens16f0np0`), so
+it captures **inbound only** — `tcpdump -Q in` plus a `not ether src <own
+MAC>` filter, two guards because `-Q` is silently ignored on some capture
+paths. Without them tcpdump records the script's own outgoing packet and
+every run looks like something came back, which collapses design.md D4's
+split-horizon case (rewrite worked, nothing returned) into "returned
+unmodified" — the two lead to different next changes.
 
 ## Reading the verdict
 

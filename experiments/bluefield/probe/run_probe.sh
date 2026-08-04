@@ -12,6 +12,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/hosts.sh
+source "${SCRIPT_DIR}/lib/hosts.sh"
 REPORTS_DIR="${SCRIPT_DIR}/../reports"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_REPORTS_DIR="${REPORTS_DIR}/${RUN_ID}"
@@ -20,6 +22,12 @@ SRC_IP="" DST_IP="" SRC_PORT="" DST_PORT="" SEQ="" DELTA=""
 DIRECTION="sub"
 PORT_ID="0"
 IMAGE_TAG="eswitch-probe:latest"
+# The rule's lifetime. Must cover step 5's capture window plus SSH latency;
+# traffic.sh defaults to a 5s capture.
+HOLD_SECS="${PROBE_HOLD_SECS:-30}"
+CONTAINER_NAME="${PROBE_CONTAINER_NAME:-eswitch-probe}"
+# How long to wait for the detached probe to finish its hold window.
+COUNTER_WAIT_SECS="${PROBE_COUNTER_WAIT_SECS:-90}"
 
 fail_usage() {
     echo "ERROR: $1" >&2
@@ -46,6 +54,17 @@ done
 
 mkdir -p "${RUN_REPORTS_DIR}"
 
+# Waits for the detached probe to finish its hold window, then emits the
+# COUNTER / SW_QUEUE_RX_COUNT lines it printed on the way out. These are the
+# post-traffic readings — the numbers verdict.sh evaluates for SC3.
+collect_probe_counters() {
+    echo "Waiting up to ${COUNTER_WAIT_SECS}s for the probe to close its hold window..."
+    dpu_run "timeout ${COUNTER_WAIT_SECS} docker wait ${CONTAINER_NAME}" >/dev/null 2>&1 \
+        || echo "WARNING: probe container did not exit within ${COUNTER_WAIT_SECS}s; reading logs as-is" >&2
+    dpu_run "docker logs ${CONTAINER_NAME} 2>&1" \
+        || echo "WARNING: could not read probe container logs" >&2
+}
+
 RESTORED=0
 restore_once() {
     if [[ "${RESTORED}" -eq 1 ]]; then
@@ -54,6 +73,7 @@ restore_once() {
     RESTORED=1
     echo "=== Restoring DPU (runs on every exit path) ==="
     "${SCRIPT_DIR}/restore.sh" --baseline-file "${REPORTS_DIR}/baseline.txt" --image-tag "${IMAGE_TAG}" \
+        --container-name "${CONTAINER_NAME}" \
         > "${RUN_REPORTS_DIR}/restore.log" 2>&1
     RESTORE_RC=$?
     cat "${RUN_REPORTS_DIR}/restore.log"
@@ -61,8 +81,9 @@ restore_once() {
         echo "WARNING: restore.sh reported a non-zero exit — inspect ${RUN_REPORTS_DIR}/restore.log" >&2
     fi
 }
-# EXIT covers normal completion and early failure alike (unlike a plain
-# `trap ... ERR`, which `set -e`-free scripts like this one never fire).
+# EXIT covers normal completion and early failure alike. An ERR trap would
+# fire on every failing command, including ones this script handles itself,
+# so restore would run mid-flight; EXIT runs exactly once, at the end.
 trap restore_once EXIT
 
 echo "=== Step 1: baseline ==="
@@ -77,16 +98,30 @@ echo "=== Step 3: setup (hugepages, pf0hpf, ens16f0np0) ==="
 "${SCRIPT_DIR}/setup.sh" "${IMAGE_TAG}" | tee "${RUN_REPORTS_DIR}/setup.log"
 [[ "${PIPESTATUS[0]}" -eq 0 ]] || { echo "setup failed, aborting" >&2; exit 1; }
 
-echo "=== Step 4: install the composed e-switch rule ==="
+echo "=== Step 4: install the composed e-switch rule (probe left running) ==="
+# flow_rule.sh starts the probe detached and returns once the rule is live.
+# The container keeps it installed for HOLD_SECS, which must cover step 5 —
+# the whole point is that traffic hits a rule that is actually in hardware.
 "${SCRIPT_DIR}/flow_rule.sh" --src-ip "${SRC_IP}" --dst-ip "${DST_IP}" --src-port "${SRC_PORT}" \
     --dst-port "${DST_PORT}" --delta "${DELTA}" --direction "${DIRECTION}" --port-id "${PORT_ID}" \
     --image-tag "${IMAGE_TAG}" --baseline-file "${REPORTS_DIR}/baseline.txt" \
+    --hold-secs "${HOLD_SECS}" --container-name "${CONTAINER_NAME}" \
     | tee "${RUN_REPORTS_DIR}/flow_rule.log"
 FLOW_RULE_RC="${PIPESTATUS[0]}"
 
-echo "=== Step 5: generate and capture traffic ==="
+echo "=== Step 5: generate and capture traffic (rule is live) ==="
 "${SCRIPT_DIR}/traffic.sh" --dst-ip "${DST_IP}" --dst-port "${DST_PORT}" --seq "${SEQ}" --delta "${DELTA}" \
     | tee "${RUN_REPORTS_DIR}/traffic.log"
+
+echo "=== Step 5b: close the hold window and collect the probe's counters ==="
+# The hardware counter and software-queue count are only meaningful once
+# traffic has run, so they are read here rather than at install time and
+# appended to flow_rule.log, where verdict.sh reads them.
+if [[ "${FLOW_RULE_RC}" -eq 0 ]]; then
+    collect_probe_counters | tee -a "${RUN_REPORTS_DIR}/flow_rule.log"
+else
+    echo "Rule install failed; no counters to collect." | tee -a "${RUN_REPORTS_DIR}/flow_rule.log"
+fi
 
 DOCA_RESULT="accepted"
 if grep -q '^RESULT: rule rejected' "${RUN_REPORTS_DIR}/flow_rule.log" || [[ "${FLOW_RULE_RC}" -ne 0 ]]; then

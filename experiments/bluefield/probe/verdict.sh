@@ -101,9 +101,24 @@ elif [[ "${CROSSCHECK_RESULT}" == "accepted" ]]; then
 elif [[ "${CROSSCHECK_RESULT}" == "rejected" ]]; then
     VERDICT="NO"
     REASON="DOCA Flow did not demonstrate the capability and the rte_flow cross-check also rejected the rewrite — not a DOCA Flow exposure gap."
+elif [[ "${ACCEPTED}" == "yes" && "${OFFLOADED}" == "yes" && "${TRAFFIC_OUTCOME}" == "unmodified" ]]; then
+    # design.md D2, level 3: the rule was accepted and its hardware counter
+    # incremented, but the packet came back with its original sequence
+    # number — a silent no-op. The cross-check does not apply (D6
+    # disambiguates a DOCA Flow *rejection*, and there was none), so this
+    # is not "pending" anything; the modify action is the failing part.
+    VERDICT="PARTIAL"
+    REASON="Rule accepted and offloaded (hardware counter incremented), but the returned packet's sequence number was unchanged — the modify action is a silent no-op on this build (design.md D2 level 3). The cross-check does not apply: DOCA Flow accepted the rule, so there is no rejection to disambiguate."
+elif [[ "${ACCEPTED}" == "yes" && "${OFFLOADED}" == "no" ]]; then
+    # design.md D2, level 2 / SC3: either the counter never incremented or
+    # packets landed on an ARM software queue. Both mean the rule did not
+    # execute in hardware, which is a direct failure of the architecture's
+    # premise rather than an API-exposure question.
+    VERDICT="PARTIAL"
+    REASON="Rule accepted but not confirmed offloaded (hardware counter zero, or packets observed on an ARM software queue — see SW_QUEUE_RX_COUNT in the flow-rule log). Per SC3 the rule did not execute purely in hardware; design.md D2 level 2 fails. The cross-check does not apply — DOCA Flow accepted the rule."
 else
     VERDICT="PARTIAL"
-    REASON="DOCA Flow did not demonstrate the full capability (accepted=${ACCEPTED} offloaded=${OFFLOADED} effective=${EFFECTIVE}, traffic-outcome=${TRAFFIC_OUTCOME}) and no cross-check result is available yet to disambiguate — inconclusive pending the cross-check."
+    REASON="DOCA Flow did not demonstrate the full capability (accepted=${ACCEPTED} offloaded=${OFFLOADED} effective=${EFFECTIVE}, traffic-outcome=${TRAFFIC_OUTCOME}) and no cross-check result is available to disambiguate — inconclusive; re-run the cross-check stage before recording this verdict."
 fi
 
 {

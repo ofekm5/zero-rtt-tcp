@@ -17,6 +17,20 @@ VM_USER="${VM_USER:-bluefieldadmin}"
 PROBE_SSH_KEY="${PROBE_SSH_KEY:-$HOME/.ssh/claude_code_ed25519}"
 PROBE_SSH_OPTS="${PROBE_SSH_OPTS:--o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10}"
 
+# DPDK EAL device argument the probe container is given. The probe owns
+# pf0hpf — the host-PF *representor* the mlx5 driver already exposes in
+# switchdev mode — so the device is the ConnectX-7 PF's PCIe address plus a
+# representor= selector. It is deliberately NOT an auxiliary Scalable
+# Function device: no SF is created anywhere in this harness, and the SF
+# topology is design.md's shelved Alternative C.
+#
+# PROBE_PCI_ADDR must match the adapter's address on the ARM (`lspci -nn |
+# grep -i mellanox`, also recorded by baseline.sh). Override either value
+# from the environment if the DPU differs.
+PROBE_PCI_ADDR="${PROBE_PCI_ADDR:-0000:03:00.0}"
+PROBE_REPRESENTOR="${PROBE_REPRESENTOR:-pf0hpf}"
+PROBE_EAL_DEV="${PROBE_EAL_DEV:-${PROBE_PCI_ADDR},representor=${PROBE_REPRESENTOR}}"
+
 # _probe_ssh <user> <host> <command>
 # Runs command on host as user, using the probe SSH key. Returns the
 # remote command's exit status.

@@ -47,6 +47,17 @@ require_nonempty "DPDK version" "$DPDK_VERSION"
 FW_VERSION="$(dpu_run 'mlxfwmanager --query 2>/dev/null | grep -i "FW " || flint -d /dev/mst/* q 2>/dev/null | grep -i "FW Version"')" || fail "adapter firmware version"
 require_nonempty "adapter firmware version" "$FW_VERSION"
 
+# The adapter's PCIe address on the ARM. lib/hosts.sh defaults PROBE_PCI_ADDR
+# for the EAL device argument; recording the real one here makes a mismatch
+# visible in the run evidence instead of surfacing as an opaque EAL failure.
+PCI_ADDR="$(dpu_run "lspci -nn 2>/dev/null | grep -i -m1 'ConnectX' | awk '{print \$1}'")" || fail "adapter PCI address"
+require_nonempty "adapter PCI address" "$PCI_ADDR"
+
+# ens16f0np0's admin state before the spike touches it, so restore.sh puts
+# it back where it was found rather than assuming it started down.
+VM_IFACE_STATE="$(vm_run "ip -br link show ens16f0np0 2>/dev/null | awk '{print \$2}'")" || fail "ens16f0np0 admin state"
+require_nonempty "ens16f0np0 admin state" "$VM_IFACE_STATE"
+
 {
     echo "# eswitch-offload-probe baseline"
     echo "# captured: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -68,6 +79,12 @@ require_nonempty "adapter firmware version" "$FW_VERSION"
     echo
     echo "## Adapter firmware version"
     echo "$FW_VERSION"
+    echo
+    echo "## Adapter PCI address"
+    echo "$PCI_ADDR"
+    echo
+    echo "## ens16f0np0 admin state"
+    echo "$VM_IFACE_STATE"
 } > "$BASELINE_FILE"
 
 echo "Baseline captured to ${BASELINE_FILE}"

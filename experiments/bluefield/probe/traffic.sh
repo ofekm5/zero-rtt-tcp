@@ -41,9 +41,21 @@ done
 
 PCAP_PATH="/tmp/eswitch_probe_traffic_$$.pcap"
 
-echo "Capturing on ens16f0np0 for ${CAPTURE_SECS}s while sending TCP seq=${SENT_SEQ} to ${DST_IP}:${DST_PORT}..."
+# Capture and transmit share one interface, so without a direction filter
+# tcpdump records this script's own outgoing packet and every run looks like
+# something came back. Two independent guards, because -Q is silently
+# ignored on some capture paths: the kernel direction filter, and dropping
+# frames whose source MAC is our own.
+LOCAL_MAC="$(vm_run "cat /sys/class/net/ens16f0np0/address")" \
+    || fail "could not read ens16f0np0's MAC address on the host VM"
+[[ -n "${LOCAL_MAC}" ]] || fail "ens16f0np0 MAC address came back empty"
 
-vm_run "sudo timeout ${CAPTURE_SECS} tcpdump -i ens16f0np0 -w ${PCAP_PATH} 'tcp and dst port ${DST_PORT}' & \
+CAPTURE_FILTER="tcp and dst port ${DST_PORT} and not ether src ${LOCAL_MAC}"
+
+echo "Capturing inbound on ens16f0np0 for ${CAPTURE_SECS}s while sending TCP seq=${SENT_SEQ} to ${DST_IP}:${DST_PORT}..."
+echo "Capture filter: -Q in '${CAPTURE_FILTER}'"
+
+vm_run "sudo timeout ${CAPTURE_SECS} tcpdump -i ens16f0np0 -Q in -w ${PCAP_PATH} '${CAPTURE_FILTER}' & \
         sleep 1 && \
         sudo hping3 -c 1 -S -p ${DST_PORT} -M ${SENT_SEQ} ${DST_IP} ; \
         wait" \
@@ -55,6 +67,9 @@ EXPECTED_SUB=$((SENT_SEQ - DELTA))
 EXPECTED_ADD=$((SENT_SEQ + DELTA))
 
 if [[ -z "${RETURNED_SEQS}" ]]; then
+    # Reachable only because the capture is inbound-only: with the outgoing
+    # packet excluded, an empty pcap genuinely means nothing came back.
+    # This is design.md D4's split-horizon branch.
     echo "OUTCOME: nothing returned within the ${CAPTURE_SECS}s capture window"
     echo "SENT_SEQ: ${SENT_SEQ}"
     exit 1
