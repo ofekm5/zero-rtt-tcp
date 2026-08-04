@@ -91,6 +91,20 @@ endpoint_tune() {
     remote_bg "$server_iid" "ethtool -K eth0 gro off lro off tso off gso off 2>/dev/null || true"
 
     # ─── Emulated WAN latency: full RTT on the Server egress only ─────────────
+    # `tc` is NOT in the Amazon Linux 2 base AMI — it lives in the iproute-tc
+    # package, which neither CDK stack installs. Every earlier run's netem
+    # command therefore failed with "tc: command not found", was swallowed by
+    # `2>/dev/null || true`, and the run silently measured the intra-VPC RTT
+    # (~1.5 ms) instead of the emulated WAN. That is precisely the condition
+    # insights.md (2026-07-14) predicted would make any 0-RTT benefit
+    # unobservable. Install it here rather than in the CDK user-data so the fix
+    # applies to already-running stacks too.
+    log "Endpoint tuning: ensuring iproute-tc is installed on Client and Server..."
+    remote_run "$client_iid" \
+        "command -v tc >/dev/null || yum install -y iproute-tc 2>&1 | tail -2" 180 > /dev/null
+    remote_run "$server_iid" \
+        "command -v tc >/dev/null || yum install -y iproute-tc 2>&1 | tail -2" 180 > /dev/null
+
     # netem's default queue limit is 1000 packets; at this RTT a window's worth
     # of many parallel flows exceeds that and tail-drops, manufacturing loss.
     # Raise the limit so netem emulates pure delay, not delay+loss.
@@ -100,14 +114,14 @@ endpoint_tune() {
     remote_bg "$server_iid" \
         "tc qdisc del dev eth0 root 2>/dev/null || true; \
          tc qdisc add dev eth0 root netem delay ${NETEM_RTT_MS}ms limit 1000000 2>/dev/null || true"
-    sleep 2
+    sleep 3
 
     # Verify, rather than assume: a silently-failed `tc` turns the whole run into
     # an intra-VPC measurement where one RTT is ~1.5 ms and no 0-RTT benefit is
     # observable at all (insights.md, 2026-07-14).
     local client_qdisc server_qdisc
-    client_qdisc=$(remote_stdout "$client_iid" "tc qdisc show dev eth0" 30)
-    server_qdisc=$(remote_stdout "$server_iid" "tc qdisc show dev eth0" 30)
+    client_qdisc=$(remote_stdout "$client_iid" "tc qdisc show dev eth0 2>&1" 30)
+    server_qdisc=$(remote_stdout "$server_iid" "tc qdisc show dev eth0 2>&1" 30)
     if echo "$server_qdisc" | grep -q "delay ${NETEM_RTT_MS}ms"; then
         pass "Endpoint tuning: server egress netem = ${NETEM_RTT_MS}ms (full emulated RTT)"
     else

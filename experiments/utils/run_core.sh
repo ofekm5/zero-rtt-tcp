@@ -126,10 +126,13 @@ run_experiment() {
     # swallowed by `|| true` above (deliberately — a stale checkout beats an
     # aborted run), so without this check the run would silently measure
     # whatever code the VM happened to already have.
+    # `git rev-parse` as root refuses an ec2-user-owned repo ("dubious
+    # ownership"), so pass safe.directory inline — otherwise a perfectly good
+    # checkout reports NOREPO and the run looks broken when it is not.
     local vm_head
     for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
         vm_head=$(remote_stdout "$iid" \
-            "git -C $REPO_PATH rev-parse --short HEAD 2>/dev/null || echo NOREPO" 30)
+            "git -c safe.directory=$REPO_PATH -C $REPO_PATH rev-parse --short HEAD 2>/dev/null || echo NOREPO" 30)
         log "  $iid HEAD: $(echo "$vm_head" | tr -d '[:space:]')"
     done
 
@@ -222,8 +225,8 @@ run_experiment() {
 
     local LISTEN_CHECK
     LISTEN_CHECK=$(remote_stdout "$SERVER_ID" \
-        "ss -tlnp | grep $SERVER_PORT && echo LISTENING || echo NOT_LISTENING" 30)
-    if echo "$LISTEN_CHECK" | grep -q "LISTENING"; then
+        "ss -tlnp | grep -q :$SERVER_PORT && echo LISTEN_OK || echo LISTEN_NONE" 30)
+    if echo "$LISTEN_CHECK" | grep -q "LISTEN_OK"; then
         pass "Server listening on :$SERVER_PORT"
     else
         fail "Server not listening on :$SERVER_PORT"

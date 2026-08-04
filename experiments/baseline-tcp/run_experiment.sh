@@ -87,15 +87,31 @@ done
 REPO_REF="${REPO_REF:-main}"
 log "Syncing all VMs to origin/${REPO_REF}..."
 [[ "$REPO_REF" != "main" ]] && warn "REPO_REF=${REPO_REF} — VMs are running a NON-MAIN ref"
+# Clone-on-demand, mirroring run_core.sh. The baseline CDK user-data clone uses
+# a token that has expired — cloud-init logged "Invalid username or token" and
+# left every baseline VM with no repo at all, which no amount of `git fetch`
+# recovers from. Re-clone here with the PAT from Secrets Manager so the run is
+# self-healing on an already-deployed stack.
 for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
-    ssm_bg "$iid" "git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; \
-                   sudo -u ec2-user git -C $REPO_PATH fetch origin $REPO_REF 2>&1 && \
-                   sudo -u ec2-user git -C $REPO_PATH reset --hard origin/$REPO_REF 2>&1 || true"
+    ssm_bg "$iid" \
+        "git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; \
+         if [ -d $REPO_PATH/.git ]; then \
+             sudo -u ec2-user git -C $REPO_PATH fetch origin $REPO_REF 2>&1 && \
+             sudo -u ec2-user git -C $REPO_PATH reset --hard origin/$REPO_REF 2>&1 || true; \
+         else \
+             GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"'); \
+             sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git\" $REPO_PATH 2>&1 || true; \
+             sudo -u ec2-user git -C $REPO_PATH checkout $REPO_REF 2>&1 || true; \
+             chown -R ec2-user:ec2-user $REPO_PATH 2>/dev/null || true; \
+         fi"
 done
-sleep 10
+sleep 30
 
+# `git rev-parse` as root refuses an ec2-user-owned repo ("dubious ownership"),
+# so pass safe.directory inline — otherwise a perfectly good checkout reports
+# NOREPO and the run looks broken when it is not.
 for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
-    log "  $iid HEAD: $(ssm_stdout "$iid" "git -C $REPO_PATH rev-parse --short HEAD 2>/dev/null || echo NOREPO" 30 | tr -d '[:space:]')"
+    log "  $iid HEAD: $(ssm_stdout "$iid" "git -c safe.directory=$REPO_PATH -C $REPO_PATH rev-parse --short HEAD 2>/dev/null || echo NOREPO" 30 | tr -d '[:space:]')"
 done
 
 
@@ -152,8 +168,8 @@ ssm_bg "$SERVER_ID" \
     "LOAD_PORTS=$LOAD_PORTS REPO_REF=$REPO_REF setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
 sleep 3
 
-LISTEN_CHECK=$(ssm_stdout "$SERVER_ID" "ss -tlnp | grep $SERVER_PORT && echo LISTENING || echo NOT_LISTENING" 30)
-if echo "$LISTEN_CHECK" | grep -q "LISTENING"; then
+LISTEN_CHECK=$(ssm_stdout "$SERVER_ID" "ss -tlnp | grep -q :$SERVER_PORT && echo LISTEN_OK || echo LISTEN_NONE" 30)
+if echo "$LISTEN_CHECK" | grep -q "LISTEN_OK"; then
     pass "Server listening on :$SERVER_PORT"
 else
     fail "Server not listening on :$SERVER_PORT"
