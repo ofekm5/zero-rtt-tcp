@@ -227,3 +227,72 @@ produced the result:
 finding. Confirm any failure against the forwarder/translator logs before
 touching data-plane code, and consider teaching the validator to separate
 "data-plane defect" from "I could not parse this" in its output.
+
+---
+
+## 2026-08-04 — First valid baseline-vs-0-RTT comparison: send_unlock drops a full RTT, FCT does not move
+
+**Source:** `experiments/baseline-tcp/reports/baseline-report-2026-08-04-200506.md`
+and the matching DPDK run, both at `LOAD_PARALLEL=2000 LOAD_RATE=500
+LOAD_PORTS=4 LOAD_BYTES=1024 NETEM_RTT_MS=100`, both 2000/2000 connections OK.
+First run using the shared `experiments/utils/endpoint.sh` setup, so the two
+stacks were configured by identical code.
+
+| Metric (mean) | Baseline | 0-RTT DPDK | Delta |
+|---|---|---|---|
+| `send_unlock` | 100.835 ms | **0.226 ms** | **-100.61 ms** |
+| `send_unlock` p99 | 101.354 ms | 0.421 ms | -100.93 ms |
+| `fct` | 201.636 ms | 201.546 ms | -0.09 ms |
+| `fct` max | 213.254 ms | 536.628 ms | +323 ms |
+| `server_gap` | 0.818 ms | 0.359 ms | -0.46 ms |
+
+**The mechanism works, exactly as specified.** `send_unlock` — first SYN out to
+first payload out — falls from one full emulated RTT to effectively zero. The
+spoofed SYN-ACK unblocks the client's `connect()` immediately; the saving is
+100.6 ms against a modelled 100 ms RTT, across 2000 flows with a p99 of 0.42 ms.
+
+**But flow completion time is unchanged**, and that is not a measurement
+artifact. `src/servernic/dpdk/syn_handler.c` buffers client→server packets in a
+PENDING flow entry and only flushes them once the *real* SYN-ACK arrives and the
+delta is known (the run logged 97 `buffered` / 79 `flushed`). The real SYN-ACK
+is delayed by the full server-egress RTT, so the client's data still cannot
+reach the server before t≈100 ms. 0-RTT does not remove the wait — **it relocates
+it from the client application to the ServerNIC.**
+
+That distinction is invisible unless `send_unlock` and `fct` are reported
+separately, which is why the metric split matters and why FCT alone was never
+going to show this.
+
+**Carry forward:**
+- The honest headline is "0-RTT eliminates one RTT of *application* blocking
+  time", not "0-RTT makes connections complete a round-trip sooner". Both are
+  now measured; only the first is true.
+- Whether the second is achievable is a real design question: it needs the
+  ServerNIC to forward client data before it knows the real ISN, which the T8
+  translation scheme does not currently allow.
+- The FCT tail regressed (max 537 ms vs 213 ms baseline) while p99 did not
+  (201.6 vs 202.8). A handful of flows pay a large penalty somewhere in the
+  buffer/flush path — worth a look before any large-scale run.
+
+---
+
+## 2026-08-04 — `tc` was never installed, so no experiment in this repo's history ran with emulated latency
+
+**Source:** the same pair of runs; found by the netem post-condition check added
+to `endpoint_tune()`.
+
+`tc` lives in the `iproute-tc` package, which neither CDK stack installs. Every
+netem command the harness has ever issued failed with `tc: command not found`
+and was swallowed by its own `2>/dev/null || true`. Every prior run labelled
+"50ms netem" actually measured the intra-VPC RTT of ~1.5 ms.
+
+This is the precise condition the 2026-07-14 retrospective predicted would make
+a 0-RTT benefit structurally unobservable — and it had been silently true the
+whole time. `endpoint_tune()` now installs the package and then *verifies* the
+qdisc on both endpoints, failing the run if the server lacks netem or the client
+has it.
+
+**Carry forward:** a knob that is applied with `|| true` and never read back is
+not a knob, it is a comment. Any environment setting a measurement depends on
+must be asserted after it is applied, not assumed from the fact that the command
+was issued.
