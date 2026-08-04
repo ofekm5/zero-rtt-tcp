@@ -52,16 +52,31 @@ pattern eth / ipv4 src is ${SRC_IP} dst is ${DST_IP} / tcp src is ${SRC_PORT} ds
 actions modify_field op sub dst_type tcp_seq_num src_type value src_value ${DELTA} width 32 / represented_port ethdev_port_id 0 / count / end"
 
 echo "Running rte_flow cross-check via dpdk-testpmd (DOCA Flow returned negative)..."
-if OUTPUT="$(dpu_run "echo '${TESTPMD_CMDS}' | dpdk-testpmd -l 0-1 -n 4 -a auxiliary:mlx5_core.sf.2 -- -i --disable-device-start 2>&1" 2>&1)"; then
-    echo "${OUTPUT}"
-    if echo "${OUTPUT}" | grep -qi 'error\|invalid\|fail'; then
-        echo "RESULT: rte_flow rejected the rule (silicon-level limit, not a DOCA Flow gap)"
-        exit 1
-    fi
+OUTPUT="$(dpu_run "echo '${TESTPMD_CMDS}' | dpdk-testpmd -l 0-1 -n 4 -a ${PROBE_EAL_DEV} -- -i --disable-device-start 2>&1" 2>&1)" || true
+echo "${OUTPUT}"
+
+# testpmd never reaching the flow-create prompt is an environment failure,
+# not a hardware answer. Recording it as "rte_flow rejected" would launder a
+# broken EAL device argument or a missing binary into a silicon-level
+# verdict, so it is reported as INCONCLUSIVE and left for a human.
+if ! echo "${OUTPUT}" | grep -q 'testpmd>'; then
+    echo "RESULT: cross-check inconclusive — dpdk-testpmd did not reach its interactive prompt."
+    echo "This is an environment failure (EAL device argument, missing binary, or port probe), not evidence about the silicon. Inspect the output above and re-run."
+    exit 3
+fi
+
+# Match only testpmd's own flow-create failure reporting, not any occurrence
+# of "error"/"fail" anywhere in its banner and port summary.
+if echo "${OUTPUT}" | grep -qiE 'Caught error type|Flow rule validation failed|^Bad arguments'; then
+    echo "RESULT: rte_flow rejected the rule (silicon-level limit, not a DOCA Flow gap)"
+    exit 1
+fi
+
+if echo "${OUTPUT}" | grep -qE 'Flow rule #[0-9]+ created'; then
     echo "RESULT: rte_flow accepted the rule (DOCA Flow exposure gap, not a silicon limit)"
     exit 0
 fi
 
-echo "${OUTPUT}"
-echo "RESULT: rte_flow rejected the rule (silicon-level limit, not a DOCA Flow gap)"
-exit 1
+echo "RESULT: cross-check inconclusive — testpmd started but neither confirmed nor rejected the rule."
+echo "Neither a 'Flow rule #N created' nor a 'Caught error type' line was found. Inspect the output above."
+exit 3

@@ -75,6 +75,11 @@ if [[ -n "${CROSSCHECK_LOG}" && -f "${CROSSCHECK_LOG}" ]]; then
         CROSSCHECK_RESULT="accepted"
     elif grep -q '^RESULT: rte_flow rejected' "${CROSSCHECK_LOG}"; then
         CROSSCHECK_RESULT="rejected"
+    elif grep -q '^RESULT: cross-check inconclusive' "${CROSSCHECK_LOG}"; then
+        # testpmd failed to start, or started but neither created nor
+        # rejected the rule. Deliberately NOT treated as a rejection: that
+        # would turn an environment failure into a silicon-level NO.
+        CROSSCHECK_RESULT="inconclusive"
     elif grep -q '^SKIPPED:' "${CROSSCHECK_LOG}"; then
         CROSSCHECK_RESULT="skipped"
     fi
@@ -101,6 +106,9 @@ elif [[ "${CROSSCHECK_RESULT}" == "accepted" ]]; then
 elif [[ "${CROSSCHECK_RESULT}" == "rejected" ]]; then
     VERDICT="NO"
     REASON="DOCA Flow did not demonstrate the capability and the rte_flow cross-check also rejected the rewrite — not a DOCA Flow exposure gap."
+elif [[ "${CROSSCHECK_RESULT}" == "inconclusive" ]]; then
+    VERDICT="PARTIAL"
+    REASON="DOCA Flow rejected the rewrite, and the rte_flow cross-check could not be completed (see the cross-check log — testpmd did not start, or neither created nor rejected the rule). No NO may be recorded on this evidence: an environment failure is not a silicon-level answer. Fix the cross-check environment and re-run before treating the DOCA Flow rejection as decisive."
 elif [[ "${ACCEPTED}" == "yes" && "${OFFLOADED}" == "yes" && "${TRAFFIC_OUTCOME}" == "unmodified" ]]; then
     # design.md D2, level 3: the rule was accepted and its hardware counter
     # incremented, but the packet came back with its original sequence
