@@ -84,6 +84,40 @@ if [[ ${#PROBE_ARGS[@]} -eq 0 ]]; then
     fail "no rule parameters given (need at least --src-ip/--dst-ip/--src-port/--dst-port/--delta)"
 fi
 
+# Pre-flight: does the installed DOCA actually know this field string?
+#
+# The field string is resolved when the rule is created, not when the probe
+# is compiled, so a successful build says nothing about whether the name is
+# right. Left unchecked, a wrong name rejects at pipe_create, gets recorded
+# as a negative, triggers the rte_flow cross-check — which uses a different
+# grammar and may well accept — and the run concludes "the capability exists
+# but only through rte_flow". That is the wrong answer to the question this
+# spike exists to settle, so the evidence is gathered up front.
+#
+# A miss is NOT fatal: the strings may live in documentation rather than in
+# a header, so absence is not proof of absence. It is recorded and the probe
+# still runs.
+echo "Pre-flight: checking '${PROBE_TCP_SEQ_FIELD}' against the installed DOCA headers..."
+if dpu_run "grep -rqF '${PROBE_TCP_SEQ_FIELD}' ${PROBE_DOCA_INCLUDE} 2>/dev/null"; then
+    echo "SEQ_FIELD_IN_HEADERS: yes (${PROBE_TCP_SEQ_FIELD} found under ${PROBE_DOCA_INCLUDE})"
+else
+    echo "SEQ_FIELD_IN_HEADERS: no (${PROBE_TCP_SEQ_FIELD} not found under ${PROBE_DOCA_INCLUDE})"
+    echo "WARNING: the field string is not present in the installed headers. It may still be valid (DOCA documents some field strings outside the headers), but if the rule is rejected below, treat that as a tooling answer and try --seq-field with an alternative before recording any negative." >&2
+    # Surface the candidates a human should try, so a rejection is
+    # actionable in the same log rather than needing a second session.
+    echo "Candidate TCP field strings present in the installed headers:"
+    dpu_run "grep -rhoE '\"[a-z_]+\\.tcp\\.[a-z_]+\"' ${PROBE_DOCA_INCLUDE} 2>/dev/null | sort -u" \
+        || echo "  (none found; enumerate manually on the DPU)"
+fi
+
+# Does this build's TCP header struct even carry a sequence-number member?
+# A "no" here plus a rejection below is a strong tooling-limitation signal.
+if dpu_run "grep -rqE 'seq_num' ${PROBE_DOCA_INCLUDE}/doca_flow.h 2>/dev/null"; then
+    echo "DOCA_FLOW_HEADER_TCP_SEQ_NUM: present"
+else
+    echo "DOCA_FLOW_HEADER_TCP_SEQ_NUM: absent"
+fi
+
 if [[ -f "${BASELINE_FILE}" ]]; then
     DOCA_VERSION_STR="$(grep -A1 '## DOCA version' "${BASELINE_FILE}" | tail -n1)"
     DPDK_VERSION_STR="$(grep -A1 '## DPDK version' "${BASELINE_FILE}" | tail -n1)"
@@ -115,7 +149,8 @@ start_probe() {
     # No --rm: the container must survive exit so run_probe.sh can read its
     # counters out of `docker logs` after the hold window closes.
     dpu_run "docker run -d --name ${CONTAINER_NAME} --privileged --network host ${IMAGE_TAG} \
-             -l 0-1 -n 4 -a ${dev_spec} -- ${PROBE_ARGS[*]} --hold-secs ${HOLD_SECS}"
+             -l 0-1 -n 4 -a ${dev_spec} -- ${PROBE_ARGS[*]} --hold-secs ${HOLD_SECS} \
+             --seq-field '${PROBE_TCP_SEQ_FIELD}'"
 }
 
 # Blocks until the probe reports its rule live, the container exits without
@@ -148,9 +183,26 @@ attempt_install() {
         dpu_run "docker logs ${CONTAINER_NAME} 2>&1" || true
         return 0
     fi
-    dpu_run "docker logs ${CONTAINER_NAME} 2>&1" >&2 || true
+    LAST_FAILURE_OUTPUT="$(dpu_run "docker logs ${CONTAINER_NAME} 2>&1" || true)"
+    echo "${LAST_FAILURE_OUTPUT}" >&2
     clear_container
     return 1
+}
+
+# Separates "DOCA does not recognise the field name we asked for" from "the
+# action itself is unsupported". Only the second is evidence about the
+# hardware; the first is a tooling answer that must not reach the
+# cross-check, because rte_flow uses a different grammar and could accept
+# the same rewrite, yielding a confident and wrong "rte_flow-only" verdict.
+classify_rejection() {
+    local out="$1"
+    if echo "${out}" | grep -qiE "unknown field|invalid field|no such field|field_string|bad field"; then
+        echo "field-string"
+    elif echo "${out}" | grep -qiE "not supported|unsupported|ENOTSUP|DOCA_ERROR_NOT_SUPPORTED"; then
+        echo "unsupported-action"
+    else
+        echo "unclassified"
+    fi
 }
 
 echo "Attempting rule install (args=${PROBE_ARGS[*]}, hold=${HOLD_SECS}s)..."
@@ -165,6 +217,15 @@ if attempt_install "dv_flow_en=2"; then
     echo "RESULT: rule accepted (required dv_flow_en=2)"
     echo "CONTAINER: ${CONTAINER_NAME}"
     exit 0
+fi
+
+REJECTION_CLASS="$(classify_rejection "${LAST_FAILURE_OUTPUT:-}")"
+echo "REJECTION_CLASS: ${REJECTION_CLASS}"
+
+if [[ "${REJECTION_CLASS}" == "field-string" ]]; then
+    echo "RESULT: rule rejected — tooling limitation (DOCA did not recognise the field string '${PROBE_TCP_SEQ_FIELD}')"
+    echo "This is NOT evidence about the silicon. Re-run with PROBE_TCP_SEQ_FIELD set to one of the candidates listed in the pre-flight section above before recording any negative verdict."
+    exit 3
 fi
 
 echo "RESULT: rule rejected (verbatim error above)"

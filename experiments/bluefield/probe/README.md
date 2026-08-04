@@ -49,6 +49,15 @@ also diffs the post-run `ovs-vsctl show` against the pre-run baseline
 (`baseline.sh`'s output) and exits non-zero if they don't match, so an
 incomplete restoration cannot be silently reported as success.
 
+`ovs-vsctl show` cannot see e-switch steering entries, though, so the diff
+alone would report a clean restore over a DPU that still holds probe state.
+Two additions close that: the container is stopped with `docker stop`
+(SIGTERM, which `probe.c` traps to unwind through `doca_flow_pipe_rm_entry`
+/ `doca_flow_destroy` / `rte_eal_cleanup`) before any forced removal, and
+`restore.sh` then checks for residual DPDK runtime state under
+`/var/run/dpdk` and `/dev/hugepages` — the leftovers of a process killed
+without releasing its port.
+
 **Management is never touched.** The DPU is reached over `oob_net0`, a
 separate physical port from the data path (`pf0hpf`/`ens16f0np0`). Detaching
 `pf0hpf` from `ovsbr1` cannot sever SSH access to the DPU, because `oob_net0`
@@ -88,6 +97,22 @@ comfortably exceed the capture plus SSH round-trip latency.
 The container is deliberately **not** `--rm`: it has to survive its own exit
 so its counters can be read. `restore.sh` removes it.
 
+## What a verdict does not license
+
+`verdict.txt` carries a mandatory **Scope of this result** section, because
+the run proves less than its headline suggests: one static rule, one
+direction, sequence number only, with a delta known before the flow existed.
+T8 additionally needs the acknowledgment-number rewrite in the reverse
+direction and a delta computed *after* the real SYN-ACK arrives — runtime
+rule insertion at connection-setup latency. Those are explicit non-goals
+here, so even a YES clears the **action-existence gate only**.
+
+The section also records that the **Offloaded** level carries no independent
+information: this pipe's miss action is `DROP` and it configures no queue
+action, so no packet can reach the ARM software queue whether the rule works
+or not, making `SW_QUEUE_RX_COUNT` structurally zero. The load-bearing
+evidence is Accepted plus Effective.
+
 ## Capture direction
 
 `traffic.sh` transmits and captures on the same interface (`ens16f0np0`), so
@@ -97,6 +122,38 @@ paths. Without them tcpdump records the script's own outgoing packet and
 every run looks like something came back, which collapses design.md D4's
 split-horizon case (rewrite worked, nothing returned) into "returned
 unmodified" — the two lead to different next changes.
+
+The probe packet also carries a unique payload stamp (`PROBE_STAMP`), and
+only packets bearing it are read for sequence numbers. The rewrite touches
+the sequence number, not the payload, so a returned frame carrying the stamp
+is provably the one that was sent — rather than any inbound packet whose seq
+happens to land on `sent ± delta`. Unstamped inbound packets are counted and
+reported (`UNSTAMPED_INBOUND_PACKETS`) rather than silently dropped.
+
+## Why a rejection is not automatically a NO
+
+The DOCA field string naming the TCP sequence number (`PROBE_TCP_SEQ_FIELD`,
+default `outer.tcp.seq_num`) is resolved when the rule is *created*, not when
+the probe is compiled — so a successful build proves nothing about it. Left
+unguarded, a wrong name would reject at `doca_flow_pipe_create`, be recorded
+as a negative, trigger the `rte_flow` cross-check (which uses a different
+grammar and could well accept), and the run would conclude "the capability
+exists but only through `rte_flow`" — a confident wrong answer to the exact
+question this spike exists to settle.
+
+Three guards:
+
+1. `flow_rule.sh` checks the string against the installed headers before each
+   run and records `SEQ_FIELD_IN_HEADERS` / `DOCA_FLOW_HEADER_TCP_SEQ_NUM`. A
+   miss is not fatal — DOCA documents some field strings outside the headers —
+   but it prints the candidate `*.tcp.*` strings it *did* find, so a
+   rejection is actionable from the same log.
+2. A rejection is classified as `field-string`, `unsupported-action`, or
+   `unclassified`. A `field-string` rejection exits 3 as a **tooling
+   limitation** and never reaches the cross-check.
+3. The string is a CLI argument (`--seq-field`, passed by `flow_rule.sh` from
+   `lib/hosts.sh`), so alternatives are tried against the already-loaded
+   image without a rebuild: `PROBE_TCP_SEQ_FIELD=outer.tcp.foo ./run_probe.sh …`
 
 ## Reading the verdict
 

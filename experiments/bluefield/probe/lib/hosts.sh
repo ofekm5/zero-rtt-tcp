@@ -27,6 +27,16 @@ PROBE_SSH_OPTS="${PROBE_SSH_OPTS:--o IdentitiesOnly=yes -o BatchMode=yes -o Stri
 # PROBE_PCI_ADDR must match the adapter's address on the ARM (`lspci -nn |
 # grep -i mellanox`, also recorded by baseline.sh). Override either value
 # from the environment if the DPU differs.
+# The DOCA Flow field string naming the TCP sequence number. Owned here
+# rather than baked into probe.c so the pre-flight header check and the rule
+# the probe actually installs are guaranteed to use the same value, and so
+# an alternative can be tried against the already-loaded image without a
+# rebuild. Confirm against the installed doca_flow.h — flow_rule.sh does
+# this before each run and records the result.
+PROBE_TCP_SEQ_FIELD="${PROBE_TCP_SEQ_FIELD:-outer.tcp.seq_num}"
+# Where DOCA's headers live on the DPU ARM, for that pre-flight check.
+PROBE_DOCA_INCLUDE="${PROBE_DOCA_INCLUDE:-/opt/mellanox/doca/include}"
+
 PROBE_PCI_ADDR="${PROBE_PCI_ADDR:-0000:03:00.0}"
 PROBE_REPRESENTOR="${PROBE_REPRESENTOR:-pf0hpf}"
 PROBE_EAL_DEV="${PROBE_EAL_DEV:-${PROBE_PCI_ADDR},representor=${PROBE_REPRESENTOR}}"

@@ -128,6 +128,15 @@ if grep -q '^RESULT: rule rejected' "${RUN_REPORTS_DIR}/flow_rule.log" || [[ "${
     DOCA_RESULT="rejected"
 fi
 
+# A tooling limitation — an unrecognised field string, or a DOCA build that
+# predates the action — is not a negative result about the hardware, so it
+# must not reach the cross-check. Feeding it in would compare a DOCA name we
+# got wrong against rte_flow's own grammar, and an rte_flow acceptance would
+# then be written up as "the capability is reachable only through rte_flow".
+if grep -qE '^RESULT: (rule rejected — )?tooling limitation' "${RUN_REPORTS_DIR}/flow_rule.log"; then
+    DOCA_RESULT="tooling-limitation"
+fi
+
 CROSSCHECK_LOG_ARG=()
 if [[ "${DOCA_RESULT}" == "rejected" ]]; then
     echo "=== Step 6: DOCA Flow returned negative — running the rte_flow cross-check ==="
@@ -135,6 +144,9 @@ if [[ "${DOCA_RESULT}" == "rejected" ]]; then
         --dst-port "${DST_PORT}" --delta "${DELTA}" --doca-result "${DOCA_RESULT}" \
         | tee "${RUN_REPORTS_DIR}/crosscheck.log"
     CROSSCHECK_LOG_ARG=(--crosscheck-log "${RUN_REPORTS_DIR}/crosscheck.log")
+elif [[ "${DOCA_RESULT}" == "tooling-limitation" ]]; then
+    echo "=== Step 6: tooling limitation, not a hardware negative — cross-check skipped ==="
+    echo "Fix the tooling issue reported in flow_rule.log and re-run; no verdict about the silicon can be drawn from this run."
 else
     echo "=== Step 6: DOCA Flow accepted the rule — cross-check skipped (design.md D6) ==="
 fi
@@ -142,6 +154,7 @@ fi
 echo "=== Step 7: evaluate the verdict ==="
 "${SCRIPT_DIR}/verdict.sh" --flow-rule-log "${RUN_REPORTS_DIR}/flow_rule.log" \
     --traffic-log "${RUN_REPORTS_DIR}/traffic.log" "${CROSSCHECK_LOG_ARG[@]}" \
+    --direction "${DIRECTION}" --delta "${DELTA}" \
     --out "${RUN_REPORTS_DIR}/verdict.txt"
 VERDICT_RC=$?
 

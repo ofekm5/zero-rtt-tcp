@@ -52,31 +52,59 @@ LOCAL_MAC="$(vm_run "cat /sys/class/net/ens16f0np0/address")" \
 
 CAPTURE_FILTER="tcp and dst port ${DST_PORT} and not ether src ${LOCAL_MAC}"
 
+# Level 3 is the only decisive verification level, so the packet it inspects
+# must provably be the one we sent. A unique payload signature travels with
+# the packet through the e-switch — the rewrite touches the sequence number,
+# not the payload — so a returned frame carrying it is ours by construction
+# rather than by assumption. Without it, any inbound TCP packet whose seq
+# happens to land on sent ± delta would be accepted as proof.
+STAMP="${PROBE_STAMP:-ZRTT$$}"
+
 echo "Capturing inbound on ens16f0np0 for ${CAPTURE_SECS}s while sending TCP seq=${SENT_SEQ} to ${DST_IP}:${DST_PORT}..."
 echo "Capture filter: -Q in '${CAPTURE_FILTER}'"
+echo "PAYLOAD_STAMP: ${STAMP}"
 
 vm_run "sudo timeout ${CAPTURE_SECS} tcpdump -i ens16f0np0 -Q in -w ${PCAP_PATH} '${CAPTURE_FILTER}' & \
         sleep 1 && \
-        sudo hping3 -c 1 -S -p ${DST_PORT} -M ${SENT_SEQ} ${DST_IP} ; \
+        sudo hping3 -c 1 -S -p ${DST_PORT} -M ${SENT_SEQ} -d ${#STAMP} -E /dev/stdin ${DST_IP} <<< '${STAMP}' ; \
         wait" \
     || fail "traffic generation/capture failed on the host VM"
 
-RETURNED_SEQS="$(vm_run "sudo tcpdump -r ${PCAP_PATH} -n 2>/dev/null | grep -oE 'seq [0-9]+' | awk '{print \$2}'")"
+# Walk the capture packet by packet, carrying the sequence number from each
+# header line down to the payload lines that follow it, and emit a sequence
+# number only for packets whose payload carries our stamp.
+READ_PCAP="sudo tcpdump -r ${PCAP_PATH} -n -A 2>/dev/null"
+STAMPED_SEQS="$(vm_run "${READ_PCAP} | awk -v stamp='${STAMP}' '
+    /seq [0-9]+/ { if (match(\$0, /seq [0-9]+/)) { s = substr(\$0, RSTART + 4, RLENGTH - 4) } }
+    index(\$0, stamp) > 0 && s != \"\" { print s; s = \"\" }
+'")"
+
+# Everything inbound that matched the filter, stamped or not — reported so a
+# capture full of unrelated traffic is visible rather than silently ignored.
+ALL_SEQS="$(vm_run "${READ_PCAP} | grep -oE 'seq [0-9]+' | awk '{print \$2}'")"
+UNSTAMPED_COUNT=$(( $(echo "${ALL_SEQS}" | grep -c . ) - $(echo "${STAMPED_SEQS}" | grep -c . ) ))
+
+RETURNED_SEQS="${STAMPED_SEQS}"
 
 EXPECTED_SUB=$((SENT_SEQ - DELTA))
 EXPECTED_ADD=$((SENT_SEQ + DELTA))
 
 if [[ -z "${RETURNED_SEQS}" ]]; then
     # Reachable only because the capture is inbound-only: with the outgoing
-    # packet excluded, an empty pcap genuinely means nothing came back.
-    # This is design.md D4's split-horizon branch.
+    # packet excluded, an empty result genuinely means our packet did not
+    # come back. This is design.md D4's split-horizon branch.
     echo "OUTCOME: nothing returned within the ${CAPTURE_SECS}s capture window"
     echo "SENT_SEQ: ${SENT_SEQ}"
+    echo "UNSTAMPED_INBOUND_PACKETS: ${UNSTAMPED_COUNT}"
+    if [[ "${UNSTAMPED_COUNT}" -gt 0 ]]; then
+        echo "NOTE: ${UNSTAMPED_COUNT} inbound packet(s) matched the filter but did not carry the stamp, so they are not ours. Verdict is unaffected." >&2
+    fi
     exit 1
 fi
 
 echo "SENT_SEQ: ${SENT_SEQ}"
 echo "RETURNED_SEQS: ${RETURNED_SEQS}"
+echo "UNSTAMPED_INBOUND_PACKETS: ${UNSTAMPED_COUNT}"
 
 for seq in ${RETURNED_SEQS}; do
     if [[ "${seq}" == "${EXPECTED_SUB}" || "${seq}" == "${EXPECTED_ADD}" ]]; then

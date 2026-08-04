@@ -54,10 +54,40 @@ baseline_section() {
 # removed, and it holds pf0hpf if the run was aborted mid-hold.
 echo "Removing the probe container (${CONTAINER_NAME})..."
 if dpu_run "docker container inspect ${CONTAINER_NAME}" >/dev/null 2>&1; then
+    # `docker stop` first: it sends SIGTERM, which probe.c traps to break its
+    # hold loop and unwind through doca_flow_pipe_rm_entry /
+    # doca_flow_destroy / rte_eal_cleanup. Going straight to `rm -f` SIGKILLs
+    # the process with the pipe entry still programmed, which is how a
+    # shared DPU ends up carrying steering entries from an aborted run.
+    dpu_run "docker stop -t ${PROBE_STOP_TIMEOUT:-15} ${CONTAINER_NAME}" >/dev/null 2>&1 \
+        || echo "WARNING: graceful stop failed; falling back to forced removal" >&2
     dpu_run "docker rm -f ${CONTAINER_NAME}" >/dev/null 2>&1 \
         || note_failure "failed to remove the probe container ${CONTAINER_NAME}"
 else
     echo "No probe container present; nothing to remove."
+fi
+
+# A DPDK process that died without rte_eal_cleanup leaves its runtime
+# directory and hugepage-backed files behind, and that is exactly the state
+# in which a port is never released and its steering entries can persist.
+# ovs-vsctl show cannot see any of this, so SC5's diff alone would report a
+# clean restore over a DPU that still holds probe state.
+echo "Checking for residual DPDK runtime state..."
+RESIDUAL_RUNTIME="$(dpu_run "ls -1 /var/run/dpdk 2>/dev/null" || true)"
+if [[ -n "${RESIDUAL_RUNTIME}" ]]; then
+    echo "Residual DPDK runtime directories found; removing:"
+    echo "${RESIDUAL_RUNTIME}"
+    dpu_run "sudo rm -rf /var/run/dpdk/*" \
+        || note_failure "failed to clear /var/run/dpdk"
+else
+    echo "No residual DPDK runtime state."
+fi
+
+RESIDUAL_HUGE="$(dpu_run "ls -1 /dev/hugepages 2>/dev/null | grep -c . " || echo 0)"
+if [[ "${RESIDUAL_HUGE:-0}" -gt 0 ]]; then
+    note_failure "${RESIDUAL_HUGE} file(s) still present under /dev/hugepages after the probe exited — a DPDK process may not have released the port cleanly; inspect before treating the DPU as restored"
+else
+    echo "No residual hugepage files."
 fi
 
 echo "Re-attaching pf0hpf to ovsbr1..."

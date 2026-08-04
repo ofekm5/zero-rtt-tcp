@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 FLOW_RULE_LOG="" TRAFFIC_LOG="" CROSSCHECK_LOG=""
 OUT_FILE="${SCRIPT_DIR}/../reports/verdict.txt"
+DIRECTION="" DELTA=""
 
 fail() {
     echo "ERROR: $1" >&2
@@ -27,6 +28,8 @@ while [[ $# -gt 0 ]]; do
         --flow-rule-log) FLOW_RULE_LOG="$2"; shift 2 ;;
         --traffic-log) TRAFFIC_LOG="$2"; shift 2 ;;
         --crosscheck-log) CROSSCHECK_LOG="$2"; shift 2 ;;
+        --direction) DIRECTION="$2"; shift 2 ;;
+        --delta) DELTA="$2"; shift 2 ;;
         --out) OUT_FILE="$2"; shift 2 ;;
         *) fail "unrecognised argument: $1" ;;
     esac
@@ -142,6 +145,29 @@ fi
     echo
     echo "## VERDICT: ${VERDICT}"
     echo "${REASON}"
+    echo
+    echo "## Scope of this result — what it does and does not license"
+    echo
+    echo "Direction proven: ${DIRECTION:-unrecorded} (TCP sequence number only; the"
+    echo "  opposite direction's acknowledgment-number rewrite was NOT exercised)."
+    echo "Delta: ${DELTA:-unrecorded} — a STATIC constant supplied on the command line"
+    echo "  before the flow existed."
+    echo "Field string: $(grep -m1 '^SEQ_FIELD_USED:' "${FLOW_RULE_LOG}" 2>/dev/null | cut -d' ' -f2- || echo unrecorded)"
+    echo "Return-packet binding: $(grep -m1 '^PAYLOAD_STAMP:' "${TRAFFIC_LOG}" 2>/dev/null | cut -d' ' -f2- || echo 'unstamped — returned packet not bound to the one sent')"
+    echo
+    echo "Even a YES clears the action-existence gate ONLY. It does not establish:"
+    echo "  - that the acknowledgment number can be rewritten in the reverse direction;"
+    echo "  - that a delta computed at runtime, after the real SYN-ACK arrives, can be"
+    echo "    programmed into the e-switch at connection-setup latency (T8 needs this;"
+    echo "    this run used a constant known before any packet was sent);"
+    echo "  - anything about rule-install rate, concurrent flows, or e-switch table"
+    echo "    capacity — all explicit non-goals of this spike (design.md Goals/Non-Goals)."
+    echo
+    echo "On the Offloaded level: this pipe's miss action is DROP and it configures no"
+    echo "queue action, so no packet can reach the ARM software queue whether the rule"
+    echo "works or not. SW_QUEUE_RX_COUNT is therefore structurally zero and carries no"
+    echo "independent information; the load-bearing evidence is Accepted plus Effective."
+    echo "Do not cite the Offloaded level as a third independent signal."
 } | tee "${OUT_FILE}"
 
 echo "Verdict written to ${OUT_FILE}"

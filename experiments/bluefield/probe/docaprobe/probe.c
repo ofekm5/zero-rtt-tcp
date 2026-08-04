@@ -20,6 +20,7 @@
 
 #include <arpa/inet.h>
 #include <getopt.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -39,14 +40,19 @@
 
 DOCA_LOG_REGISTER(ESWITCH_PROBE);
 
-/* DOCA Flow field string naming the TCP sequence number, and its width in
- * bits. Confirm against doca_flow.h on the target DPU (task 13); a wrong
- * string surfaces as a doca_flow_pipe_create rejection naming the field,
- * which is distinguishable from a silicon NO. */
+/* Default DOCA Flow field string naming the TCP sequence number, and its
+ * width in bits. This is a *string* resolved when the rule is created, not
+ * at compile time — so a wrong value here cannot be caught by building the
+ * probe, only by running it. It is therefore overridable with --seq-field
+ * so alternatives can be tried against the loaded image without a rebuild,
+ * and so the caller can pass whatever the installed doca_flow.h actually
+ * documents (task 13). A rejection naming the field is a tooling answer,
+ * not a silicon answer; flow_rule.sh classifies the two apart. */
 #ifndef PROBE_TCP_SEQ_FIELD
 #define PROBE_TCP_SEQ_FIELD "outer.tcp.seq_num"
 #endif
 #define PROBE_TCP_SEQ_WIDTH 32
+#define PROBE_FIELD_STR_LEN 64
 
 /* IPv4 dotted-quad strings never exceed 15 chars + NUL; sized for IPv6 so
  * an over-long --src-ip is truncated rather than overflowing. Local so the
@@ -78,7 +84,22 @@ struct probe_config {
 	char direction[8];  /* "sub" (client->server ack) or "add" (server->client seq) */
 	uint16_t port_id;   /* DPDK/DOCA port id for pf0hpf (egress target) */
 	uint32_t hold_secs; /* seconds to keep the rule installed; 0 = SW_QUEUE_POLL_MS */
+	char seq_field[PROBE_FIELD_STR_LEN]; /* DOCA Flow field string for the TCP seq number */
 };
+
+/* Set by SIGINT/SIGTERM. The hold loop checks it so a `docker stop` unwinds
+ * through the normal teardown path — doca_flow_pipe_rm_entry,
+ * doca_flow_destroy, rte_eal_cleanup — instead of being SIGKILLed with the
+ * pipe entry still programmed. This DPU is shared lab infrastructure and an
+ * aborted run must not leave steering entries behind. */
+static volatile sig_atomic_t g_stop_requested;
+
+static void
+probe_signal_handler(int signum)
+{
+	(void)signum;
+	g_stop_requested = 1;
+}
 
 static struct probe_config g_cfg = {
 	.src_ip = "0.0.0.0",
@@ -89,6 +110,7 @@ static struct probe_config g_cfg = {
 	.direction = "sub",
 	.port_id = 0,
 	.hold_secs = 0,
+	.seq_field = PROBE_TCP_SEQ_FIELD,
 };
 
 /* Parses a dotted-quad IPv4 string into network-byte-order form, matching
@@ -123,7 +145,8 @@ usage(const char *prog)
 {
 	fprintf(stderr,
 		"Usage: %s --src-ip <ip> --dst-ip <ip> --src-port <port> --dst-port <port> "
-		"--delta <int32> [--direction sub|add] [--port-id <id>] [--hold-secs <n>]\n",
+		"--delta <int32> [--direction sub|add] [--port-id <id>] [--hold-secs <n>] "
+		"[--seq-field <doca-field-string>]\n",
 		prog);
 }
 
@@ -142,12 +165,13 @@ probe_parse_args(int argc, char **argv)
 		{"direction", required_argument, NULL, 'r'},
 		{"port-id", required_argument, NULL, 'i'},
 		{"hold-secs", required_argument, NULL, 'H'},
+		{"seq-field", required_argument, NULL, 'F'},
 		{NULL, 0, NULL, 0},
 	};
 	int opt;
 	int has_src_ip = 0, has_dst_ip = 0, has_src_port = 0, has_dst_port = 0, has_delta = 0;
 
-	while ((opt = getopt_long(argc, argv, "s:d:p:q:c:r:i:H:", long_opts, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "s:d:p:q:c:r:i:H:F:", long_opts, NULL)) != -1) {
 		switch (opt) {
 		case 's':
 			strncpy(g_cfg.src_ip, optarg, sizeof(g_cfg.src_ip) - 1);
@@ -177,6 +201,10 @@ probe_parse_args(int argc, char **argv)
 			break;
 		case 'H':
 			g_cfg.hold_secs = (uint32_t)strtoul(optarg, NULL, 10);
+			break;
+		case 'F':
+			strncpy(g_cfg.seq_field, optarg, sizeof(g_cfg.seq_field) - 1);
+			g_cfg.seq_field[sizeof(g_cfg.seq_field) - 1] = '\0';
 			break;
 		default:
 			usage(argv[0]);
@@ -253,7 +281,7 @@ dpdk_rx_poll_sw_queue(void)
 					   ? (uint64_t)g_cfg.hold_secs * 1000
 					   : SW_QUEUE_POLL_MS;
 
-	while (elapsed_ms < window_ms) {
+	while (elapsed_ms < window_ms && !g_stop_requested) {
 		uint16_t nb_rx = rte_eth_rx_burst(g_cfg.port_id, 0, bufs, RX_BURST_SIZE);
 		for (uint16_t i = 0; i < nb_rx; i++)
 			rte_pktmbuf_free(bufs[i]);
@@ -346,7 +374,7 @@ probe_pipe_create(struct doca_flow_port *port, struct doca_flow_pipe **pipe)
 	 * taken as an immediate from the actions struct rather than copied
 	 * from another header field. */
 	seq_desc.type = DOCA_FLOW_ACTION_ADD;
-	seq_desc.field_op.dst.field_string = PROBE_TCP_SEQ_FIELD;
+	seq_desc.field_op.dst.field_string = g_cfg.seq_field;
 	seq_desc.field_op.dst.bit_offset = 0;
 	seq_desc.field_op.src.field_string = NULL;
 	seq_desc.field_op.src.bit_offset = 0;
@@ -374,8 +402,15 @@ probe_pipe_create(struct doca_flow_port *port, struct doca_flow_pipe **pipe)
 
 	result = doca_flow_pipe_create(&pipe_cfg, &fwd, &fwd_miss, pipe);
 	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("doca_flow_pipe_create failed (rule not accepted): %s",
-			     doca_error_get_descr(result));
+		/* Echo the field string in the failure line. A rejection caused
+		 * by an unrecognised field name is a tooling answer, not a
+		 * silicon one, and flow_rule.sh keys on this to classify them
+		 * apart — without it, a typo reads as "the hardware cannot do
+		 * this". */
+		DOCA_LOG_ERR("doca_flow_pipe_create failed (rule not accepted) [seq_field=%s]: %s",
+			     g_cfg.seq_field, doca_error_get_descr(result));
+		printf("SEQ_FIELD_USED: %s\n", g_cfg.seq_field);
+		fflush(stdout);
 		return result;
 	}
 	return DOCA_SUCCESS;
@@ -469,6 +504,11 @@ main(int argc, char **argv)
 	 * precede a "--" separator; the probe's own rule-parameter args
 	 * follow it. rte_eal_init consumes its prefix and reports how many
 	 * argv entries it used so the remainder reaches probe_parse_args. */
+	/* Installed before EAL so a stop arriving during init still unwinds
+	 * through teardown rather than killing the process outright. */
+	signal(SIGINT, probe_signal_handler);
+	signal(SIGTERM, probe_signal_handler);
+
 	rte_argc = rte_eal_init(argc, argv);
 	if (rte_argc < 0) {
 		fprintf(stderr, "rte_eal_init failed\n");
@@ -515,6 +555,9 @@ main(int argc, char **argv)
 	 * would be created and removed around the traffic window rather than
 	 * across it, and the counter would be read before any packet existed. */
 	printf("%s (hold_secs=%u)\n", RULE_INSTALLED_MARKER, g_cfg.hold_secs);
+	printf("SEQ_FIELD_USED: %s\n", g_cfg.seq_field);
+	printf("DELTA_APPLIED: direction=%s delta=%d addend=0x%08x\n",
+	       g_cfg.direction, g_cfg.delta, probe_seq_addend());
 	fflush(stdout);
 
 	/* Real measurement, not an assumed zero: any packet landing on the
