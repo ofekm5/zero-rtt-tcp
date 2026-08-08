@@ -19,7 +19,7 @@ in the AWS->university migration, use the BF as the servernic VM but keep the sa
 
 | Item | State |
 | --- | --- |
-| [Measurement flaws (F2–F16)](#measurement-flaws) | Open — F2 blocking the FCT claim |
+| [Measurement flaws (F3–F16)](#measurement-flaws) | Open — F2 resolved 2026-08-08, nothing blocking |
 | [#21 — DPDK vs. baseline comparison](#21--run-experiment-on-both-dpdk-and-baseline-stacks) | Open — not started |
 | [Client-side pcap analysis at 100k](#client-side-pcap-analysis-doesnt-scale-to-100k) | Open — root cause not isolated |
 | [Idea: close the 100k connection-burst gap](#idea-close-the-100k-connection-burst-gap) | Idea — not yet an OpenSpec change |
@@ -48,7 +48,7 @@ handoff document, not a roadmap gate. See the closing note below.
 
 | # | Flaw | Class | Severity |
 | --- | --- | --- | --- |
-| F2 | netem on Server egress makes any FCT gain structurally unmeasurable | Methodology | **Blocking** |
+| ~~F2~~ | ~~netem on Server egress makes any FCT gain structurally unmeasurable~~ | Methodology | **Resolved 2026-08-08** |
 | F3 | NIC logs truncated at the 24 KB SSM cap — reported counts cover <100 of 2000 flows | Observability | High |
 | F4 | ClientNIC/ServerNIC in-app rdtsc TTFB dark (`no samples found`) | Observability | High |
 | F5 | No application-level client TTFB exists; the claim rests entirely on pcap timing | Observability | Medium |
@@ -74,28 +74,51 @@ the capture into the F2 run rather than deploying a stack just for it — see
 the handoff's Decision 1. F3 (NIC log truncation) must land first if the
 second outcome happens, per the handoff's Decision 3.
 
-### F2 — Move the emulated WAN to the middle leg (blocking)
+### F2 — Emulated WAN moved to the middle leg ✅ RESOLVED 2026-08-08
 
-`endpoint.sh` puts the whole `NETEM_RTT_MS` on Server egress. That is correct
-for `send_unlock` and is the reason FCT cannot improve: the SYN-ACK ServerNIC
-needs before it can flush is the one packet paying the entire emulated WAN. No
-endpoint-side placement satisfies the condition (ServerNIC must learn the real
-ISN *before* the client's data would otherwise arrive) — see
-`measurement-methodology-review.md` §E2 for the four-placement proof. Until this
-lands, "0-RTT does not improve FCT" is an artifact of the topology, not a result.
+`endpoint.sh` used to put the whole `NETEM_RTT_MS` on Server egress. That is
+correct for `send_unlock` and was the reason FCT could not improve: the SYN-ACK
+ServerNIC needs before it can flush was the one packet paying the entire
+emulated WAN. No endpoint-side placement satisfies the condition (ServerNIC must
+learn the real ISN *before* the client's data would otherwise arrive) — see
+`measurement-methodology-review.md` §E2 for the four-placement proof.
 
-- [ ] Baseline stack: `tc netem delay <RTT/2>` on each kernel-routed NIC VM's
-      middle-leg interface
-- [ ] DPDK stack: `--wan-delay-us` knob on both forwarders — timestamped FIFO on
-      the `eth1` TX path, drained in the existing poll loop (tc cannot reach
-      vfio-pci ports)
-- [ ] `NETEM_RTT_MS` on endpoints to 0; invert `endpoint_tune()`'s read-back
-      assertion to fail if an endpoint qdisc *is* present
-- [ ] Both stacks must model the same total RTT or the comparison is void
-- [ ] Expected: `send_unlock` unchanged (~0.2 ms), FCT ~200 ms → ~100 ms
+- [x] Baseline stack: `tc netem delay <RTT/2>` on each kernel-routed NIC VM's
+      middle-leg interface (`wan_tune_middle_leg()`, ClientNIC eth1 / ServerNIC eth0)
+- [x] DPDK stack: `--wan-delay-us` on both forwarders — FIFO hold ring on the
+      `eth1` TX path, drained in the existing poll loop (tc cannot reach
+      vfio-pci ports). `src/*/wan_delay.c`, 7 unit tests.
+- [x] Endpoints carry no qdisc; `endpoint_tune()`'s read-back assertion inverted
+      to fail the run if one *is* present
+- [x] Both stacks model the same total RTT — `wan_delay_us()` derives the DPDK
+      value from the same `NETEM_RTT_MS` the baseline netem uses
 
-Superseded by [AWS cross-region deployment](#aws-cross-region-deployment) if that
-lands first — a real WAN path removes the placement question entirely.
+**Measured, both stacks, 2026-08-08** (2000 conns, 500/s, 4 ports, 1 KB,
+`NETEM_RTT_MS=100`, 2000/2000 OK on both):
+
+| metric | baseline | 0-RTT | delta |
+| --- | --- | --- | --- |
+| `send_unlock` mean | 101.532 ms | 0.263 ms | **−101.27 ms** |
+| `fct` mean | 202.919 ms | 101.067 ms | **−101.85 ms** |
+| `fct` p99 | 203.933 ms | 101.407 ms | −102.53 ms |
+| `fct` max | 215.570 ms | 102.928 ms | −112.64 ms |
+| `server_gap` mean | 101.523 ms | 0.259 ms | −101.26 ms |
+
+The headline is no longer narrower than the claim: **0-RTT now removes one full
+RTT from flow completion time, not only from application blocking time.** The
+−0.09 ms FCT result of 2026-08-04 was an artifact of netem placement, exactly as
+§E predicted.
+
+Reports: `experiments/baseline-tcp/reports/baseline-report-2026-08-08-212236.md`,
+`experiments/dpdk/reports/integration-test-report-2026-08-08.md`.
+
+Note for the [FCT tail](#measurement-flaws) (ex-F1, `HANDOFF-fct-tail.md`): the
+537 ms outlier **did not reproduce** — 0-RTT `fct` max is 102.928 ms, only
+1.5 ms above its own p99, and tighter than baseline's 215.570 ms. One run is not
+proof it is gone; re-check at 100k before treating it as closed.
+
+Still superseded by [AWS cross-region deployment](#aws-cross-region-deployment)
+if that lands — a real WAN path removes the emulation question entirely.
 
 ### F3–F8 — next tier
 

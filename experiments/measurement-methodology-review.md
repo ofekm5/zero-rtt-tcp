@@ -397,7 +397,7 @@ of the *measurement topology*, not proof that FCT is unimprovable. B1's note
 ("middle-leg placement is impossible, server-side is the achievable equivalent")
 is true for `send_unlock` and false for FCT.
 
-### E3. Proposed change — not yet implemented
+### E3. Implemented and measured — 2026-08-08 ✅
 
 - **Baseline stack** (`infra/baseline`, kernel-routed NIC VMs): `tc netem delay
   <RTT/2>` on each NIC VM's middle-leg interface. tc works there today.
@@ -409,7 +409,40 @@ is true for `send_unlock` and false for FCT.
 - Expected: `send_unlock` unchanged (~0.2 ms), FCT 200 ms -> ~100 ms.
 
 Both stacks must model the same total RTT or the comparison is void — that is
-the same trap C2 fixed for tooling.
+the same trap C2 fixed for tooling. `wan_delay_us()` derives the DPDK value from
+the same `NETEM_RTT_MS` the baseline netem uses, so the two cannot drift.
+
+### E4. Result
+
+Run pair 2026-08-08, both stacks, 2000 conns / 500 per sec / 4 ports / 1 KB /
+`NETEM_RTT_MS=100`, 2000/2000 connections OK on both:
+
+| metric | baseline | 0-RTT | delta |
+|---|---|---|---|
+| `send_unlock` mean | 101.532 ms | 0.263 ms | −101.27 ms |
+| `fct` mean | 202.919 ms | 101.067 ms | **−101.85 ms** |
+| `fct` p99 | 203.933 ms | 101.407 ms | −102.53 ms |
+| `fct` max | 215.570 ms | 102.928 ms | −112.64 ms |
+| `server_gap` mean | 101.523 ms | 0.259 ms | −101.26 ms |
+
+Both stacks land within ~2% of the model in §E2 — baseline at ≈2·RTT, 0-RTT at
+≈1·RTT. The 2026-08-04 conclusion that "0-RTT relocates the round trip rather
+than removing it" was a property of the measurement topology, not of T8
+translation: with the delay on the leg it belongs on, the ServerNIC's hold
+overlaps WAN transit and costs nothing.
+
+The honest headline changes accordingly. It is no longer "0-RTT eliminates one
+RTT of application blocking time, but connections do not complete sooner" —
+**both are now true and measured.**
+
+Two cautions:
+
+- The 537 ms FCT outlier did not reproduce (max 102.928 ms, 1.5 ms above p99).
+  That is one run at 2000 connections, not proof it is gone. `HANDOFF-fct-tail.md`
+  still stands as the procedure for confirming it at scale.
+- This is still an *emulated* WAN — constant delay, no jitter, reordering or
+  loss. The cross-region deployment on `roadmap.md` remains the only way to
+  measure against a real path.
 
 ---
 
