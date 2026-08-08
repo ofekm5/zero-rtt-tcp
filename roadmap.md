@@ -3,18 +3,6 @@
 Open work only. Completed items are recorded in their reports, PRs, and
 `openspec/changes/archive/` — see [Done ledger](#done-ledger) for pointers.
 
-## Ofek tasks - make claude refined and migrate it to rest of the doc
-make eswitch experimentation much more simpler
-remove overloading the system
-start with leightweight ARM as first BF experimentation
-refactor C:\Users\shir\Documents\GitHub\zero-rtt-tcp\.github\workflows\run-experiment.yml to be the source of truth for running experiments
-caching in memory - have the eswitch rules use cache
-if limit is reached, add a bool to turn the functionality off
-have a dynamic pool of ISN
-p0 and pf0hp in BF - use them directly without creating new VFs
-in the AWS->university migration, use the BF as the servernic VM but keep the same codebase
-
-
 ## Status snapshot
 
 | Item | State |
@@ -239,6 +227,11 @@ Three candidate approaches, none scoped in detail:
 - **Client-side connection pacing** — stagger the `asyncio.gather()` burst
   (bounded concurrency / ramp-up) so attempts arrive as a sustained rate,
   trading test realism for a rate the existing single lcore can absorb.
+- **Dynamic ISN pool** — ClientNIC currently draws each spoofed ISN from
+  `rte_rand()` per SYN (`packet_processor.c`); a pre-generated pool of unique
+  values would remove both the per-packet RNG cost and any (currently
+  theoretical) collision risk in the flow table's V-keyed lookup at burst
+  scale.
 
 ### Success criteria (draft, to refine when proposed)
 - [ ] 100k-connection run establishes ≥95% of connections (up from 68.8%)
@@ -323,6 +316,16 @@ toward the ServerNIC VM.
 
 ## BlueField-3 track
 
+- [ ] Simplify the e-switch experimentation harness and stop overloading the
+      DPU while iterating on it — the spike needed nine defect fixes and left
+      the DPU mutated (VPN drop mid-run) and blocked (no sudo password) just
+      to get this far; that's a sign the harness itself is too heavy for
+      iterative probing, not only the probe logic.
+- [ ] Prioritize a lightweight ARM-only path (no e-switch hardware offload —
+      see [Demo C](#demo-c--bluefield-as-clientnic-servernic-stays-a-vm)) as
+      the first BlueField experiment, ahead of or independent from the
+      e-switch spike below.
+
 ### `verify-eswitch-tcp-seq-offload` — in progress, DPU left mutated
 
 Determines whether the BlueField-3 e-switch can match a TCP flow, rewrite
@@ -385,6 +388,13 @@ e-switch, keeping the ARM cores out of the data path (handshake only). New
 resolves it. Criteria in the
 [proposal](openspec/changes/bluefield-servernic-hw-offload/proposal.md).
 
+- [ ] Cache installed e-switch flow rules in memory instead of re-querying/
+      reinstalling per flow, once the spike picks a backend (`offload.c`)
+- [ ] Add an explicit off-switch: when the DPU's flow-rule limit is reached,
+      flip a bool that disables the offload path (falls back to software
+      rewriting or sheds) rather than failing open or dropping silently —
+      pairs with the rule-count-leak mitigation already noted above (SC5)
+
 ### Gap: BlueField lab deployment change (not yet proposed)
 
 Both BlueField proposals explicitly push this out of scope and assume it exists
@@ -396,7 +406,10 @@ as a separate change — but no proposal has been written. It covers:
 - [ ] Lab DNS (or a documented decision to keep working around it offline)
 
 `bluefield-servernic-hw-offload`'s Success Criterion 4 (end-to-end TCP through
-the DPU) is not observable until this lands.
+the DPU) is not observable until this lands. Migration target for the
+AWS-to-university move: the BlueField DPU replaces the ServerNIC **VM**,
+reusing the same C codebase (`flow_table.c`, `syn_handler.c`, `checksum.c`)
+rather than a rewrite — already how `bluefield-servernic-hw-offload` is scoped.
 
 ## Human-readable experiment output
 

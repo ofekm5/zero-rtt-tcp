@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probe verification for T8 ISN ack-num channel (Design D8).
+"""Probe verification for the ISN ack-num channel (design D8).
 
 Sends a SYN with ack_seq=0xDEADBEEF on the specified interface toward the
 Server, then exits.  The ServerNIC-side capture (tcpdump or --server-pcap)
@@ -26,7 +26,7 @@ import sys
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="T8 ISN ack-num channel probe")
+    p = argparse.ArgumentParser(description="ISN ack-num channel probe")
     p.add_argument("--iface",    required=True, help="Sending interface (e.g. eth1)")
     p.add_argument("--src-ip",   required=True, help="Source IP (ClientNIC eth1 IP)")
     p.add_argument("--dst-ip",   required=True, help="Destination IP (Server IP)")

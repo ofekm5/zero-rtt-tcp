@@ -16,8 +16,8 @@ result in chat, and investigate any failures.
 
 > "Which experiment should I run?
 > 1. **Scapy** (AWS) — 0-RTT, Python/Scapy AF_PACKET (`experiments/scapy/run_experiment.sh`)
-> 2. **DPDK** (AWS) — 0-RTT T8, C/DPDK forwarder + translator (`experiments/dpdk/run_experiment.sh`)
-> 3. **Proxmox** — 0-RTT T8 DPDK on the RUNS lab via SSH gateway (`experiments/proxmox/run_experiment.sh`)
+> 2. **DPDK** (AWS) — 0-RTT, C/DPDK forwarder + translator (`experiments/dpdk/run_experiment.sh`)
+> 3. **Proxmox** — 0-RTT DPDK on the RUNS lab via SSH gateway (`experiments/proxmox/run_experiment.sh`)
 > 4. **Baseline** (AWS) — plain TCP, kernel forwarding, no middleware (`experiments/baseline-tcp/run_experiment.sh`)"
 
 Set variables based on the answer:
@@ -235,13 +235,13 @@ setsid bash experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &
 # 2a. ServerNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
 setsid python3 src/servernic/scapy/main.py --client-iface eth0 --server-iface eth1 \
     < /dev/null >> /tmp/servernic.log 2>&1 &
-# 2b. ServerNIC — DPDK T8 translator
+# 2b. ServerNIC — DPDK translator
 CLIENTNIC_GW_MAC=<cnic-eth1-mac> SERVER_GW_MAC=<server-eth0-mac> MIDDLE_ENI_MAC=<snic-eth1-mac> \
     SKIP_BUILD=1 setsid bash experiments/dpdk/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &
 
 # 3a. ClientNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
 setsid python3 src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
-# 3b. ClientNIC — DPDK T8 forwarder (GW_MAC = ServerNIC eth1 MAC)
+# 3b. ClientNIC — DPDK forwarder (GW_MAC = ServerNIC eth1 MAC)
 SKIP_BUILD=1 setsid bash experiments/dpdk/clientnic.sh <GW_MAC> < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client — 100000 conns across 4 ports, paced at 2000/s, 1 KB each

@@ -129,7 +129,7 @@ fi
 {
     echo "# Proxmox 0-RTT Test Report — $(date +%Y-%m-%d)"
     echo ""
-    echo "**Implementation**: DPDK (T8 ISN ack-num translation shift)"
+    echo "**Implementation**: DPDK (ISN ack-num translation shift)"
     echo "**Infra**: RUNS Proxmox lab — 4 VMs via SSH gateway (${LAB_GATEWAY})"
     echo "**ClientNIC binary**: \`src/clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
     echo "**ServerNIC binary**: \`src/servernic/dpdk/\` (full translator)"

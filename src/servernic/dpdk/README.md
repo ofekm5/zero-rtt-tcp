@@ -1,11 +1,11 @@
 # ServerNIC DPDK Implementation
 
-DPDK-based ServerNIC for the T8 ISN ack-num translation shift. The ServerNIC is the **sole
+DPDK-based ServerNIC for the ISN ack-num translation shift. The ServerNIC is the **sole
 stateful translator** — it reads V from the forwarded SYN's ack-num field, computes the
 seq/ack delta after the real SYN-ACK arrives, drops the real SYN-ACK, and rewrites all
 subsequent packets in both directions.
 
-## ENI layout (T8 design, D6) — dual-DPDK data plane
+## ENI layout (design D6) — dual-DPDK data plane
 
 ```
 Client ──► ClientNIC ──eth1(DPDK)──► [ServerNIC] ──eth2(DPDK)──► Server

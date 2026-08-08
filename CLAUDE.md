@@ -37,9 +37,9 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 
 1. **Client VM** (`src/client-app/`): Standard unmodified TCP client application
 2. **ClientNIC VM** (`src/clientnic/`): **Core 0-RTT logic** — intercepts SYN packets, sends spoofed SYN-ACK, forwards SYN toward Server. DPDK implementation:
-   - `src/clientnic/dpdk-forwarder/` — **T8 forwarder** (live implementation): spoof SYN-ACK + stamp V in SYN ack-num + transparent forward (translation shifted to ServerNIC)
+   - `src/clientnic/dpdk-forwarder/` — **DPDK forwarder** (live implementation): spoof SYN-ACK + stamp V in SYN ack-num + transparent forward (translation shifted to ServerNIC)
    - `src/clientnic/scapy/` — **deprecated**: proved the idea works; not used in the live path
-3. **ServerNIC VM** (`src/servernic/`): In T8 mode (live) — **sole stateful translator**: reads V from SYN ack-num, computes delta, drops real SYN-ACK, rewrites all packets. `src/servernic/scapy/` is the matching **deprecated** stateless forwarder from the same feasibility phase.
+3. **ServerNIC VM** (`src/servernic/`): In the live DPDK implementation — **sole stateful translator**: reads V from SYN ack-num, computes delta, drops real SYN-ACK, rewrites all packets. `src/servernic/scapy/` is the matching **deprecated** stateless forwarder from the same feasibility phase.
 4. **Server VM** (`src/server-app/`): Standard unmodified TCP server application
 
 ### Key Technical Concepts
@@ -100,11 +100,14 @@ Scapy provides:
 
 ## Key Documentation
 
+- **`llm-wiki/`**: Obsidian vault mirroring the repo's docs for LLM navigation — start at `llm-wiki/index/index.md`; see `llm-wiki/index/index.md`'s "out of scope" note for what's deliberately not mirrored.
+
 ### Architecture & Design
 - **`roadmap.md`**: Working record of scale/experiment goals (100k-connection load testing, DPDK-vs-baseline comparison) that originated as GitHub issues (#20, #21) and are now tracked here instead — scope, verified infra state, and success criteria.
 - **`src/clientnic/README.md`**: Detailed ClientNIC implementation (0-RTT core logic)
 - **`src/servernic/README.md`**: ServerNIC forwarding implementation
-- **`docs/capacity-model.md`**: Hardware constraints and sizing calculations — mbuf pool, NIC rings/ENA allowances, flow tables, the 2048-byte frame ceiling, port space, CPU and endpoint limits. Read before changing a sizing constant or running a large-scale benchmark.
+- **`llm-wiki/wiki/Capacity Model.md`**: Hardware constraints and sizing calculations — mbuf pool, NIC rings/ENA allowances, flow tables, the 2048-byte frame ceiling, port space, CPU and endpoint limits. Read before changing a sizing constant or running a large-scale benchmark.
+- **`experiments/measurement-methodology-review.md`**: How the experiment measures the 0-RTT claim — load shape, the three pcap metrics (`send_unlock`, `fct`, `server_gap`), and **§E: the emulated WAN** (what `netem`/qdisc do, why the delay is egress-only, and why no endpoint-side placement can show an FCT win — it must sit on the ClientNIC↔ServerNIC leg). Read before changing `NETEM_RTT_MS`, moving a `tc` command, or interpreting an FCT number.
 - **`observability/`**: eBPF observability implementation (currently disabled) — packet tracing and performance monitoring
 
 ### OpenSpec Change Tracking
@@ -113,7 +116,7 @@ Scapy provides:
 - **`openspec/changes/`**: Experimental spec-driven workflow for tracking development phases
   - **`verify-eswitch-tcp-seq-offload/`**: Spike — can the BlueField-3 e-switch rewrite TCP seq/ack in hardware?
   - **`bluefield-servernic-hw-offload/`**: DPU-side ServerNIC offloading seq/ack rewrite to the e-switch (blocked on the spike)
-  - Archived changes in `openspec/changes/archive/` (includes the completed T8 ISN-ack-num translation shift, phase-1b iperf3 stress testing, full-DPDK endpoint interfaces, and endpoint-pcap-measurement — the latter's spec was promoted to `openspec/specs/`)
+  - Archived changes in `openspec/changes/archive/` (includes the completed ISN-ack-num translation shift, phase-1b iperf3 stress testing, full-DPDK endpoint interfaces, and endpoint-pcap-measurement — the latter's spec was promoted to `openspec/specs/`)
 
 ### Reference
 - **`.claude/skills/run-experiment/SKILL.md`**: Run-experiment skill (pick mode, run orchestrator, diagnose failures across scapy/dpdk/proxmox/baseline)
@@ -135,12 +138,12 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 - [x] ServerNIC stateless forwarder (`src/servernic/scapy/main.py`) — deprecated, feasibility PoC only
 - [x] Client/Server load generator (`experiments/utils/loadgen.py`) — asyncio, paced arrivals; replaced iperf2
 - [x] ClientNIC Scapy implementation (`src/clientnic/scapy/`) — deprecated, feasibility PoC only
-- [x] ClientNIC DPDK forwarder (`src/clientnic/dpdk-forwarder/`) — T8 variant, live: spoof + stamp V + transparent forward
-- [x] ServerNIC DPDK implementation (`src/servernic/dpdk/`) — T8 sole translator, live: V extraction, delta, buffering, seq/ack rewrite
+- [x] ClientNIC DPDK forwarder (`src/clientnic/dpdk-forwarder/`) — live: spoof + stamp V + transparent forward
+- [x] ServerNIC DPDK implementation (`src/servernic/dpdk/`) — sole translator, live: V extraction, delta, buffering, seq/ack rewrite
 - [x] Integration test suites (`experiments/`)
 
 **Active Work Streams (OpenSpec):**
-- [x] **T8 ISN-ack-num translation**: DONE — `src/clientnic/dpdk-forwarder/` + `src/servernic/dpdk/` implement the full T8 data plane
+- [x] **ISN-ack-num translation**: DONE — `src/clientnic/dpdk-forwarder/` + `src/servernic/dpdk/` implement the full data plane
 - [x] **Endpoint-based pcap measurement**: DONE — spec promoted to `openspec/specs/endpoint-pcap-measurement/`
 - [ ] **Full-DPDK endpoint interfaces**: move both SmartNICs' remaining AF_PACKET endpoint ports to the DPDK ENA PMD (`openspec/changes/full-dpdk-endpoint-interfaces/`)
 - [ ] **AWS-to-OnPrem migration**: Full DPDK on Bluefield-3 DPU
@@ -229,7 +232,7 @@ src/
 │   │   │       ├── translator.py         # Seq/ack modification, checksum recalc
 │   │   │       └── logger.py             # Packet logging
 │   │   └── tests/                # Python unit tests
-│   └── dpdk-forwarder/           # LIVE — DPDK T8 forwarder: spoof + stamp V + transparent forward
+│   └── dpdk-forwarder/           # LIVE — DPDK forwarder: spoof + stamp V + transparent forward
 │       ├── main.c                # EAL init, CLI, busy-poll loop
 │       ├── flow_table.c/h        # Slim flow table: {V, client_mac, state} — no delta or buffer
 │       ├── io.c/h                # eth0 AF_PACKET + eth1 DPDK ENA port
@@ -252,7 +255,7 @@ src/
 │   │   │   └── utils/
 │   │   │       └── logger.py     # Packet logging
 │   │   └── tests/
-│   └── dpdk/                     # LIVE — DPDK T8 sole translator implementation
+│   └── dpdk/                     # LIVE — DPDK sole translator implementation
 │       ├── flow_table.c/h        # Hash table: {V, real_isn, delta, buffer}
 │       ├── syn_handler.c/h       # SYN: extract V, zero ack, forward; SYN-ACK: set delta, flush, drop
 │       ├── translator.c/h        # trans_c2s (ACK-=delta) and trans_s2c (SEQ+=delta)
@@ -303,7 +306,7 @@ openspec/
 ├── changes/              # Experimental spec-driven change tracking
 │   ├── verify-eswitch-tcp-seq-offload/      # Spike: can the BF-3 e-switch rewrite TCP seq/ack in HW?
 │   ├── bluefield-servernic-hw-offload/      # DPU ServerNIC via e-switch offload (blocked on the spike)
-│   └── archive/          # Completed changes (DPDK port, SSM tests, T8 translation shift, phase-1b iperf3, full-DPDK endpoint interfaces, endpoint-pcap-measurement, …)
+│   └── archive/          # Completed changes (DPDK port, SSM tests, ISN-ack-num translation shift, phase-1b iperf3, full-DPDK endpoint interfaces, endpoint-pcap-measurement, …)
 
 .claude/skills/deploy-infra/    # Deploy skill + mobile/remote ops (AWS deploy/experiment/destroy via GitHub Actions)
 ├── SKILL.md             # Local + remote deploy instructions

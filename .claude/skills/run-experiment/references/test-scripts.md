@@ -6,8 +6,8 @@ their own report to `<mode>/reports/` and exit with the failure count.
 | Runner | Stack | Transport | Analyzer | Report dir |
 |--------|-------|-----------|----------|------------|
 | `experiments/scapy/run_experiment.sh` | Scapy 0-RTT | AWS SSM | `validate_0rtt_capture.py` | `experiments/scapy/reports/` |
-| `experiments/dpdk/run_experiment.sh` | DPDK T8 0-RTT | AWS SSM | `analyze_metrics.py` | `experiments/dpdk/reports/` |
-| `experiments/proxmox/run_experiment.sh` | DPDK T8 0-RTT | SSH gateway | `analyze_metrics.py` | `experiments/proxmox/reports/` |
+| `experiments/dpdk/run_experiment.sh` | DPDK 0-RTT | AWS SSM | `analyze_metrics.py` | `experiments/dpdk/reports/` |
+| `experiments/proxmox/run_experiment.sh` | DPDK 0-RTT | SSH gateway | `analyze_metrics.py` | `experiments/proxmox/reports/` |
 | `experiments/baseline-tcp/run_experiment.sh` | plain TCP | AWS SSM | (none) | `experiments/baseline-tcp/reports/` |
 
 **Load generator**: `experiments/utils/loadgen.py` (asyncio, single thread; iperf has
@@ -63,7 +63,7 @@ Shared building blocks under `experiments/utils/`:
 
 ## experiments/dpdk/run_experiment.sh + experiments/proxmox/run_experiment.sh
 
-**DPDK T8 stack** — ClientNIC `dpdk-forwarder` (spoof + stamp V), ServerNIC
+**DPDK stack** — ClientNIC `dpdk-forwarder` (spoof + stamp V), ServerNIC
 `servernic-dpdk` (sole translator). Both runners share `run_core.sh`; they differ
 only in transport, node discovery, MAC resolution, and report filename.
 

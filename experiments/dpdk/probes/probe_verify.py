@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify T8 ISN ack-num channel probe capture.
+"""Verify ISN ack-num channel probe capture.
 
 Reads the pcap captured on ServerNIC ingress and confirms that the probe SYN
 (with ack-num=0xDEADBEEF) arrived unchanged.  Prints PASS or FAIL with details.
@@ -13,7 +13,7 @@ import sys
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="T8 probe pcap verifier")
+    p = argparse.ArgumentParser(description="ISN ack-num channel probe verifier")
     p.add_argument("pcap", help="Path to the pcap file from ServerNIC ingress capture")
     p.add_argument("--probe-val", default="0xDEADBEEF",
                    help="Expected ack-num value (default: 0xDEADBEEF)")
@@ -52,7 +52,7 @@ def main():
         else:
             print(f"FAIL  expected ack-num=0x{probe_val:08X}, got 0x{actual:08X}")
             print("      A middlebox normalized the ack-num field on this SYN.")
-            print("      Fall back to T3 (TCP option channel).")
+            print("      Fall back to a TCP-option channel.")
             sys.exit(1)
 
     if not found:

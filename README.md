@@ -15,8 +15,8 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 | Component | Role |
 |-----------|------|
 | `src/client-app/` | Standard unmodified TCP client |
-| `src/clientnic/` | Core 0-RTT logic — intercepts SYN, sends spoofed SYN-ACK, stamps ISN in T8 mode |
-| `src/servernic/` | T8 mode: sole stateful translator (rewrites sequence numbers). Legacy Scapy mode: stateless forwarder |
+| `src/clientnic/` | Core 0-RTT logic — intercepts SYN, sends spoofed SYN-ACK, stamps ISN in live DPDK mode |
+| `src/servernic/` | Live DPDK mode: sole stateful translator (rewrites sequence numbers). Legacy Scapy mode: stateless forwarder |
 | `experiments/` | Experiment scripts and test reports |
 | `src/server-app/` | Standard unmodified TCP server |
 | `infra/` | AWS CDK stacks that provision the 4-VM topology |
@@ -51,7 +51,7 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
-The fields this project's translation logic touches directly: **Sequence Number** (rewritten server→client by `+= delta`), **Acknowledgment Number** (rewritten client→server by `-= delta`, and used by ClientNIC to stamp the spoofed ISN `V` in T8 mode), and **Checksum** (recalculated after every rewrite — see below).
+The fields this project's translation logic touches directly: **Sequence Number** (rewritten server→client by `+= delta`), **Acknowledgment Number** (rewritten client→server by `-= delta`, and used by ClientNIC to stamp the spoofed ISN `V` in live DPDK mode), and **Checksum** (recalculated after every rewrite — see below).
 
 ## Sequence Number Translation
 
@@ -117,7 +117,7 @@ pacing, so per-connection latency measured queueing rather than the network path
 | Script | VM | What it does |
 |--------|----|--------------|
 | `experiments/nodes/server.sh` | Server | Starts one asyncio listener across the port range |
-| `experiments/dpdk/servernic.sh` | ServerNIC | Builds + starts `servernic-dpdk` (T8 translator) |
+| `experiments/dpdk/servernic.sh` | ServerNIC | Builds + starts `servernic-dpdk` (translator) |
 | `experiments/dpdk/clientnic.sh` | ClientNIC | Builds + starts `clientnic-dpdk-forwarder` |
 | `experiments/nodes/client.sh` | Client | Auto-discovers server IP, drives load |
 
@@ -154,7 +154,7 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 # 1. Server VM
 ./experiments/nodes/server.sh
 
-# 2. ServerNIC VM — Scapy (deprecated, feasibility PoC only) or DPDK (T8 translator, live)
+# 2. ServerNIC VM — Scapy (deprecated, feasibility PoC only) or DPDK (translator, live)
 setsid python3 src/servernic/scapy/main.py < /dev/null >> /tmp/servernic.log 2>&1 &   # Scapy
 ./experiments/dpdk/servernic.sh                                                       # DPDK
 

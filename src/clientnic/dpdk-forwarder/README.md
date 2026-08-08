@@ -1,6 +1,6 @@
-# ClientNIC DPDK Forwarder (T8 variant)
+# ClientNIC DPDK Forwarder
 
-> **T8 variant** — spoof SYN-ACK + stamp V + transparent forward.
+> Spoof SYN-ACK + stamp V + transparent forward.
 > Translation responsibility has been shifted to the ServerNIC.
 > (An earlier full-owner implementation, `clientnic/dpdk/`, kept spoofing and
 > translation both on the ClientNIC; it was removed — see git history.)
@@ -31,7 +31,7 @@ client's MAC is learned per-flow from the SYN and stored in the flow entry.
 
 ## How it differs from the full-owner design
 
-| Aspect | Full owner (removed `clientnic/dpdk/`) | `src/clientnic/dpdk-forwarder/` (T8 variant) |
+| Aspect | Full owner (removed `clientnic/dpdk/`) | `src/clientnic/dpdk-forwarder/` |
 |--------|----------------------------------------|------------------------------------------|
 | seq/ack rewriting | ClientNIC rewrites all packets | **ServerNIC** rewrites all packets |
 | Flow state | `{V, real_isn, delta, buffer, client_mac}` | `{V, client_mac}` — no delta, no buffer |
@@ -39,7 +39,7 @@ client's MAC is learned per-flow from the SYN and stored in the flow entry.
 | SYN-ACK (real) | Dropped at ClientNIC | Dropped at **ServerNIC** (never reaches here) |
 | Packet pipeline | SYN → spoof+forward; non-SYN → translate | SYN → spoof+stamp+forward; non-SYN → **transparent forward** |
 
-## ISN ack-num channel (T8)
+## ISN ack-num channel
 
 When a SYN arrives from the client, the forwarder:
 1. Generates a random `V` (spoofed server ISN), records it in the flow table
@@ -124,4 +124,4 @@ Run the full experiment (drives all 4 VMs via SSM):
 ```
 
 The experiment uses `clientnic-dpdk-forwarder` on ClientNIC and `servernic-dpdk` on ServerNIC
-together as a matched pair — the two halves of the T8 translation split.
+together as a matched pair — the two halves of the translation split.

@@ -1,6 +1,6 @@
 # ServerNIC
 
-In T8 mode (the live implementation, see `dpdk/`) ServerNIC is the **sole stateful translator**.
+In the live DPDK implementation (see `dpdk/`) ServerNIC is the **sole stateful translator**.
 This document describes the legacy Scapy implementation (`scapy/`) — a stateless packet
 forwarder that sits between ClientNIC and the Server VM, used only to demonstrate feasibility
 of the idea and no longer needed in the live path.
@@ -78,7 +78,7 @@ src/servernic/
 │   │   └── utils/
 │   │       └── logger.py  # Logging setup
 │   └── tests/
-└── dpdk/              # C/DPDK T8 sole translator (live implementation — see dpdk/README.md)
+└── dpdk/              # C/DPDK sole translator (live implementation — see dpdk/README.md)
 ```
 
 ## Tests

@@ -268,8 +268,8 @@ going to show this.
   time", not "0-RTT makes connections complete a round-trip sooner". Both are
   now measured; only the first is true.
 - Whether the second is achievable is a real design question: it needs the
-  ServerNIC to forward client data before it knows the real ISN, which the T8
-  translation scheme does not currently allow.
+  ServerNIC to forward client data before it knows the real ISN, which the
+  ISN-ack-num translation scheme does not currently allow.
 - The FCT tail regressed sharply (max 537 ms vs 213 ms baseline) while p99 did
   not. Cause not established — see the dedicated entry below. Do not run at
   100k scale before it is understood.

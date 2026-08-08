@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# End-to-end integration test for the 0-RTT TCP demo — T8 ISN ack-num translation shift.
+# End-to-end integration test for the 0-RTT TCP demo — ISN ack-num translation shift.
 #
-# T8 topology (all in AWS, eu-central-1):
+# Topology (all in AWS, eu-central-1):
 #
 #   Client ──eth0──► ClientNIC (dpdk-forwarder) ──eth1──► ServerNIC (servernic-dpdk) ──eth2──► Server
 #
@@ -212,7 +212,7 @@ fi
 {
     echo "# Integration Test Report — $(date +%Y-%m-%d)"
     echo ""
-    echo "**Implementation**: DPDK (T8 ISN ack-num translation shift)"
+    echo "**Implementation**: DPDK (ISN ack-num translation shift)"
     echo "**ClientNIC binary**: \`src/clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
     echo "**ServerNIC binary**: \`src/servernic/dpdk/\` (full translator)"
     echo "**Experiment script**: \`experiments/dpdk/run_experiment.sh\`"
