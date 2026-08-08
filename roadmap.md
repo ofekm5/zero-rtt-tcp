@@ -3,10 +3,23 @@
 Open work only. Completed items are recorded in their reports, PRs, and
 `openspec/changes/archive/` — see [Done ledger](#done-ledger) for pointers.
 
+## Ofek tasks - make claude refined and migrate it to rest of the doc
+make eswitch experimentation much more simpler
+remove overloading the system
+start with leightweight ARM as first BF experimentation
+refactor C:\Users\shir\Documents\GitHub\zero-rtt-tcp\.github\workflows\run-experiment.yml to be the source of truth for running experiments
+caching in memory - have the eswitch rules use cache
+if limit is reached, add a bool to turn the functionality off
+have a dynamic pool of ISN
+p0 and pf0hp in BF - use them directly without creating new VFs
+in the AWS->university migration, use the BF as the servernic VM but keep the same codebase
+
+
 ## Status snapshot
 
 | Item | State |
 | --- | --- |
+| [Measurement flaws (F2–F16)](#measurement-flaws) | Open — F2 blocking the FCT claim |
 | [#21 — DPDK vs. baseline comparison](#21--run-experiment-on-both-dpdk-and-baseline-stacks) | Open — not started |
 | [Client-side pcap analysis at 100k](#client-side-pcap-analysis-doesnt-scale-to-100k) | Open — root cause not isolated |
 | [Idea: close the 100k connection-burst gap](#idea-close-the-100k-connection-burst-gap) | Idea — not yet an OpenSpec change |
@@ -17,9 +30,110 @@ Open work only. Completed items are recorded in their reports, PRs, and
 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Idea — not scoped |
 | [DDoS resistance](#ddos-resistance) | Idea — threat model not written |
 | [AWS cross-region deployment](#aws-cross-region-deployment) | Idea — not scoped |
-| [`verify-eswitch-tcp-seq-offload`](openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | Proposed — spike not yet run |
+| [`verify-eswitch-tcp-seq-offload`](openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | In progress — DPU left mutated, restore first |
 | [`bluefield-servernic-hw-offload`](openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Proposed — blocked on the spike |
 | [BlueField lab deployment change](#gap-bluefield-lab-deployment-change-not-yet-proposed) | Gap — no proposal exists yet |
+
+## Measurement flaws
+
+Classified 2026-08-08 from the first valid baseline-vs-0-RTT run pair
+(2026-08-04, 2000 conns). Background and derivations:
+`experiments/measurement-methodology-review.md` (§E for the emulated WAN),
+`experiments/insights.md` (2026-08-04 entries).
+
+F1 (the FCT tail) was removed 2026-08-08: at PoC scale, 20 of 2000 flows that
+complete late — with 2000/2000 succeeding and p99 better than baseline — does not
+undermine the demonstration. It is now a single `nstat` check carried in a
+handoff document, not a roadmap gate. See the closing note below.
+
+| # | Flaw | Class | Severity |
+| --- | --- | --- | --- |
+| F2 | netem on Server egress makes any FCT gain structurally unmeasurable | Methodology | **Blocking** |
+| F3 | NIC logs truncated at the 24 KB SSM cap — reported counts cover <100 of 2000 flows | Observability | High |
+| F4 | ClientNIC/ServerNIC in-app rdtsc TTFB dark (`no samples found`) | Observability | High |
+| F5 | No application-level client TTFB exists; the claim rests entirely on pcap timing | Observability | Medium |
+| F6 | `loadgen.py` self-reports from a Python event loop — GIL/scheduler delay sits inside the measured interval | Instrument | Medium |
+| F7 | Pacing is a ceiling, not a guarantee — a paced run degrades to a burst silently | Instrument | Medium |
+| F8 | Throughput is not measured at all; the 2026-07-14 "~100× slower" finding is unresolved | Coverage | High |
+| F9 | One 1 KB write never exercises congestion control, window growth or retransmit | Coverage | Medium |
+| F10 | Only the 2000-connection smoke has run against the corrected methodology | Coverage | Medium |
+| F11 | Timestamps/SACK/window-scaling disabled — no fast-recovery path, and results do not model real TCP | Design | Medium |
+| F12 | Nothing before 2026-08-04 is comparable (tool change + `tc` was never installed) | Hygiene | Low |
+| F13 | iperf-shaped naming survives the migration | Hygiene | Low |
+| F14 | Baseline CDK user-data clone is broken; fixing it forces instance replacement | Infra | Low |
+| F15 | `iproute-tc` is in neither stack's user-data — self-healed at runtime, so a fresh stack can regress | Infra | Low |
+| F16 | Open items live in `experiments/insights.md` while this file is the declared source of truth | Docs | Low |
+
+**Closing note on F1:** carried in full at `HANDOFF-fct-tail.md` (repo root,
+uncommitted). It specifies the one check that settles it — `nstat` retransmit
+counters on Client and Server around the F2 re-run — and the two outcomes:
+non-zero retransmits closes the item as ordinary RTO recovery (record in
+`experiments/insights.md`, no code change); near-zero retransmits means the
+335 ms tail isn't loss recovery and F1 re-enters this table as blocking. Fold
+the capture into the F2 run rather than deploying a stack just for it — see
+the handoff's Decision 1. F3 (NIC log truncation) must land first if the
+second outcome happens, per the handoff's Decision 3.
+
+### F2 — Move the emulated WAN to the middle leg (blocking)
+
+`endpoint.sh` puts the whole `NETEM_RTT_MS` on Server egress. That is correct
+for `send_unlock` and is the reason FCT cannot improve: the SYN-ACK ServerNIC
+needs before it can flush is the one packet paying the entire emulated WAN. No
+endpoint-side placement satisfies the condition (ServerNIC must learn the real
+ISN *before* the client's data would otherwise arrive) — see
+`measurement-methodology-review.md` §E2 for the four-placement proof. Until this
+lands, "0-RTT does not improve FCT" is an artifact of the topology, not a result.
+
+- [ ] Baseline stack: `tc netem delay <RTT/2>` on each kernel-routed NIC VM's
+      middle-leg interface
+- [ ] DPDK stack: `--wan-delay-us` knob on both forwarders — timestamped FIFO on
+      the `eth1` TX path, drained in the existing poll loop (tc cannot reach
+      vfio-pci ports)
+- [ ] `NETEM_RTT_MS` on endpoints to 0; invert `endpoint_tune()`'s read-back
+      assertion to fail if an endpoint qdisc *is* present
+- [ ] Both stacks must model the same total RTT or the comparison is void
+- [ ] Expected: `send_unlock` unchanged (~0.2 ms), FCT ~200 ms → ~100 ms
+
+Superseded by [AWS cross-region deployment](#aws-cross-region-deployment) if that
+lands first — a real WAN path removes the placement question entirely.
+
+### F3–F8 — next tier
+
+- [ ] **F3** Fix NIC-log retrieval past the 24 KB SSM cap (S3 staging, or count
+      on the node and return only the numbers). It actively obstructed the
+      FCT-tail diagnosis.
+- [ ] **F4** Restore in-app NIC TTFB — suspected the deployed binary predates the
+      rdtsc instrumentation. It is the only signal that separates data-plane cost
+      from network cost.
+- [ ] **F5** Decide whether an application-level TTFB is needed as an independent
+      check on the pcap path, or whether pcap-only is accepted.
+- [ ] **F6** Compare `loadgen.py`'s self-reported connect time against pcap
+      `send_unlock` to bound the Python overhead. Currently ~0.42 ms p99 against
+      a 100 ms signal, so not urgent — revisit at 100k.
+- [ ] **F7** Fail (or loudly warn) the run when achieved arrival rate diverges
+      from requested, instead of printing one `Arrival:` line.
+- [ ] **F8** Run one deliberate throughput comparison — same tool, stream count
+      and transfer size on both stacks. iperf2 is the right tool here (sustained
+      bytes on few flows); `loadgen.py` stays the tool for many short
+      connections. See also [multi-round send](#multi-round-send-in-the-load-generator).
+
+### F9–F16 — tracked, not scheduled
+
+- **F9** is the existing [multi-round send](#multi-round-send-in-the-load-generator)
+  item; it is also the coverage gap most likely to explain the FCT tail.
+- **F10** is [#21](#21--run-experiment-on-both-dpdk-and-baseline-stacks) at full
+  scale, gated on F2 only.
+- **F11** is a design constraint, not a bug: the translator does not rewrite TCP
+  options, so the endpoints must not negotiate them. Revisit only if option
+  rewriting is ever specced.
+- **F12** Treat 2026-08-04 as sample #1. No action beyond not comparing across it.
+- **F13** Retire `analyze_metrics.py --iperf-csv` (dead code carrying 6 live
+  tests). The GitHub Actions `iperf_parallel`/`iperf_ports`/`iperf_timeout`
+  inputs stay as a deliberate external API surface.
+- **F14** Left alone on purpose — the fix forces instance replacement.
+- **F15** Add `iproute-tc` to both stacks' user-data so the runtime self-heal is
+  a fallback rather than the mechanism.
+- **F16** Mirror or move `insights.md`'s open follow-ups here.
 
 ## #21 — Run experiment on both DPDK and baseline stacks
 
@@ -186,7 +300,7 @@ toward the ServerNIC VM.
 
 ## BlueField-3 track
 
-### `verify-eswitch-tcp-seq-offload` — spike, not yet run
+### `verify-eswitch-tcp-seq-offload` — in progress, DPU left mutated
 
 Determines whether the BlueField-3 e-switch can match a TCP flow, rewrite
 seq/ack by a per-flow constant, and hairpin the packet back out `pf0hpf` —
@@ -194,10 +308,49 @@ entirely in hardware. DOCA Flow is the primary probe; an `rte_flow`/`testpmd`
 cross-check fires **only on a NO**. Gates the offload change below: a confirmed
 NO invalidates it rather than shrinking it.
 
-Next actions: build and offline-transport the DOCA Flow probe container, stand
-up `experiments/bluefield/` (does not exist yet), run the probe on
-`bluefield-runs3-dpu` (`10.13.36.16`) with traffic from `10.13.37.10`, record the
-YES/NO/PARTIAL verdict, restore `pf0hpf` to `ovsbr1`. Full criteria in the
+**Do this first — DPU is left mutated.** The VPN dropped mid-session on the PR
+#28 test-plan run, so `restore.sh` never ran. On `bluefield-runs3-dpu`
+(`10.13.36.16`): `pf0hpf` is detached from `ovsbr1`, hugepages are at 1024
+(baseline 0). Reconnect the RUNS OpenVPN profile, then from
+`C:\Users\shir\Documents\GitHub\.task-runner-worktrees\verify-eswitch-tcp-seq-offload\experiments\bluefield\probe`:
+`./restore.sh --baseline-file ../reports/baseline.txt`.
+
+**Key finding, already measured on hardware:** in the e-switch pipe,
+`outer.tcp.seq_num` and `outer.tcp.ack_num` are both **ACCEPTED** for a
+`DOCA_FLOW_ACTION_ADD`, alongside three known-good controls accepted and three
+bogus field names rejected — the accept is discriminating, not a blanket yes.
+A full rule (5-tuple match + ADD + hairpin to `pf0hpf` + counter) installs and
+returns a valid handle. Accepted level = YES; Offloaded/Effective are
+unproven — no traffic has crossed the rule yet.
+
+**Test-plan status:** 2 of 5 items pass — SSH to both hosts, and the probe
+compiling against the installed DOCA 3.0.0058/DPDK 22.11 (only after a full
+rewrite off the DOCA 2.x API the PR was written against). Not yet done: a full
+`run_probe.sh` run, restore-matches-baseline verification, and the recorded
+verdict.
+
+**Nine real defects found and fixed** getting this far: wrong DOCA API version
+targeted, wrong toolchain in the container build (replaced with
+`build_probe.sh`, native gcc on the DPU — no docker daemon running there
+anyway), wrong mlx5 representor selector (`pf0vf65535`, not `pf0hpf`), a
+missing switch-mode device probe that segfaulted `doca_flow_port_start()`,
+missing `sudo` on every `ovs-vsctl` call, two broken baseline probes
+(`PKG_CONFIG_PATH`, root-only `mlxfwmanager`), `hping3` not installed
+(replaced with a stdlib `vmtraffic.py`), and a hugepage check that made SC5
+unreachable. All uncommitted on `task-runner/verify-eswitch-tcp-seq-offload` in
+the worktree above.
+
+**Blocker:** `bluefieldadmin@10.13.37.10` has no passwordless sudo and its only
+local Docker image is arm64 on an x86 host, so the traffic step (tcpdump + raw
+TX) can't run without the sudo password. Resume with
+`claude --resume 23e8de92-4afd-402e-9e79-d91e516c81e3`, export
+`PROBE_VM_SUDO_PASS='...'` (fed to `sudo -S` on stdin by
+`lib/hosts.sh:vm_sudo_run` — never written to disk or a remote command line) to
+continue. Full detail, including two known-remaining rough edges
+(`flow_rule.sh`'s duplicate `--port-id`, `run_probe.sh`'s default `PORT_ID`)
+in `experiments/bluefield/probe/HANDOFF.md` in the worktree (uncommitted).
+
+Full criteria in the
 [proposal](openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md).
 
 ### `bluefield-servernic-hw-offload` — blocked on the spike
@@ -286,9 +439,12 @@ if anything, to do about it.
 ServerNIC + Server in another — so the RTT the 0-RTT saving is measured against
 is real WAN latency, not `tc netem`.
 
-Today `run_core.sh` applies `netem delay 50ms` on both endpoints' egress inside
-a single VPC. That is reproducible but synthetic: no real jitter, reordering, or
-path variance, and the 1-RTT saving is measured against a number we chose.
+Today `endpoint.sh` applies the full `NETEM_RTT_MS` on the Server's egress
+inside a single VPC (it was 50 ms on both endpoints until 2026-08-04). That is
+reproducible but synthetic: no real jitter, reordering, or path variance, and
+the 1-RTT saving is measured against a number we chose. It also cannot show an
+FCT gain at all — see [F2](#f2--move-the-emulated-wan-to-the-middle-leg-blocking),
+which a real inter-region path would resolve outright.
 
 - [ ] Extend `infra/dpdk/cdk/` to a two-region deployment and decide the
       inter-region path: VPC peering, Transit Gateway, or public IPs.

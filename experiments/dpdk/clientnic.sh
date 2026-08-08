@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run on the ClientNIC VM (T8 mode: clientnic-dpdk-forwarder binary).
+# Run on the ClientNIC VM (clientnic-dpdk-forwarder binary).
 #
-# T8 design: ClientNIC is a transparent forwarder — it spoofs the SYN-ACK,
+# ClientNIC is a transparent forwarder — it spoofs the SYN-ACK,
 # stamps V (spoofed server ISN) in the forwarded SYN's ack-num field, and does
 # no seq/ack translation.  All translation happens at the ServerNIC.
 #
@@ -49,6 +49,12 @@ SERVER_PORT=8080
 PORT_COUNT="${PORT_COUNT:-1}"
 PORT_HI=$(( SERVER_PORT + PORT_COUNT - 1 ))
 REGION="eu-central-1"
+# Emulated one-way WAN latency held on the ServerNIC-facing (middle-leg) TX path.
+# roadmap.md F2 / measurement-methodology-review.md §E: `tc` cannot reach a
+# vfio-pci port, so the delay lives inside the forwarder. Must equal half of the
+# baseline stack's NETEM_RTT_MS, and must match the ServerNIC's value — the two
+# together make one modelled round trip. 0 = no emulated WAN.
+WAN_DELAY_US="${WAN_DELAY_US:-50000}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 log() { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}"; }
@@ -175,10 +181,12 @@ trap cleanup EXIT
 log "Starting clientnic-dpdk-forwarder — transparent forwarding with V-stamp. Press Ctrl+C to stop."
 log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$GW_MAC"
 log "  --client-port-mac=$CLIENT_PORT_MAC --server-port-mac=$SERVER_PORT_MAC"
+log "  --wan-delay-us=$WAN_DELAY_US (emulated WAN, middle leg — must match ServerNIC)"
 echo ""
 exec "$BINARY" -l 0 -- \
     --port="$SERVER_PORT" \
     --port-count="$PORT_COUNT" \
     --gw-mac="$GW_MAC" \
     --client-port-mac="$CLIENT_PORT_MAC" \
-    --server-port-mac="$SERVER_PORT_MAC"
+    --server-port-mac="$SERVER_PORT_MAC" \
+    --wan-delay-us="$WAN_DELAY_US"

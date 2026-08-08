@@ -233,11 +233,19 @@ run_experiment() {
         echo "  ss output: $LISTEN_CHECK"
     fi
 
+    # Emulated WAN on the middle leg — half the modelled RTT per direction, the
+    # same total the baseline stack applies with netem (roadmap.md F2). Both
+    # forwarders MUST get the same value or the leg is asymmetric.
+    local WAN_US
+    WAN_US=$(wan_delay_us)
+    log "Emulated WAN: ${NETEM_RTT_MS}ms RTT = ${WAN_US}us per direction on the ClientNIC<->ServerNIC leg"
+
     # ─── Step 2: Start ServerNIC (DPDK binary) ───────────────────────────────
     log "Step 2: Starting ServerNIC DPDK binary via node script..."
     remote_bg "$SERVERNIC_ID" \
         "SKIP_BUILD=1 PORT_COUNT=$NPORTS CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC \
          CLIENT_PORT_MAC=$GW_MAC SERVER_PORT_MAC=$SERVERNIC_ETH2_MAC REPO_REF=$ref \
+         WAN_DELAY_US=$WAN_US \
          setsid bash $REPO_PATH/experiments/dpdk/servernic.sh \
          < /dev/null >> /tmp/servernic.log 2>&1 &"
     sleep 5
@@ -275,6 +283,7 @@ run_experiment() {
     remote_bg "$CLIENTNIC_ID" \
         "SKIP_BUILD=1 PORT_COUNT=$NPORTS REPO_REF=$ref \
          CLIENT_PORT_MAC=$CLIENTNIC_ETH2_MAC SERVER_PORT_MAC=$CLIENTNIC_ETH1_MAC \
+         WAN_DELAY_US=$WAN_US \
          setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC \
          < /dev/null >> /tmp/clientnic.log 2>&1 &"
     sleep 5

@@ -139,11 +139,12 @@ int eth0_send(struct client_io *io, const uint8_t *buf, uint16_t len)
 /* ── eth1: DPDK ENA PMD (ServerNIC-facing) ──────────────────────────────── */
 
 int eth1_init(struct eth1_io *io, uint16_t port_id, struct rte_mempool *pool,
-              const uint8_t *gw_mac)
+              const uint8_t *gw_mac, uint32_t wan_delay_us)
 {
     io->port_id   = port_id;
     io->mbuf_pool = pool;
     memcpy(io->gw_mac, gw_mac, 6);
+    wan_delay_init(&io->wan, wan_delay_us);
 
     if (!rte_eth_dev_is_valid_port(port_id)) {
         LOG_ERR("eth1: DPDK port %u is not valid", port_id);
@@ -235,8 +236,47 @@ int eth1_send(struct eth1_io *io, const uint8_t *buf, uint16_t len)
     }
     memcpy(data, buf, len);
 
+    /* Middle leg: hold for the emulated WAN before it may go out. The mbuf is
+     * handed to the queue, which owns it from here (including on drop). */
+    if (wan_delay_enabled(&io->wan))
+        return wan_delay_push(&io->wan, m);
+
     io->tx_batch[io->tx_batch_count++] = m;
     if (io->tx_batch_count >= TX_BATCH_SIZE)
         eth1_tx_flush(io);
     return 0;
+}
+
+void eth1_wan_service(struct eth1_io *io)
+{
+    if (!wan_delay_enabled(&io->wan))
+        return;
+
+    for (;;) {
+        uint16_t room = TX_BATCH_SIZE - io->tx_batch_count;
+        if (room == 0) {
+            eth1_tx_flush(io);
+            room = TX_BATCH_SIZE;
+        }
+        uint16_t n = wan_delay_pop_expired(&io->wan,
+                                           io->tx_batch + io->tx_batch_count,
+                                           room);
+        if (n == 0)
+            break;
+        io->tx_batch_count = (uint16_t)(io->tx_batch_count + n);
+    }
+}
+
+void eth1_wan_flush_all(struct eth1_io *io)
+{
+    if (!wan_delay_enabled(&io->wan))
+        return;
+
+    for (;;) {
+        eth1_tx_flush(io);
+        uint16_t n = wan_delay_drain_all(&io->wan, io->tx_batch, TX_BATCH_SIZE);
+        if (n == 0)
+            break;
+        io->tx_batch_count = n;
+    }
 }

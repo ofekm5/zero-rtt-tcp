@@ -185,7 +185,8 @@ all (`insights.md`, 2026-07-14) — with nothing in the output to say so.
 
 **Note:** `insights.md` prescribes netem on the *middle* legs; DPDK/vfio-pci
 ownership of those ports makes that impossible, so server-side placement is the
-achievable equivalent.
+achievable equivalent. **Correct for `send_unlock` only** — it also guarantees
+FCT cannot improve. See §E.
 
 ### B2 ✅ `send_unlock` promoted to the headline metric
 
@@ -331,6 +332,84 @@ tests, mock-transport tests and syntax checks. The netem placement change, the
 baseline capture path and the capacity-run banner are asserted at the level of
 "the right command is issued to the right node" — a real run is still needed to
 confirm the expected ~`NETEM_RTT_MS` gap between the two stacks' `send_unlock`.
+
+---
+
+## E. The emulated WAN — what it is, and where the delay must sit
+
+Added 2026-08-08, after the first valid baseline-vs-0-RTT run showed a proven
+`send_unlock` win and **zero** FCT win. B1 is correct for `send_unlock` and is
+the reason FCT cannot improve. Both facts follow from the same mechanism.
+
+### E1. What "emulated WAN" means
+
+All four VMs live in one AWS VPC — a real RTT of ~1.5 ms. 0-RTT saves exactly
+one RTT, so at 1.5 ms the saving is unmeasurable noise. The experiment therefore
+fakes a long-distance link by delaying packets in the kernel. That artificial
+delay is the emulated WAN; `NETEM_RTT_MS=100` means "pretend these VMs are
+100 ms apart."
+
+**qdisc** (queueing discipline) is the kernel's outbound packet scheduler,
+attached per interface. Every packet an application sends passes through it on
+the way to the NIC. **netem** is a qdisc type that timestamps each packet, parks
+it in a kernel timer queue, and releases it to the NIC `delay` later:
+
+    loadgen/iperf -> socket -> TCP stack -> qdisc (netem: hold 100 ms) -> NIC -> wire
+
+Nothing is looped back and the load generator has no idea the delay exists —
+it is inserted one layer above the NIC by
+`tc qdisc add dev eth0 root netem delay 100ms`. Three consequences that matter:
+
+- **Egress only.** A root qdisc delays packets *leaving* that machine. Server-side
+  placement delays the SYN-ACK but not the SYN. This is why placement is a
+  correctness issue, not a detail.
+- **Bounded queue.** Default depth is 1000 packets; overflow is a silent drop that
+  looks like network loss. `endpoint_tune()` sets `limit 1000000` so netem
+  emulates pure delay.
+- **Delay only.** netem can also drop, reorder, duplicate and add jitter. This
+  experiment uses none of them, so the emulated link is reliable and in-order.
+
+### E2. No endpoint placement can show an FCT win
+
+ServerNIC holds the client's first payload until the real SYN-ACK reveals the
+server ISN (`src/servernic/dpdk/syn_handler.c`). FCT improves **only if
+ServerNIC learns the real ISN before the client's data would otherwise have
+arrived** — i.e. the `SYN → server → SYN-ACK → ServerNIC` loop must be shorter
+than the `client → ServerNIC` path. Every endpoint-side placement fails that:
+
+| netem placement | `send_unlock` gain | FCT gain | why |
+|---|---|---|---|
+| Server egress (current, B1) | full RTT | none | ISN learned exactly one RTT late |
+| Client egress | none | none | SYN pays before ClientNIC can spoof |
+| 50/50 both (pre-B1) | half | none | halves the spoof, flush still late |
+| Server ingress (ifb) | full RTT | none | the flush re-pays the same ingress delay |
+
+The condition is satisfiable only on the **ClientNIC↔ServerNIC leg**. There the
+buffer wait overlaps WAN transit instead of adding to it:
+
+    baseline:  SYN -50-> srv -50-> client (connect 100) -50-> srv -50-> client   FCT ~200
+    0-RTT:     SYN -0-> spoof (unlock ~0.2); data in flight 50 ms,
+               ISN known at t=50 (srv is local to ServerNIC), flush at 50.2,
+               response -50-> client                                             FCT ~100
+
+So the 2026-08-04 result — `send_unlock` −100.6 ms, FCT −0.09 ms — is a property
+of the *measurement topology*, not proof that FCT is unimprovable. B1's note
+("middle-leg placement is impossible, server-side is the achievable equivalent")
+is true for `send_unlock` and false for FCT.
+
+### E3. Proposed change — not yet implemented
+
+- **Baseline stack** (`infra/baseline`, kernel-routed NIC VMs): `tc netem delay
+  <RTT/2>` on each NIC VM's middle-leg interface. tc works there today.
+- **DPDK stack**: the middle-leg ports are DPDK/vfio-pci owned, so tc cannot
+  reach them — add a `--wan-delay-us` knob to both forwarders: a timestamped
+  FIFO on `eth1` TX, drained in the existing poll loop.
+- `NETEM_RTT_MS` on the endpoints goes to 0, and `endpoint_tune()`'s read-back
+  assertion inverts: fail the run if an endpoint qdisc *is* present.
+- Expected: `send_unlock` unchanged (~0.2 ms), FCT 200 ms -> ~100 ms.
+
+Both stacks must model the same total RTT or the comparison is void — that is
+the same trap C2 fixed for tooling.
 
 ---
 

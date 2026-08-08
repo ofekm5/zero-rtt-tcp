@@ -16,7 +16,11 @@
 #
 # Knobs (override via env):
 #   NETEM_RTT_MS : total emulated round-trip time in ms (default 100), applied
-#                  entirely on the SERVER VM's egress. See endpoint_tune().
+#                  on the ClientNIC<->ServerNIC leg — half per direction. The
+#                  baseline stack gets it via wan_tune_middle_leg() (netem on
+#                  kernel-routed NIC VMs); the DPDK stack via --wan-delay-us on
+#                  both forwarders (wan_delay_us()). Endpoints stay clean and
+#                  endpoint_tune() fails the run if they are not.
 #   ANALYSIS_TIMEOUT : seconds allowed per endpoint analyzer run (default 600).
 
 NETEM_RTT_MS="${NETEM_RTT_MS:-100}"
@@ -26,25 +30,27 @@ NETEM_RTT_MS="${NETEM_RTT_MS:-100}"
 # Applies every endpoint-side knob both stacks must share.
 #
 # NETEM PLACEMENT — this is a measurement correctness issue, not a detail.
-# A `tc qdisc ... root netem delay` delays EGRESS only. The previous setup put
-# 50 ms on BOTH the Client and the Server, giving:
-#     Client → ClientNIC   50 ms       ClientNIC → Client   0 ms
-#     Server → ServerNIC   50 ms       ServerNIC → Server   0 ms
-# Baseline connect() then costs 100 ms (a full RTT), but 0-RTT connect() costs
-# 50 ms — the SYN still pays the client's 50 ms egress before the spoofed
-# SYN-ACK returns instantly. The measured saving was therefore HALF the emulated
-# RTT, systematically under-reporting a correct implementation. Worse, that
-# 50 ms sat on the Client↔ClientNIC hop, which is a LAN hop in the real
-# topology and one 0-RTT structurally cannot remove.
+# A `tc qdisc ... root netem delay` delays EGRESS only, so where the delay sits
+# decides which metric can move. Two earlier placements were both wrong:
+#     50/50 on both endpoints  → 0-RTT connect() paid the Client's own 50 ms
+#                                egress before the spoof could return, so the
+#                                measured saving was HALF the emulated RTT.
+#     Full RTT on Server egress → `send_unlock` correct (2026-08-04: 100.835 →
+#                                0.226 ms), but FCT gain structurally impossible
+#                                (-0.09 ms): the real SYN-ACK is what ServerNIC
+#                                waits on before flushing buffered client data.
 #
-# Ideally the delay belongs on the middle legs (ClientNIC↔ServerNIC), as
-# insights.md prescribes — but those ports are DPDK/vfio-pci owned, so tc cannot
-# touch them. Putting the FULL RTT on the Server's egress is the achievable
-# equivalent: the client-observed RTT is unchanged at NETEM_RTT_MS for both
-# stacks, while the leg the spoof short-circuits now carries all of it.
-#     Baseline: SYN out 0 ms, SYN-ACK back NETEM_RTT_MS  → connect = NETEM_RTT_MS
-#     0-RTT:    SYN out 0 ms, spoofed SYN-ACK back 0 ms  → connect ≈ 0
-#     saving  = NETEM_RTT_MS (the full modeled RTT)
+# The delay now sits on the ClientNIC↔ServerNIC leg, where the ServerNIC's hold
+# overlaps WAN transit instead of adding to it:
+#     Baseline: SYN →RTT/2→ srv →RTT/2→ client (connect = RTT), then data
+#               →RTT/2→ srv, response →RTT/2→ client   ⇒ FCT ≈ 2·RTT
+#     0-RTT:    spoofed SYN-ACK returns immediately (connect ≈ 0); data is in
+#               flight while ServerNIC learns the real ISN, so it flushes on
+#               arrival                                 ⇒ FCT ≈ RTT
+#     saving  = NETEM_RTT_MS on BOTH send_unlock and FCT
+#
+# This function therefore only *removes* endpoint qdiscs and asserts they are
+# gone. See wan_tune_middle_leg() and wan_delay_us() for where the delay lives.
 endpoint_tune() {
     local client_iid="$1" server_iid="$2"
 
@@ -90,48 +96,99 @@ endpoint_tune() {
     remote_bg "$client_iid" "ethtool -K eth0 gro off lro off tso off gso off 2>/dev/null || true"
     remote_bg "$server_iid" "ethtool -K eth0 gro off lro off tso off gso off 2>/dev/null || true"
 
-    # ─── Emulated WAN latency: full RTT on the Server egress only ─────────────
+    # ─── Emulated WAN: NOT here. Both endpoints must be clean. ────────────────
+    # The emulated WAN moved to the ClientNIC<->ServerNIC leg (roadmap.md F2,
+    # measurement-methodology-review.md §E). An endpoint qdisc cannot model it:
+    #   - Server egress  -> `send_unlock` correct, FCT gain impossible. The real
+    #     SYN-ACK is the packet ServerNIC needs before it can flush buffered
+    #     client data, so delaying it delays the flush by exactly the modelled
+    #     RTT. This was the 2026-08-04 configuration and is why FCT read -0.09 ms.
+    #   - Client egress  -> the SYN pays before ClientNIC can spoof; no gain at all.
+    #   - 50/50 split    -> halves the spoof, flush still late.
+    #   - Server ingress -> the flush re-pays the same delay.
+    # See wan_tune_middle_leg() below for where it now lives.
+    log "Endpoint tuning: clearing any endpoint qdisc (emulated WAN lives on the middle leg)..."
+    remote_bg "$client_iid" "tc qdisc del dev eth0 root 2>/dev/null || true"
+    remote_bg "$server_iid" "tc qdisc del dev eth0 root 2>/dev/null || true"
+    sleep 3
+
+    # Verify, rather than assume — inverted from the old check: a leftover
+    # endpoint qdisc silently reintroduces exactly the confound F2 removes, and
+    # would make the FCT number unreadable without saying so.
+    local client_qdisc server_qdisc
+    client_qdisc=$(remote_stdout "$client_iid" "tc qdisc show dev eth0 2>&1" 30)
+    server_qdisc=$(remote_stdout "$server_iid" "tc qdisc show dev eth0 2>&1" 30)
+    if echo "$client_qdisc" | grep -q "netem"; then
+        fail "Endpoint tuning: Client egress still has netem — the emulated WAN belongs on the middle leg (F2): $client_qdisc"
+    else
+        pass "Endpoint tuning: Client egress clean (no netem)"
+    fi
+    if echo "$server_qdisc" | grep -q "netem"; then
+        fail "Endpoint tuning: Server egress still has netem — this makes an FCT gain structurally impossible (F2): $server_qdisc"
+    else
+        pass "Endpoint tuning: Server egress clean (no netem)"
+    fi
+}
+
+# wan_tune_middle_leg <clientnic-iid> <clientnic-if> <servernic-iid> <servernic-if>
+#
+# Emulated WAN for a KERNEL-ROUTED middle leg (the baseline stack). Puts half of
+# NETEM_RTT_MS on each NIC VM's middle-leg egress, so a round trip across the
+# leg costs the full modelled RTT in both directions.
+#
+# The DPDK stack cannot use this: its middle-leg ports are vfio-pci owned and
+# invisible to `tc`. It gets the identical delay from --wan-delay-us on both
+# forwarder binaries (src/*/wan_delay.c). BOTH STACKS MUST MODEL THE SAME TOTAL
+# RTT or the comparison is void.
+wan_tune_middle_leg() {
+    local cn_iid="$1" cn_if="$2" sn_iid="$3" sn_if="$4"
+    local half=$(( NETEM_RTT_MS / 2 ))
+
     # `tc` is NOT in the Amazon Linux 2 base AMI — it lives in the iproute-tc
-    # package, which neither CDK stack installs. Every earlier run's netem
-    # command therefore failed with "tc: command not found", was swallowed by
-    # `2>/dev/null || true`, and the run silently measured the intra-VPC RTT
-    # (~1.5 ms) instead of the emulated WAN. That is precisely the condition
-    # insights.md (2026-07-14) predicted would make any 0-RTT benefit
-    # unobservable. Install it here rather than in the CDK user-data so the fix
-    # applies to already-running stacks too.
-    log "Endpoint tuning: ensuring iproute-tc is installed on Client and Server..."
-    remote_run "$client_iid" \
+    # package, which the CDK stacks do not install (roadmap.md F15). Every run
+    # before 2026-08-04 had its netem command fail with "tc: command not found",
+    # swallowed by `2>/dev/null || true`, and silently measured the ~1.5 ms
+    # intra-VPC RTT. Install here so the fix reaches already-running stacks.
+    log "WAN tuning: ensuring iproute-tc is installed on both NIC VMs..."
+    remote_run "$cn_iid" \
         "command -v tc >/dev/null || yum install -y iproute-tc 2>&1 | tail -2" 180 > /dev/null
-    remote_run "$server_iid" \
+    remote_run "$sn_iid" \
         "command -v tc >/dev/null || yum install -y iproute-tc 2>&1 | tail -2" 180 > /dev/null
 
     # netem's default queue limit is 1000 packets; at this RTT a window's worth
     # of many parallel flows exceeds that and tail-drops, manufacturing loss.
-    # Raise the limit so netem emulates pure delay, not delay+loss.
-    log "Endpoint tuning: netem ${NETEM_RTT_MS}ms on SERVER egress only (Client egress left clean)..."
-    remote_bg "$client_iid" \
-        "tc qdisc del dev eth0 root 2>/dev/null || true"
-    remote_bg "$server_iid" \
-        "tc qdisc del dev eth0 root 2>/dev/null || true; \
-         tc qdisc add dev eth0 root netem delay ${NETEM_RTT_MS}ms limit 1000000 2>/dev/null || true"
+    # Raise the limit so netem emulates pure delay, not delay+loss — matching
+    # the DPDK side's WAN_DELAY_RING headroom.
+    log "WAN tuning: netem ${half}ms on each middle-leg egress (ClientNIC $cn_if, ServerNIC $sn_if) = ${NETEM_RTT_MS}ms RTT..."
+    remote_bg "$cn_iid" \
+        "tc qdisc del dev $cn_if root 2>/dev/null || true; \
+         tc qdisc add dev $cn_if root netem delay ${half}ms limit 1000000 2>/dev/null || true"
+    remote_bg "$sn_iid" \
+        "tc qdisc del dev $sn_if root 2>/dev/null || true; \
+         tc qdisc add dev $sn_if root netem delay ${half}ms limit 1000000 2>/dev/null || true"
     sleep 3
 
-    # Verify, rather than assume: a silently-failed `tc` turns the whole run into
-    # an intra-VPC measurement where one RTT is ~1.5 ms and no 0-RTT benefit is
-    # observable at all (insights.md, 2026-07-14).
-    local client_qdisc server_qdisc
-    client_qdisc=$(remote_stdout "$client_iid" "tc qdisc show dev eth0 2>&1" 30)
-    server_qdisc=$(remote_stdout "$server_iid" "tc qdisc show dev eth0 2>&1" 30)
-    if echo "$server_qdisc" | grep -q "delay ${NETEM_RTT_MS}ms"; then
-        pass "Endpoint tuning: server egress netem = ${NETEM_RTT_MS}ms (full emulated RTT)"
+    local cn_qdisc sn_qdisc
+    cn_qdisc=$(remote_stdout "$cn_iid" "tc qdisc show dev $cn_if 2>&1" 30)
+    sn_qdisc=$(remote_stdout "$sn_iid" "tc qdisc show dev $sn_if 2>&1" 30)
+    if echo "$cn_qdisc" | grep -q "delay ${half}ms"; then
+        pass "WAN tuning: ClientNIC $cn_if netem = ${half}ms (half the modelled RTT)"
     else
-        fail "Endpoint tuning: server egress netem NOT applied — got: $server_qdisc"
+        fail "WAN tuning: ClientNIC $cn_if netem NOT applied — got: $cn_qdisc"
     fi
-    if echo "$client_qdisc" | grep -q "netem"; then
-        fail "Endpoint tuning: client egress still has netem — this halves the measurable 0-RTT saving: $client_qdisc"
+    if echo "$sn_qdisc" | grep -q "delay ${half}ms"; then
+        pass "WAN tuning: ServerNIC $sn_if netem = ${half}ms (half the modelled RTT)"
     else
-        pass "Endpoint tuning: client egress clean (no netem), so the spoof bypasses the full RTT"
+        fail "WAN tuning: ServerNIC $sn_if netem NOT applied — got: $sn_qdisc"
     fi
+}
+
+# wan_delay_us — half the modelled RTT in microseconds, for the DPDK
+# forwarders' --wan-delay-us. Each forwarder delays its own middle-leg egress,
+# so the round trip across the leg costs NETEM_RTT_MS in total, identical to
+# what wan_tune_middle_leg() applies on the baseline stack.
+wan_delay_us() {
+    echo $(( NETEM_RTT_MS * 1000 / 2 ))
 }
 
 # endpoint_capture_start <client-iid> <server-iid> <bpf-port-filter>

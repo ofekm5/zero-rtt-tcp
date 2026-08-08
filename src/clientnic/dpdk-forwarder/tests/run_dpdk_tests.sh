@@ -48,6 +48,31 @@ if ! grep -q "HugePages_Total:.*[1-9]" /proc/meminfo 2>/dev/null; then
     HUGE_ARGS="--no-huge"
 fi
 
+echo "--- Test 0: WAN hold-queue ring logic (no DPDK needed) ---"
+# Runs first and independently of the binary: it needs only `cc`, and a bug in
+# the ring silently manufactures loss or reordering on the middle leg, which
+# would look like a network fault in every downstream measurement.
+TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+if command -v cc >/dev/null 2>&1; then
+    WAN_BIN="$(mktemp -t test_wan_delay.XXXXXX)"
+    if cc -Wall -Wextra -Werror \
+          -I"$TESTS_DIR/stubs" -I"$TESTS_DIR/.." \
+          -o "$WAN_BIN" \
+          "$TESTS_DIR/test_wan_delay.c" "$TESTS_DIR/../wan_delay.c" 2>&1; then
+        if "$WAN_BIN"; then
+            log_pass "wan_delay ring logic"
+        else
+            log_fail "wan_delay ring logic — see output above"
+        fi
+    else
+        log_fail "wan_delay test did not compile"
+    fi
+    rm -f "$WAN_BIN"
+else
+    log_skip "no cc on PATH — cannot build the wan_delay ring test"
+fi
+echo ""
+
 echo "--- Test 1: Binary Validation ---"
 FILE_OUT=$(file "$BINARY" 2>&1)
 if echo "$FILE_OUT" | grep -q "ELF"; then

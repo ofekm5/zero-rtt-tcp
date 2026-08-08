@@ -38,17 +38,20 @@ remote_bg()  { _trace "$1" "$2"; }
 remote_run() { _trace "$1" "$2"; echo '["Success","",""]'; }
 
 # `tc qdisc show` is the only stdout endpoint.sh branches on. Answer per node so
-# the module sees what a correctly-tuned pair of endpoints would report: netem
-# on the server, nothing on the client.
+# the module sees what a correctly-tuned chain reports after the F2 change:
+# BOTH endpoints clean, and half the modelled RTT on each middle-leg NIC.
 remote_stdout() {
     _trace "$1" "$2"
     case "$2" in
         *"tc qdisc show"*)
-            if [[ "$1" == "SERVER" ]]; then
-                echo "qdisc netem 8001: root refcnt 2 limit 1000000 delay ${NETEM_RTT_MS}ms"
-            else
-                echo "qdisc mq 0: root"
-            fi
+            case "$1" in
+                CLIENTNIC|SERVERNIC)
+                    echo "qdisc netem 8001: root refcnt 2 limit 1000000 delay $(( NETEM_RTT_MS / 2 ))ms"
+                    ;;
+                *)
+                    echo "qdisc mq 0: root"
+                    ;;
+            esac
             ;;
         *) echo "" ;;
     esac

@@ -43,13 +43,22 @@ import sys
 import time
 
 
-async def _client_conn(host, port, nbytes, sem, results):
+async def _client_conn(host, port, nbytes, sem, results, think=0.0):
     async with sem:
         try:
             reader, writer = await asyncio.open_connection(host, port)
         except Exception:
             results["fail"] += 1
             return
+        # Client think time: the pause between connect() returning and the first
+        # request being written. Default 0 models an HTTP-style client that
+        # sends immediately — the workload 0-RTT targets and the hard case for
+        # it. See experiments/measurement-methodology-review.md and the wiki's
+        # "Load Generation and Think Time" entry: a non-zero value is a
+        # legitimate extra axis only once the emulated WAN sits on the middle
+        # leg, never a substitute for fixing the placement.
+        if think > 0:
+            await asyncio.sleep(think)
         try:
             writer.write(b"\x00" * nbytes)
             await writer.drain()
@@ -67,7 +76,8 @@ async def _client_conn(host, port, nbytes, sem, results):
                 pass
 
 
-async def run_client(host, ports, parallel, nbytes, concurrency_limit, rate=0.0):
+async def run_client(host, ports, parallel, nbytes, concurrency_limit, rate=0.0,
+                     think_ms=0.0):
     """Open `parallel` connections, paced at `rate` connections/sec (0 = burst).
 
     Pacing schedules connection i for t0 + i/rate on an absolute timeline rather
@@ -81,6 +91,7 @@ async def run_client(host, ports, parallel, nbytes, concurrency_limit, rate=0.0)
     sem = asyncio.Semaphore(concurrency_limit)
     results = {"ok": 0, "fail": 0}
     tasks = []
+    think = think_ms / 1000.0
     t0 = time.monotonic()
     for i in range(parallel):
         if rate > 0:
@@ -88,7 +99,8 @@ async def run_client(host, ports, parallel, nbytes, concurrency_limit, rate=0.0)
             if delay > 0:
                 await asyncio.sleep(delay)
         tasks.append(asyncio.ensure_future(
-            _client_conn(host, ports[i % len(ports)], nbytes, sem, results)))
+            _client_conn(host, ports[i % len(ports)], nbytes, sem, results,
+                         think)))
     spawn_end = time.monotonic()
     await asyncio.gather(*tasks)
     dt = time.monotonic() - t0
@@ -100,6 +112,9 @@ async def run_client(host, ports, parallel, nbytes, concurrency_limit, rate=0.0)
               f"rate={rate:g} conn/s requested, {achieved:.0f} conn/s achieved "
               f"over {spawn_dt:.3f}s")
     print(f"Arrival: {pacing}")
+    # Reported unconditionally so a report can never be read without knowing
+    # which think time produced it — a sweep's runs are otherwise identical.
+    print(f"Think: {think_ms:g} ms between connect() and first write")
     print(f"Transfer complete: {results['ok']}/{parallel} connections ok, "
           f"{results['fail']} failed, duration={dt:.3f}s, ~{mbps:.1f} Mbits/sec")
     print(f"Success: {results['ok']}/{parallel}")
@@ -218,6 +233,12 @@ def _build_parser():
     ap.add_argument("--concurrency-limit", type=int, default=None,
                      help="cap on simultaneously in-flight connect() attempts "
                           "(default: --parallel, i.e. no throttling)")
+    ap.add_argument("--think-ms", type=float, default=0.0,
+                     help="client think time in ms between connect() returning "
+                          "and the first write (client mode). Default 0 models "
+                          "an HTTP-style client that sends immediately. Sweep "
+                          "it to characterise how much of the 0-RTT gain "
+                          "survives a client that does not send immediately")
     return ap
 
 
@@ -236,7 +257,7 @@ def main():
 
     limit = args.concurrency_limit or args.parallel
     return asyncio.run(run_client(args.host, ports, args.parallel, args.bytes,
-                                  limit, args.rate))
+                                  limit, args.rate, args.think_ms))
 
 
 if __name__ == "__main__":

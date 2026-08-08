@@ -43,6 +43,8 @@ LOAD_PORTS="${LOAD_PORTS:-4}"
 LOAD_BYTES="${LOAD_BYTES:-1024}"
 LOAD_RATE="${LOAD_RATE:-2000}"
 LOAD_CONCURRENCY="${LOAD_CONCURRENCY:-2000}"
+# Think time between connect() and the first write. 0 = send immediately.
+LOAD_THINK_MS="${LOAD_THINK_MS:-0}"
 [ "$LOAD_PORTS" -lt 1 ] && LOAD_PORTS=1
 PORT_HI=$(( SERVER_PORT + LOAD_PORTS - 1 ))
 ulimit -n 1048576 2>/dev/null || true
@@ -82,7 +84,8 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 echo "Each flow opens $LOAD_PARALLEL connections across ports ${SERVER_PORT}-${PORT_HI}"
 echo "($LOAD_PORTS port(s)) at ${LOAD_RATE} conn/s, $LOAD_BYTES bytes/conn,"
-echo "max $LOAD_CONCURRENCY in flight. Press Enter for a new flow, Ctrl+C to quit."
+echo "${LOAD_THINK_MS}ms think time, max $LOAD_CONCURRENCY in flight."
+echo "Press Enter for a new flow, Ctrl+C to quit."
 if [ "$LOAD_RATE" = "0" ]; then
     echo ""
     echo -e "${RED}LOAD_RATE=0: connections arrive as one burst — stress mode.${NC}"
@@ -96,7 +99,8 @@ while IFS= read -r _input; do
     python3 "$REPO_PATH/experiments/utils/loadgen.py" --mode client \
         --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
         --parallel "$LOAD_PARALLEL" --bytes "$LOAD_BYTES" \
-        --rate "$LOAD_RATE" --concurrency-limit "$LOAD_CONCURRENCY"
+        --rate "$LOAD_RATE" --think-ms "$LOAD_THINK_MS" \
+        --concurrency-limit "$LOAD_CONCURRENCY"
     echo ""
     echo "Press Enter for flow #$((CONN + 1)), or Ctrl+C to quit."
     echo ""

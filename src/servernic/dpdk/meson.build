@@ -15,6 +15,7 @@ sources = files(
     'syn_handler.c',
     'translator.c',
     'pipeline.c',
+    'wan_delay.c',
 )
 
 executable('servernic-dpdk', sources,

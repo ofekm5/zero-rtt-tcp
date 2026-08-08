@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run on the ServerNIC VM (T8 mode: servernic-dpdk binary).
+# Run on the ServerNIC VM (servernic-dpdk binary).
 #
-# ENI roles (T8 design, D6):
+# ENI roles (design D6):
 #   eth0: kernel/SSM management
 #   eth1: ClientNIC-facing DPDK port (vfio-pci, bound at boot by CDK user data)
 #   eth2: Server-facing DPDK port (vfio-pci, bound at boot by CDK user data)
@@ -34,6 +34,12 @@ SERVER_PORT=8080
 # Must match the load spread (LOAD_PORTS) and the ClientNIC --port-count.
 PORT_COUNT="${PORT_COUNT:-1}"
 REGION="eu-central-1"
+# Emulated one-way WAN latency held on the ClientNIC-facing (middle-leg) TX path.
+# roadmap.md F2 / measurement-methodology-review.md §E: `tc` cannot reach a
+# vfio-pci port, so the delay lives inside the forwarder. Must equal half of the
+# baseline stack's NETEM_RTT_MS, and must match the ClientNIC's value — the two
+# together make one modelled round trip. 0 = no emulated WAN.
+WAN_DELAY_US="${WAN_DELAY_US:-50000}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 log() { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}"; }
@@ -162,6 +168,7 @@ trap cleanup EXIT
 log "Starting servernic-dpdk — watching for flows. Press Ctrl+C to stop."
 log "  --port=$SERVER_PORT --port-count=$PORT_COUNT --gw-mac=$CLIENTNIC_GW_MAC --server-mac=$SERVER_GW_MAC"
 log "  --client-port-mac=$CLIENT_PORT_MAC --server-port-mac=$SERVER_PORT_MAC"
+log "  --wan-delay-us=$WAN_DELAY_US (emulated WAN, middle leg — must match ClientNIC)"
 echo ""
 exec "$BINARY" -l 0 -- \
     --port="$SERVER_PORT" \
@@ -169,4 +176,5 @@ exec "$BINARY" -l 0 -- \
     --gw-mac="$CLIENTNIC_GW_MAC" \
     --server-mac="$SERVER_GW_MAC" \
     --client-port-mac="$CLIENT_PORT_MAC" \
-    --server-port-mac="$SERVER_PORT_MAC"
+    --server-port-mac="$SERVER_PORT_MAC" \
+    --wan-delay-us="$WAN_DELAY_US"

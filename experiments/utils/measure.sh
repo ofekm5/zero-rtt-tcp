@@ -129,6 +129,9 @@ run_ttfb_measurement() {
     local nbytes="${LOAD_BYTES:-1024}"
     local rate="${LOAD_RATE:-2000}"
     local conc="${LOAD_CONCURRENCY:-2000}"
+    # Client think time between connect() and the first write. 0 = HTTP-style
+    # send-immediately, the workload 0-RTT targets. Sweep with run_think_sweep.sh.
+    local think="${LOAD_THINK_MS:-0}"
 
     # Pacing sets a wall-clock FLOOR the transport timeout must clear: at
     # LOAD_RATE conn/s a round cannot finish sooner than parallel/rate seconds,
@@ -154,8 +157,8 @@ run_ttfb_measurement() {
          ulimit -n 1048576 2>/dev/null || true
          success=0
          for i in \$(seq 1 $count); do
-             echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections, $nbytes bytes/conn, ${rate} conn/s arrival, max $conc in flight ---\"
-             python3 $repo/experiments/utils/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --concurrency-limit $conc && success=\$((success + 1))
+             echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections, $nbytes bytes/conn, ${rate} conn/s arrival, ${think}ms think, max $conc in flight ---\"
+             python3 $repo/experiments/utils/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --think-ms $think --concurrency-limit $conc && success=\$((success + 1))
          done
          echo \"Success: \${success}/$count\"" \
         "$timeout")

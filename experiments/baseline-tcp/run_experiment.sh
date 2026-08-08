@@ -159,6 +159,15 @@ sleep 2
 endpoint_tune "$CLIENT_ID" "$SERVER_ID"
 
 
+# ─── Step 2c: Emulated WAN on the middle leg ─────────────────────────────────
+# roadmap.md F2 / measurement-methodology-review.md §E. This stack's NIC VMs are
+# plain kernel routers, so `tc` reaches the middle leg directly; the DPDK stack
+# gets the identical delay from --wan-delay-us inside both forwarders. The
+# interfaces match the static routes asserted in Step 1: ClientNIC reaches the
+# Middle subnet over eth1, ServerNIC over eth0.
+wan_tune_middle_leg "$CLIENTNIC_ID" eth1 "$SERVERNIC_ID" eth0
+
+
 # ─── Step 3: Start Server ─────────────────────────────────────────────────────
 # SSM commands don't inherit this orchestrator's env, so pass LOAD_PORTS through
 # explicitly — otherwise the remote server.sh falls back to its own default and may
