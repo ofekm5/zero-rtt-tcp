@@ -1,13 +1,13 @@
 ---
 type: Wiki Entry
 title: "Roadmap"
-description: "Open work — scope, verified infra state, and success criteria; includes the F2–F16 measurement-flaw classification."
+description: "Open work — scope, verified infra state, and success criteria; includes the F2–F16 measurement-flaw classification and the open FCT-tail observation."
 tags: [project, planning]
-timestamp: 2026-08-08T18:53:23+03:00
+timestamp: 2026-08-09T17:49:32+03:00
 ---
 
 Source: `roadmap.md`
-See also: [[wiki/Measurement Methodology]], [[wiki/FCT Tail Investigation]]
+See also: [[wiki/Measurement Methodology]], [[wiki/Load Generation and Think Time]]
 
 # Roadmap
 
@@ -18,7 +18,7 @@ Open work only. Completed items are recorded in their reports, PRs, and
 
 | Item | State |
 | --- | --- |
-| [Measurement flaws (F2–F16)](#measurement-flaws) | Open — F2 blocking the FCT claim |
+| [Measurement flaws (F3–F16)](#measurement-flaws) | Open — F2 resolved 2026-08-08, nothing blocking |
 | [#21 — DPDK vs. baseline comparison](#21--run-experiment-on-both-dpdk-and-baseline-stacks) | Open — not started |
 | [Client-side pcap analysis at 100k](#client-side-pcap-analysis-doesnt-scale-to-100k) | Open — root cause not isolated |
 | [Idea: close the 100k connection-burst gap](#idea-close-the-100k-connection-burst-gap) | Idea — not yet an OpenSpec change |
@@ -47,7 +47,7 @@ handoff document, not a roadmap gate. See the closing note below.
 
 | # | Flaw | Class | Severity |
 | --- | --- | --- | --- |
-| F2 | netem on Server egress makes any FCT gain structurally unmeasurable | Methodology | **Blocking** |
+| ~~F2~~ | ~~netem on Server egress makes any FCT gain structurally unmeasurable~~ | Methodology | **Resolved 2026-08-08** |
 | F3 | NIC logs truncated at the 24 KB SSM cap — reported counts cover <100 of 2000 flows | Observability | High |
 | F4 | ClientNIC/ServerNIC in-app rdtsc TTFB dark (`no samples found`) | Observability | High |
 | F5 | No application-level client TTFB exists; the claim rests entirely on pcap timing | Observability | Medium |
@@ -63,38 +63,129 @@ handoff document, not a roadmap gate. See the closing note below.
 | F15 | `iproute-tc` is in neither stack's user-data — self-healed at runtime, so a fresh stack can regress | Infra | Low |
 | F16 | Open items live in `experiments/insights.md` while this file is the declared source of truth | Docs | Low |
 
-**Closing note on F1:** carried in full at `HANDOFF-fct-tail.md` (repo root,
-uncommitted). It specifies the one check that settles it — `nstat` retransmit
-counters on Client and Server around the F2 re-run — and the two outcomes:
-non-zero retransmits closes the item as ordinary RTO recovery (record in
-`experiments/insights.md`, no code change); near-zero retransmits means the
-335 ms tail isn't loss recovery and F1 re-enters this table as blocking. Fold
-the capture into the F2 run rather than deploying a stack just for it — see
-the handoff's Decision 1. F3 (NIC log truncation) must land first if the
-second outcome happens, per the handoff's Decision 3.
+**F1 is not in the table** because it is an open *observation*, not a defect with
+known severity — see [the FCT tail](#the-fct-tail--open-observation-one-check-settles-it)
+below for the full item. It was carried in a standalone handoff document until
+2026-08-08; that document went stale within a day of being written (it still
+described F2 as blocking and the FCT claim as unproven) and was folded in here,
+since this file is the declared source of truth.
 
-### F2 — Move the emulated WAN to the middle leg (blocking)
+### F2 — Emulated WAN moved to the middle leg ✅ RESOLVED 2026-08-08
 
-`endpoint.sh` puts the whole `NETEM_RTT_MS` on Server egress. That is correct
-for `send_unlock` and is the reason FCT cannot improve: the SYN-ACK ServerNIC
-needs before it can flush is the one packet paying the entire emulated WAN. No
-endpoint-side placement satisfies the condition (ServerNIC must learn the real
-ISN *before* the client's data would otherwise arrive) — see
-`measurement-methodology-review.md` §E2 for the four-placement proof. Until this
-lands, "0-RTT does not improve FCT" is an artifact of the topology, not a result.
+`endpoint.sh` used to put the whole `NETEM_RTT_MS` on Server egress. That is
+correct for `send_unlock` and was the reason FCT could not improve: the SYN-ACK
+ServerNIC needs before it can flush was the one packet paying the entire
+emulated WAN. No endpoint-side placement satisfies the condition (ServerNIC must
+learn the real ISN *before* the client's data would otherwise arrive) — see
+`measurement-methodology-review.md` §E2 for the four-placement proof.
 
-- [ ] Baseline stack: `tc netem delay <RTT/2>` on each kernel-routed NIC VM's
-      middle-leg interface
-- [ ] DPDK stack: `--wan-delay-us` knob on both forwarders — timestamped FIFO on
-      the `eth1` TX path, drained in the existing poll loop (tc cannot reach
-      vfio-pci ports)
-- [ ] `NETEM_RTT_MS` on endpoints to 0; invert `endpoint_tune()`'s read-back
-      assertion to fail if an endpoint qdisc *is* present
-- [ ] Both stacks must model the same total RTT or the comparison is void
-- [ ] Expected: `send_unlock` unchanged (~0.2 ms), FCT ~200 ms → ~100 ms
+- [x] Baseline stack: `tc netem delay <RTT/2>` on each kernel-routed NIC VM's
+      middle-leg interface (`wan_tune_middle_leg()`, ClientNIC eth1 / ServerNIC eth0)
+- [x] DPDK stack: `--wan-delay-us` on both forwarders — FIFO hold ring on the
+      `eth1` TX path, drained in the existing poll loop (tc cannot reach
+      vfio-pci ports). `src/*/wan_delay.c`, 7 unit tests.
+- [x] Endpoints carry no qdisc; `endpoint_tune()`'s read-back assertion inverted
+      to fail the run if one *is* present
+- [x] Both stacks model the same total RTT — `wan_delay_us()` derives the DPDK
+      value from the same `NETEM_RTT_MS` the baseline netem uses
 
-Superseded by [AWS cross-region deployment](#aws-cross-region-deployment) if that
-lands first — a real WAN path removes the placement question entirely.
+**Measured, both stacks, 2026-08-08** (2000 conns, 500/s, 4 ports, 1 KB,
+`NETEM_RTT_MS=100`, 2000/2000 OK on both):
+
+| metric | baseline | 0-RTT | delta |
+| --- | --- | --- | --- |
+| `send_unlock` mean | 101.532 ms | 0.263 ms | **−101.27 ms** |
+| `fct` mean | 202.919 ms | 101.067 ms | **−101.85 ms** |
+| `fct` p99 | 203.933 ms | 101.407 ms | −102.53 ms |
+| `fct` max | 215.570 ms | 102.928 ms | −112.64 ms |
+| `server_gap` mean | 101.523 ms | 0.259 ms | −101.26 ms |
+
+The headline is no longer narrower than the claim: **0-RTT now removes one full
+RTT from flow completion time, not only from application blocking time.** The
+−0.09 ms FCT result of 2026-08-04 was an artifact of netem placement, exactly as
+§E predicted.
+
+Reports: `experiments/baseline-tcp/reports/baseline-report-2026-08-08-212236.md`,
+`experiments/dpdk/reports/integration-test-report-2026-08-08.md`.
+
+Note for [the FCT tail](#the-fct-tail--open-observation-one-check-settles-it): the
+537 ms outlier **did not reproduce** — 0-RTT `fct` max is 102.928 ms, only
+1.5 ms above its own p99, and tighter than baseline's 215.570 ms. One run is not
+proof it is gone; re-check at 100k before treating it as closed.
+
+Still superseded by [AWS cross-region deployment](#aws-cross-region-deployment)
+if that lands — a real WAN path removes the emulation question entirely.
+
+### The FCT tail — open observation, one check settles it
+
+Carried out of the flaw table on 2026-08-08: at PoC scale it does not justify a
+gate, but it does justify ten minutes, for the reason under *Outcome B* below.
+
+**What was seen.** In the 2026-08-04 run pair (2000 conns, 500/s, 4 ports, 1 KB,
+server-egress netem — the pre-F2 topology):
+
+| | baseline | 0-RTT |
+| --- | --- | --- |
+| `fct` p99 | 202.833 ms | 201.638 ms (better) |
+| `fct` max | 213.254 ms | **536.628 ms** |
+
+≤20 of 2000 flows, 335 ms above the 0-RTT stack's own p99. **2000/2000
+connections succeeded** — nothing was dropped or refused; the affected flows
+completed, just late.
+
+**Already ruled out — do not re-derive:**
+
+- *Not the handshake* — `send_unlock` max 2.061 ms vs baseline 112.429 ms.
+- *Not the server's response* — `server_gap` max 0.756 ms vs baseline 12.358 ms.
+- *Not the ServerNIC flush path* — the captured log has zero
+  `flush dropped first c2s data` warnings, the counter that exists to catch
+  exactly that. (An earlier guess of "somewhere in the buffer/flush path" was
+  contradicted by the data.)
+
+The excess sits between *"first payload leaves"* and *"flow completes"*.
+
+**It did not reproduce.** In the 2026-08-08 pair (post-F2, middle-leg WAN) 0-RTT
+`fct` max was 102.928 ms — 1.5 ms above its own p99, and far tighter than
+baseline's 215.570 ms. That is one clean run at 2000 connections, not evidence of
+absence: the topology changed at the same time, so it is equally consistent with
+"fixed", "masked" and "did not happen to occur".
+
+**Hypothesis, unproven.** One lost segment paying Linux's `TCP_RTO_MIN` (200 ms,
+`HZ/5` — the hard floor on the retransmission timeout) plus a ~100 ms retransmit
+round trip ≈ 300 ms, against 335 ms observed. Plausible specifically because
+`endpoint_tune()` disables timestamps, SACK and window scaling (**F11**) — a 1 KB
+flow is one segment, so there are no duplicate ACKs and no fast-retransmit path.
+The RTO is the *only* recovery mechanism available. The arithmetic fits; nothing
+proves it.
+
+**The check** — retransmission counters on both endpoints around a run:
+
+```sh
+nstat -n                                              # before the load starts
+nstat -z | grep -Ei 'retrans|timeout|TCPLoss'         # after it completes
+```
+
+Counters that matter: `TcpRetransSegs`, `TcpExtTCPTimeouts`,
+`TcpExtTCPSlowStartRetrans`, `TcpExtTCPLostRetransmit`.
+
+- [ ] Capture `nstat` on Client and Server around the next run of either stack.
+      Both stacks are currently destroyed, so fold this into whatever run happens
+      next rather than deploying for one counter — the 2026-08-08 runs were the
+      obvious opportunity and it was missed.
+
+**Outcome A — retransmissions non-zero (≈20, matching the slow-flow count).**
+Ordinary packet loss recovered by the RTO; nothing wrong with the data plane.
+Record it in `experiments/insights.md` and close the item — no code change. For a
+PoC that is a complete answer.
+
+**Outcome B — retransmissions zero or near-zero.** The hypothesis is dead and the
+335 ms is not loss recovery, which points at the data plane holding or reordering
+a segment — a real correctness finding for a project whose entire claim is that
+seq/ack translation is correct. Then: re-enter the flaw table as blocking, use
+`analyze_metrics.py --detail-out` to name the slow flows and pull only those
+4-tuples from the pcaps, and **fix F3 first** — the 24 KB SSM log cap already
+stalled this diagnosis once, and chasing a data-plane bug through a truncated log
+will stall in the same place.
 
 ### F3–F8 — next tier
 
@@ -215,6 +306,11 @@ Three candidate approaches, none scoped in detail:
 - **Client-side connection pacing** — stagger the `asyncio.gather()` burst
   (bounded concurrency / ramp-up) so attempts arrive as a sustained rate,
   trading test realism for a rate the existing single lcore can absorb.
+- **Dynamic ISN pool** — ClientNIC currently draws each spoofed ISN from
+  `rte_rand()` per SYN (`packet_processor.c`); a pre-generated pool of unique
+  values would remove both the per-packet RNG cost and any (currently
+  theoretical) collision risk in the flow table's V-keyed lookup at burst
+  scale.
 
 ### Success criteria (draft, to refine when proposed)
 - [ ] 100k-connection run establishes ≥95% of connections (up from 68.8%)
@@ -299,6 +395,16 @@ toward the ServerNIC VM.
 
 ## BlueField-3 track
 
+- [ ] Simplify the e-switch experimentation harness and stop overloading the
+      DPU while iterating on it — the spike needed nine defect fixes and left
+      the DPU mutated (VPN drop mid-run) and blocked (no sudo password) just
+      to get this far; that's a sign the harness itself is too heavy for
+      iterative probing, not only the probe logic.
+- [ ] Prioritize a lightweight ARM-only path (no e-switch hardware offload —
+      see [Demo C](#demo-c--bluefield-as-clientnic-servernic-stays-a-vm)) as
+      the first BlueField experiment, ahead of or independent from the
+      e-switch spike below.
+
 ### `verify-eswitch-tcp-seq-offload` — in progress, DPU left mutated
 
 Determines whether the BlueField-3 e-switch can match a TCP flow, rewrite
@@ -361,6 +467,13 @@ e-switch, keeping the ARM cores out of the data path (handshake only). New
 resolves it. Criteria in the
 [proposal](openspec/changes/bluefield-servernic-hw-offload/proposal.md).
 
+- [ ] Cache installed e-switch flow rules in memory instead of re-querying/
+      reinstalling per flow, once the spike picks a backend (`offload.c`)
+- [ ] Add an explicit off-switch: when the DPU's flow-rule limit is reached,
+      flip a bool that disables the offload path (falls back to software
+      rewriting or sheds) rather than failing open or dropping silently —
+      pairs with the rule-count-leak mitigation already noted above (SC5)
+
 ### Gap: BlueField lab deployment change (not yet proposed)
 
 Both BlueField proposals explicitly push this out of scope and assume it exists
@@ -372,7 +485,10 @@ as a separate change — but no proposal has been written. It covers:
 - [ ] Lab DNS (or a documented decision to keep working around it offline)
 
 `bluefield-servernic-hw-offload`'s Success Criterion 4 (end-to-end TCP through
-the DPU) is not observable until this lands.
+the DPU) is not observable until this lands. Migration target for the
+AWS-to-university move: the BlueField DPU replaces the ServerNIC **VM**,
+reusing the same C codebase (`flow_table.c`, `syn_handler.c`, `checksum.c`)
+rather than a rewrite — already how `bluefield-servernic-hw-offload` is scoped.
 
 ## Human-readable experiment output
 

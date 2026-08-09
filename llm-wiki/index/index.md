@@ -35,7 +35,6 @@ now empty.
 
 - [[wiki/Measurement Methodology]] — how load/latency are measured and whether that methodology supports the 0-RTT claim; §E covers the emulated WAN and proves only the ClientNIC↔ServerNIC leg can show an FCT win. Read before touching `NETEM_RTT_MS` or a `tc` command.
 - [[wiki/Load Generation and Think Time]] — why `loadgen.py` beats iperf2 for this topology, what iperf2 is still for, and why a client think-time sweep must follow the netem fix rather than replace it.
-- [[wiki/FCT Tail Investigation]] — the 537 ms 0-RTT outlier: what is ruled out, the one `nstat` check that settles it, and the three decisions that follow.
 - [[wiki/Experiment Insights]] — running log of confirmed root causes and durable findings from experiment runs.
 - `raw/` — dated baseline and integration-test reports (19 files, 2026-03-06 through 2026-08-04) plus `2026-08-08-telemetry-review-artifact` (the published telemetry review). Not indexed individually here; browse by date or `search`.
 
