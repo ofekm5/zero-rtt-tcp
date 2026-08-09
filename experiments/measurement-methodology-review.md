@@ -438,8 +438,10 @@ RTT of application blocking time, but connections do not complete sooner" —
 Two cautions:
 
 - The 537 ms FCT outlier did not reproduce (max 102.928 ms, 1.5 ms above p99).
-  That is one run at 2000 connections, not proof it is gone. `HANDOFF-fct-tail.md`
-  still stands as the procedure for confirming it at scale.
+  That is one run at 2000 connections, not proof it is gone — and the topology
+  changed at the same time, so it is equally consistent with "fixed", "masked"
+  and "did not happen to occur". `roadmap.md` → *The FCT tail* carries the
+  procedure for settling it: one `nstat` retransmission-counter reading.
 - This is still an *emulated* WAN — constant delay, no jitter, reordering or
   loss. The cross-region deployment on `roadmap.md` remains the only way to
   measure against a real path.

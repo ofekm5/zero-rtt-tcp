@@ -52,15 +52,12 @@ handoff document, not a roadmap gate. See the closing note below.
 | F15 | `iproute-tc` is in neither stack's user-data — self-healed at runtime, so a fresh stack can regress | Infra | Low |
 | F16 | Open items live in `experiments/insights.md` while this file is the declared source of truth | Docs | Low |
 
-**Closing note on F1:** carried in full at `HANDOFF-fct-tail.md` (repo root,
-uncommitted). It specifies the one check that settles it — `nstat` retransmit
-counters on Client and Server around the F2 re-run — and the two outcomes:
-non-zero retransmits closes the item as ordinary RTO recovery (record in
-`experiments/insights.md`, no code change); near-zero retransmits means the
-335 ms tail isn't loss recovery and F1 re-enters this table as blocking. Fold
-the capture into the F2 run rather than deploying a stack just for it — see
-the handoff's Decision 1. F3 (NIC log truncation) must land first if the
-second outcome happens, per the handoff's Decision 3.
+**F1 is not in the table** because it is an open *observation*, not a defect with
+known severity — see [the FCT tail](#the-fct-tail--open-observation-one-check-settles-it)
+below for the full item. It was carried in a standalone handoff document until
+2026-08-08; that document went stale within a day of being written (it still
+described F2 as blocking and the FCT claim as unproven) and was folded in here,
+since this file is the declared source of truth.
 
 ### F2 — Emulated WAN moved to the middle leg ✅ RESOLVED 2026-08-08
 
@@ -100,13 +97,84 @@ RTT from flow completion time, not only from application blocking time.** The
 Reports: `experiments/baseline-tcp/reports/baseline-report-2026-08-08-212236.md`,
 `experiments/dpdk/reports/integration-test-report-2026-08-08.md`.
 
-Note for the [FCT tail](#measurement-flaws) (ex-F1, `HANDOFF-fct-tail.md`): the
+Note for [the FCT tail](#the-fct-tail--open-observation-one-check-settles-it): the
 537 ms outlier **did not reproduce** — 0-RTT `fct` max is 102.928 ms, only
 1.5 ms above its own p99, and tighter than baseline's 215.570 ms. One run is not
 proof it is gone; re-check at 100k before treating it as closed.
 
 Still superseded by [AWS cross-region deployment](#aws-cross-region-deployment)
 if that lands — a real WAN path removes the emulation question entirely.
+
+### The FCT tail — open observation, one check settles it
+
+Carried out of the flaw table on 2026-08-08: at PoC scale it does not justify a
+gate, but it does justify ten minutes, for the reason under *Outcome B* below.
+
+**What was seen.** In the 2026-08-04 run pair (2000 conns, 500/s, 4 ports, 1 KB,
+server-egress netem — the pre-F2 topology):
+
+| | baseline | 0-RTT |
+| --- | --- | --- |
+| `fct` p99 | 202.833 ms | 201.638 ms (better) |
+| `fct` max | 213.254 ms | **536.628 ms** |
+
+≤20 of 2000 flows, 335 ms above the 0-RTT stack's own p99. **2000/2000
+connections succeeded** — nothing was dropped or refused; the affected flows
+completed, just late.
+
+**Already ruled out — do not re-derive:**
+
+- *Not the handshake* — `send_unlock` max 2.061 ms vs baseline 112.429 ms.
+- *Not the server's response* — `server_gap` max 0.756 ms vs baseline 12.358 ms.
+- *Not the ServerNIC flush path* — the captured log has zero
+  `flush dropped first c2s data` warnings, the counter that exists to catch
+  exactly that. (An earlier guess of "somewhere in the buffer/flush path" was
+  contradicted by the data.)
+
+The excess sits between *"first payload leaves"* and *"flow completes"*.
+
+**It did not reproduce.** In the 2026-08-08 pair (post-F2, middle-leg WAN) 0-RTT
+`fct` max was 102.928 ms — 1.5 ms above its own p99, and far tighter than
+baseline's 215.570 ms. That is one clean run at 2000 connections, not evidence of
+absence: the topology changed at the same time, so it is equally consistent with
+"fixed", "masked" and "did not happen to occur".
+
+**Hypothesis, unproven.** One lost segment paying Linux's `TCP_RTO_MIN` (200 ms,
+`HZ/5` — the hard floor on the retransmission timeout) plus a ~100 ms retransmit
+round trip ≈ 300 ms, against 335 ms observed. Plausible specifically because
+`endpoint_tune()` disables timestamps, SACK and window scaling (**F11**) — a 1 KB
+flow is one segment, so there are no duplicate ACKs and no fast-retransmit path.
+The RTO is the *only* recovery mechanism available. The arithmetic fits; nothing
+proves it.
+
+**The check** — retransmission counters on both endpoints around a run:
+
+```sh
+nstat -n                                              # before the load starts
+nstat -z | grep -Ei 'retrans|timeout|TCPLoss'         # after it completes
+```
+
+Counters that matter: `TcpRetransSegs`, `TcpExtTCPTimeouts`,
+`TcpExtTCPSlowStartRetrans`, `TcpExtTCPLostRetransmit`.
+
+- [ ] Capture `nstat` on Client and Server around the next run of either stack.
+      Both stacks are currently destroyed, so fold this into whatever run happens
+      next rather than deploying for one counter — the 2026-08-08 runs were the
+      obvious opportunity and it was missed.
+
+**Outcome A — retransmissions non-zero (≈20, matching the slow-flow count).**
+Ordinary packet loss recovered by the RTO; nothing wrong with the data plane.
+Record it in `experiments/insights.md` and close the item — no code change. For a
+PoC that is a complete answer.
+
+**Outcome B — retransmissions zero or near-zero.** The hypothesis is dead and the
+335 ms is not loss recovery, which points at the data plane holding or reordering
+a segment — a real correctness finding for a project whose entire claim is that
+seq/ack translation is correct. Then: re-enter the flaw table as blocking, use
+`analyze_metrics.py --detail-out` to name the slow flows and pull only those
+4-tuples from the pcaps, and **fix F3 first** — the 24 KB SSM log cap already
+stalled this diagnosis once, and chasing a data-plane bug through a truncated log
+will stall in the same place.
 
 ### F3–F8 — next tier
 
