@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="light dark">
 </head>
 <body>
-<title>Zero-RTT TCP — experiment results</title>
+<title>Zero-RTT TCP — measuring whether the handshake round trip can actually be removed</title>
 
 <style>
   :root{
@@ -248,8 +248,11 @@
 
   <header class="col">
     <p class="kicker">Experimental report · zero-rtt-tcp</p>
-    <h1>Zero-RTT TCP: measured results of removing the handshake round trip</h1>
-    <p class="lede">Experiments over AWS demystified.</p>
+    <h1>Removing the TCP handshake round trip: does the middlebox actually make connections faster?</h1>
+    <p class="lede">A pair of programmable SmartNICs can answer a client's SYN before the
+    server has seen it, letting the application send data a full round trip early. Whether
+    that <em>also</em> makes the connection finish sooner turns out to depend on a detail of
+    how the network is modelled — and getting that detail wrong hid the result entirely.</p>
     <p class="author"><b>Ofek Markus</b></p>
     <div class="byline">
       <span><b>Platform</b> 4× AWS EC2, DPDK 23.11</span>
@@ -260,7 +263,14 @@
   </header>
 
   <section>
-    <h2>Bottom line</h2>
+    <h2>Summary</h2>
+    <ul class="sum">
+      <li>Standard TCP makes an application wait one round trip before it may send anything:
+      the three-way handshake must complete first.</li>
+      <li>This project puts two SmartNICs in the path — one near the client, one near the
+      server — so the client-side NIC can <strong>forge the server's SYN-ACK immediately</strong>
+      and the server-side NIC reconciles the sequence-number mismatch that forgery creates.</li>
+    </ul>
 
     <div class="rp">
       <div class="rp-head">
@@ -289,37 +299,49 @@
           <span class="t z" style="width:49.8%"></span><span class="v">101.07 ms</span></div>
       </div>
 
-      <p class="rp-foot">2000 / 2000 connections completed on both stacks. The saving holds
-      through the median, 99th percentile and worst case — it is not carried by the mean.</p>
+      <p class="rp-foot">One full round trip removed from both, across 2000 connections with
+      no failures. The completion-time saving appears <strong>only</strong> when the emulated
+      latency sits on the link between the two SmartNICs; placed anywhere else, the design's
+      own buffering absorbs exactly the time it saves and the measurement reports no gain at
+      all.</p>
     </div>
-
-    <ul class="sum" style="margin-top:26px;">
-      <li><strong>Conditions.</strong> The saving requires each NIC beside its own endpoint,
-      with the modelled distance on the ClientNIC↔ServerNIC leg. Any endpoint-side placement
-      of the delay cancels the completion-time gain exactly (§3).</li>
-      <li><strong>Scope.</strong> One run per stack, 2000 connections, 1 KB per connection,
-      TCP options disabled. Throughput, scale to 100k, and run-to-run variance are
-      unmeasured (§6).</li>
-    </ul>
   </section>
 
   <section>
-    <h2>1 &nbsp;Mechanism under test</h2>
-    <ul class="plain" style="margin-top:0;">
-      <li><strong>The cost.</strong> Opening a TCP connection blocks the application for one
-      round trip — 50–200 ms on a long path, paid per connection.</li>
-      <li><strong>The ClientNIC spoofs the SYN-ACK.</strong> It answers the client's SYN with
-      an invented sequence number, so <code>connect()</code> returns in microseconds while
-      the real SYN is still in flight. The invented number rides in the forwarded SYN's
-      unused ack-number field, so the NICs need no side channel.</li>
-      <li><strong>The ServerNIC reconciles.</strong> The server picks its own initial
-      sequence number, so the ServerNIC subtracts the two to get a fixed offset, drops the
-      real SYN-ACK, and rewrites seq/ack on every subsequent packet. Client data arriving
-      before the offset is known is buffered per connection.</li>
-      <li><strong>Four machines.</strong> Client and server run stock, unmodified TCP; the
-      two middle machines run a custom DPDK data plane on <code>vfio-pci</code>-bound
-      interfaces in user space.</li>
-    </ul>
+    <h2>1 &nbsp;The cost being attacked</h2>
+    <p>Opening a TCP connection costs one round trip before a single byte of application
+    data may be sent. On a long-distance path that is 50–200 ms of pure waiting, paid on
+    every new connection, and it dominates short transfers: an HTTP request of a few
+    kilobytes spends most of its life in the handshake rather than in transfer.</p>
+
+    <div class="aside">
+      <div class="t">What <code>connect()</code> is, and why it matters here</div>
+      <p><code>connect()</code> is the system call an application makes to open a TCP
+      connection — the line of code behind every <code>requests.get()</code>, every database
+      client, every browser fetch. The kernel sends a SYN, waits for the server's SYN-ACK,
+      replies ACK, and only then does the call return.</p>
+      <p>Until it returns, the application is <strong>blocked</strong>: it holds the bytes it
+      wants to send and cannot hand them to the socket, no matter how ready it is. That
+      blocked window is exactly one network round trip, and it is the thing this project
+      removes. The first metric in Section 3, <code>send_unlock</code>, is that window
+      measured from the wire.</p>
+    </div>
+
+    <p style="margin-top:26px;">The idea tested here is to answer the client locally. A
+    programmable NIC in front of the client recognises the SYN and immediately returns a
+    <strong>forged SYN-ACK</strong> carrying a sequence number it invents, so the client's
+    kernel finishes its handshake in microseconds while the real SYN is still crossing the
+    network. The difficulty is what follows: the real server will later choose its
+    <em>own</em> initial sequence number, which will not match the forged one, so every
+    subsequent packet in both directions is wrong by a fixed offset and something must
+    correct them transparently — without either endpoint being modified or able to tell.</p>
+  </section>
+
+  <section>
+    <h2>2 &nbsp;How the two NICs divide the work</h2>
+    <p>The chain is four machines. The client and server run stock, unmodified TCP; the two
+    middle machines run a custom DPDK data plane with the network interfaces taken away from
+    the kernel entirely, so packets are handled in user space at line rate.</p>
 
     <figure>
       <svg viewBox="0 0 700 250" role="img" aria-label="Four-machine chain: Client, ClientNIC, ServerNIC, Server, with the emulated wide-area link between the two NICs. Hover a step to highlight the matching leg.">
@@ -329,7 +351,7 @@
 
         <rect class="sv-box a" x="196" y="40" width="132" height="52" rx="3"/>
         <text class="sv-t" x="262" y="63">ClientNIC</text>
-        <text class="sv-r" x="262" y="80">spoofs the SYN-ACK</text>
+        <text class="sv-r" x="262" y="80">forges the SYN-ACK</text>
 
         <rect class="sv-box a" x="372" y="40" width="132" height="52" rx="3"/>
         <text class="sv-t" x="438" y="63">ServerNIC</text>
@@ -361,14 +383,14 @@
           <rect class="hit-box" x="14" y="190" width="150" height="18"/>
         </g>
 
-        <!-- step 2: spoofed SYN-ACK back to the client -->
-        <g class="hot" tabindex="0" role="button" aria-label="Step 2: the ClientNIC returns a spoofed SYN-ACK to the client at once">
+        <!-- step 2: forged SYN-ACK back to the client -->
+        <g class="hot" tabindex="0" role="button" aria-label="Step 2: the ClientNIC returns a forged SYN-ACK to the client at once">
           <path class="halo" d="M196 78 L146 78"/>
           <path class="wire sv-link" d="M196 78 L146 78" stroke-dasharray="4 3"/>
           <path class="wire sv-link" d="M156 74 l-10 4 10 4"/>
           <path class="hit" d="M196 78 L146 78"/>
           <text class="num sv-note" x="196" y="202">2</text>
-          <text class="cap sv-note" x="210" y="202">spoofed SYN-ACK returns at once</text>
+          <text class="cap sv-note" x="210" y="202">forged SYN-ACK returns at once</text>
           <rect class="hit-box" x="196" y="190" width="215" height="18"/>
         </g>
 
@@ -387,16 +409,41 @@
       </svg>
       <p class="fig-hint">hover or tab through a step below the line — the leg it happens on lights up</p>
       <figcaption><b>Figure 1 — the path under test</b>
-      All four VMs share one AWS VPC and are genuinely ~1.5 ms apart, so the distance is
-      injected: each middle machine holds packets leaving its middle-leg port for
-      <code>NETEM_RTT_MS / 2</code> = 50 ms, giving a 100 ms modelled round trip on the
-      ClientNIC↔ServerNIC leg. §3 measures why that placement is not cosmetic.</figcaption>
+      Client and server are untouched: every behaviour change lives in the two middle
+      machines. The long-distance portion sits <em>between</em> the two NICs, which is where
+      it would be in a real deployment. The distance is not real: all four VMs share one AWS
+      VPC and are genuinely ~1.5 ms apart, so the run injects the delay itself — each middle
+      machine holds packets leaving its middle-leg port for <code>NETEM_RTT_MS / 2</code> =
+      50 ms, giving a 100 ms modelled round trip. Section 4 shows why that placement is not
+      a cosmetic choice.</figcaption>
     </figure>
 
+    <h3 style="margin-top:34px;">The packet flow, in five steps</h3>
+    <ul class="plain">
+      <li><strong>ClientNIC sees the SYN</strong> → invents an initial sequence number and
+      answers the client with a forged SYN-ACK straight away.</li>
+      <li><strong>ClientNIC forwards the same SYN onward</strong>, with that invented number
+      written into the unused ack number field of its TCP header — so the SYN itself carries
+      the information the far side needs, and the two NICs need no channel of their own.</li>
+      <li><strong>ServerNIC reads and stores the invented number</strong> as the SYN passes,
+      then lets the SYN continue to the server untouched.</li>
+      <li><strong>The server's genuine SYN-ACK arrives at the ServerNIC</strong> → it
+      subtracts the two numbers to get a fixed offset, and drops the SYN-ACK, since the
+      client was answered long ago. From here it rewrites the ack number of every
+      client-to-server packet and the sequence number of every server-to-client packet.</li>
+      <li><strong>Client data that arrives before that offset is known is buffered</strong>
+      per connection and released the moment it is. <strong>This buffer is the crux of the
+      whole result</strong>: whether it costs anything depends entirely on whether the
+      waiting overlaps something else useful.</li>
+    </ul>
   </section>
 
   <section>
-    <h2>2 &nbsp;Metrics and instrumentation</h2>
+    <h2>3 &nbsp;What has to be measured, and with what</h2>
+    <p>A single latency number cannot answer the question, because the design moves waiting
+    from one place to another and a summary statistic hides the move. Three quantities are
+    extracted independently, all from packet captures taken at the two endpoints — never
+    from the traffic generator's own self-reporting.</p>
 
     <div class="metrics">
       <div class="m">
@@ -404,10 +451,10 @@
         <dl>
           <dt>What</dt><dd>Client's SYN leaving the wire → client's first request byte
           leaving the wire. In plain TCP this is the window in which <code>connect()</code>
-          has not returned and the application is blocked, so it equals one round trip.</dd>
+          has not yet returned and the application is blocked, so it equals one round trip.</dd>
           <dt>Where</dt><dd>Client-side packet capture.</dd>
-          <dt>Why</dt><dd>The interval the spoofed SYN-ACK is built to collapse — the direct
-          test of the mechanism.</dd>
+          <dt>Why</dt><dd>It is precisely the interval the forged SYN-ACK is built to
+          collapse — the direct test of whether the mechanism works at all.</dd>
         </dl>
       </div>
       <div class="m">
@@ -416,7 +463,8 @@
           <dt>What</dt><dd>First SYN → last packet of the connection.</dd>
           <dt>Where</dt><dd>Client-side packet capture.</dd>
           <dt>Why</dt><dd>The only number a user feels. Unblocking early is worth nothing if
-          the reply lands at the same moment — this is where the buffering cost surfaces.</dd>
+          the reply still lands at the same moment — this is where the buffering cost would
+          show up.</dd>
         </dl>
       </div>
       <div class="m">
@@ -431,65 +479,85 @@
       </div>
     </div>
 
-    <h3 style="margin-top:38px;">Load generator</h3>
-    <ul class="plain">
-      <li><strong>Custom asyncio generator, not <code>iperf2</code>.</strong> The workload is
-      thousands of short connections; <code>iperf2</code> gives each one an OS thread, which
-      does not reach the 100,000-connection target. Each connection here is a task on one
-      event loop, so the ceiling is file descriptors rather than threads.</li>
-      <li><strong>Paced arrivals.</strong> Connection <em>i</em> starts at a fixed point on a
-      clock and the achieved rate is reported, so a run that collapses into a burst is
-      visible rather than mistaken for a latency result. Achieved rate matched the requested
-      500/s in both runs.</li>
-      <li><strong>The generator's clock is not trusted.</strong> Every number in this report
-      comes from the endpoint packet captures; the generator's only timing role is
-      <em>starting</em> connections, accurate to within 0.5 ms against a 100 ms effect.</li>
-      <li><strong>Throughput is not measured.</strong> One 1 KB request per connection makes
-      each flow a clean latency probe and leaves sustained transfer rate untested (§6).</li>
-    </ul>
+    <h3 style="margin-top:38px;">Why the traffic generator was rewritten</h3>
+    <p>Earlier runs used <code>iperf2</code>. It was replaced with a purpose-built
+    asynchronous generator, for two reasons — plus one thing that was given up.</p>
+    <ol class="num">
+      <li><p><strong>The test is thousands of short connections, not a few long ones.</strong>
+      <code>iperf2</code> gives every connection its own operating-system thread. The target
+      for this work is 100,000 connections at once, and no instance size runs 100,000
+      threads — it falls over on scheduling and memory before a single packet is sent. The
+      replacement runs each connection as a lightweight task on one event loop, so the limit
+      becomes open file descriptors instead of threads.</p></li>
+      <li><p><strong>Connections have to start on a schedule, not all at once.</strong> If
+      they all start together, each one's time includes waiting in line behind the others —
+      that measures how fast the middlebox can chew through a burst, not the round trip we
+      are actually asking about. The replacement starts connection <em>i</em> at a fixed
+      point on a clock and reports the rate it really achieved, so a run that collapses into
+      a burst is visible rather than mistaken for a latency result.</p></li>
+      <li><p><strong>What that cost us — two downsides, one of which survives.</strong></p>
+      <p><strong>Can you trust a tool we wrote ourselves?</strong> A well-known C benchmark
+      is credible on its own; ours is not. But we never ask the generator what time anything
+      happened. <code>tcpdump</code> runs on the client and on the server, and every number
+      in this report is computed from those captures — from packets on the wire. If the
+      generator's own clock were wrong, the results would not move. Its one real job is
+      <em>starting</em> connections at the right moments, and it does that to within half a
+      millisecond against a 100 ms effect. So this downside does not threaten the result.</p>
+      <p><strong>We stopped measuring throughput.</strong> Every connection now sends exactly
+      one 1 KB request, so nothing here tells you how fast a <em>large</em> transfer moves
+      through the translator. There is no defence for this one — it is a genuine hole, and
+      Section 7 lists it as such.</p></li>
+    </ol>
   </section>
 
   <section>
-    <h2>3 &nbsp;Where the emulated delay is placed</h2>
-    <ul class="plain" style="margin-top:0;">
-      <li>All four VMs sit in one AWS VPC, ~1.5 ms apart, so the 50–200 ms effect must be
-      emulated: each outgoing packet is held for a fixed delay before release.</li>
-      <li>The delay applies to packets <em>leaving</em> a machine, so the choice of machine
-      decides which part of the path is modelled as long — and that decides the
-      completion-time result.</li>
-      <li>Placing the whole delay on the server's egress gives a correct
-      <code>send_unlock</code> but makes a completion-time gain arithmetically impossible:
-      the server's SYN-ACK is the one packet the ServerNIC's buffer waits on, so delaying it
-      delays the release by exactly the amount the spoof saved.</li>
-    </ul>
+    <h2>4 &nbsp;Why the modelled network's geometry decides the answer</h2>
+    <p>All four machines sit in one datacentre, a genuine round trip apart of roughly
+    1.5 ms. The effect under study is 50–200 ms, so distance must be simulated: the kernel
+    is told to hold each outgoing packet for a fixed delay before releasing it to the
+    hardware. The subtlety is that such a delay applies to packets <em>leaving</em> a given
+    machine, so choosing which machine to slow down chooses which part of the path is
+    modelled as long.</p>
 
     <div class="aside">
       <div class="t">How the 100 ms is made: <code>netem</code>, 50 ms per side</div>
+      <p>Every interface has a <strong>qdisc</strong> — the kernel's outbound packet
+      scheduler, the last thing a packet passes on its way to the NIC. <strong>netem</strong>
+      is a qdisc that timestamps each packet, parks it in a timer queue, and releases it
+      <code>delay</code> later. Nothing is looped back or rewritten, and the application
+      cannot tell: it is pure waiting, inserted one layer below TCP.</p>
       <code class="cmd">loadgen → socket → TCP → qdisc (netem: hold 50 ms) → NIC → wire
 
 # run on each NIC VM's middle-leg interface (baseline stack)
 tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
       <ul>
-        <li><strong>netem</strong> is a qdisc — the kernel's outbound scheduler. It
-        timestamps each packet, parks it in a timer queue and releases it <code>delay</code>
-        later. Pure waiting, one layer below TCP; nothing is looped back or rewritten.</li>
-        <li><strong>50 ms per side.</strong> A packet crosses the ClientNIC↔ServerNIC leg
-        once each way and each NIC delays its own outbound side, so each holds
-        <code>NETEM_RTT_MS / 2</code>. Both stacks read that one parameter, so they cannot
-        drift apart.</li>
-        <li><strong><code>limit 1000000</code></strong> — netem's default 1000-packet queue
-        would overflow at this delay and flow count, manufacturing loss the model never
-        intended.</li>
-        <li><strong>The DPDK stack cannot use <code>tc</code></strong>: its middle-leg ports
-        are bound to <code>vfio-pci</code> and invisible to the kernel. Both forwarders take
-        <code>--wan-delay-us=50000</code> instead — a timestamped FIFO on middle-leg TX,
-        drained by the existing poll loop, computed from the same
-        <code>NETEM_RTT_MS</code>.</li>
+        <li><strong>Where 50 ms comes from.</strong> <code>NETEM_RTT_MS=100</code> is the
+        round trip we want to model. A packet crosses the ClientNIC↔ServerNIC leg once in
+        each direction, and each NIC delays its own outbound side, so each holds
+        <code>NETEM_RTT_MS / 2</code> = 50 ms. 50 ms out + 50 ms back = the 100 ms round
+        trip. Both stacks read that single parameter, so they cannot drift apart.</li>
+        <li><strong>Why any delay at all.</strong> The four VMs share one AWS VPC and are
+        genuinely ~1.5 ms apart. The effect under study is 50–200 ms, so at the real distance
+        the entire saving would be lost in noise.</li>
+        <li><strong>Why <code>limit 1000000</code>.</strong> netem's default queue is 1000
+        packets; at this delay and this many parallel flows it would overflow and tail-drop,
+        manufacturing packet loss the model never intended. The raised limit keeps it pure
+        delay.</li>
+        <li><strong>Why the DPDK stack cannot use it.</strong> Its middle-leg ports are
+        bound to <code>vfio-pci</code> and invisible to the kernel, so <code>tc</code> cannot
+        touch them. Both forwarders instead take <code>--wan-delay-us=50000</code> — a
+        timestamped FIFO on middle-leg TX, drained by the existing poll loop — computed from
+        the same <code>NETEM_RTT_MS</code> by <code>wan_delay_us()</code>.</li>
       </ul>
     </div>
 
+    <p style="margin-top:26px;">An earlier configuration placed the entire delay on the server's outbound traffic.
+    That is a defensible reading — the server is far away, so its replies take a long time —
+    and it produces a correct <code>send_unlock</code> result. But it also makes a
+    completion-time gain arithmetically impossible, and it took a careful look to see why.</p>
+
     <figure>
-      <svg viewBox="0 0 700 292" role="img" aria-label="Two panels contrasting delay placed on the server's replies against delay placed between the two NICs">
+      <svg viewBox="0 0 700 268" role="img" aria-label="Two panels contrasting delay placed on the server's replies against delay placed between the two NICs">
         <text class="sv-lab" x="14" y="20">(a) delay modelled on the server's replies — no completion-time gain possible</text>
 
         <line class="sv-lane" x1="120" y1="62" x2="600" y2="62"/>
@@ -520,44 +588,110 @@ tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
         <rect x="120" y="240" width="165" height="20" fill="var(--panel-2)" stroke="var(--rule)"/>
         <text class="sv-note" x="128" y="254">travelling the same distance, concurrently</text>
         <line class="sv-ev g" x1="285" y1="238" x2="285" y2="262"/>
-        <text class="sv-note g" x="120" y="282">offset known exactly as the data arrives — buffer costs nothing</text>
+        <text class="sv-note g" x="293" y="254">offset known exactly as the data arrives — buffer costs nothing</text>
       </svg>
       <figcaption><b>Figure 2 — the same design, two models of where the distance lies</b>
-      In (a) the SYN-ACK pays the entire modelled distance, so the release is delayed by
-      precisely the amount the spoof saved and end-to-end timing is unchanged. In (b) the
-      data and the offset-revealing reply travel concurrently, so the buffer empties on
-      arrival and the saving survives to the end of the connection.</figcaption>
+      The ServerNIC cannot release the client's data until the server's genuine SYN-ACK
+      reveals the sequence offset. In (a) that SYN-ACK is the one packet paying the entire
+      modelled distance, so the release is delayed by precisely the amount the forgery
+      saved, and end-to-end timing is unchanged. In (b) the data and the offset-revealing
+      reply travel concurrently, so the buffer empties on arrival and the saving survives to
+      the end of the connection.</figcaption>
     </figure>
 
-    <p style="margin-top:30px;">The general condition: completion time improves only if the
+    <p style="margin-top:30px;">Stated generally: completion time improves only if the
     ServerNIC learns the sequence offset <em>before</em> the client's data would otherwise
-    have arrived. All four endpoint placements fail it structurally, not by tuning.</p>
+    have arrived. All four possible endpoint placements fail that condition, and the failure
+    is structural rather than a matter of tuning.</p>
 
-    <h3 style="margin-top:34px;">Configuration measured here</h3>
+    <div class="tw wide">
+      <table>
+        <thead>
+          <tr><th>Where the distance is modelled</th><th>Blocking time</th><th>Completion time</th><th>Reason</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="metric">Server's outgoing traffic</td>
+            <td><span class="win">removed</span></td>
+            <td><span class="no">no change</span></td>
+            <td>The offset arrives exactly one round trip late, by construction</td>
+          </tr>
+          <tr>
+            <td class="metric">Client's outgoing traffic</td>
+            <td><span class="no">no change</span></td>
+            <td><span class="no">no change</span></td>
+            <td>The SYN pays the delay before the NIC can forge anything</td>
+          </tr>
+          <tr>
+            <td class="metric">Split across both endpoints</td>
+            <td><span class="flat">half removed</span></td>
+            <td><span class="no">no change</span></td>
+            <td>Halves the forgery's benefit; the release is still late</td>
+          </tr>
+          <tr>
+            <td class="metric">Server's incoming traffic</td>
+            <td><span class="win">removed</span></td>
+            <td><span class="no">no change</span></td>
+            <td>The released data pays the same delay a second time</td>
+          </tr>
+          <tr class="headline">
+            <td class="metric">Between the two NICs</td>
+            <td><span class="win">removed</span></td>
+            <td><span class="win">removed</span></td>
+            <td>Waiting and travelling happen at the same time</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin-top:24px;" class="fine">This is not a convenient choice of parameter.
+    The link between the two NICs is where the distance genuinely lies in the deployment the
+    design targets — one NIC beside the client, one beside the server, and the wide area
+    between them. The earlier configuration modelled the network incorrectly, and the
+    baseline is measured under the identical model, so neither stack is advantaged.</p>
+
+    <h3 style="margin-top:34px;">What was actually changed</h3>
     <ul class="plain">
-      <li><strong>Both endpoints carry no artificial delay.</strong> Client and server run a
-      clean qdisc; the harness reads it back and fails the run if netem is attached to
-      either.</li>
-      <li><strong>The whole modelled distance sits on the ClientNIC↔ServerNIC leg</strong> —
-      50 ms held by each NIC on its own outbound side, via <code>tc netem</code> on the
-      baseline stack and the in-forwarder queue on the DPDK stack.</li>
-      <li><strong>The server's real SYN-ACK pays no emulated distance</strong>, matching the
-      target topology: the server sits beside the ServerNIC, so its reply crosses one local
-      hop and is dropped there by the translator. It never traverses the wide area.</li>
-      <li><strong>The baseline runs under the identical delay model</strong>, from the same
-      <code>NETEM_RTT_MS</code> parameter, so neither stack is advantaged.</li>
+      <li><strong>Both endpoints were stripped of all artificial delay.</strong> The client
+      and the server now run with a clean qdisc, and the harness reads it back and fails the
+      run if any netem is still attached to either of them.</li>
+      <li><strong>The whole modelled distance moved onto the ClientNIC↔ServerNIC leg</strong>
+      — 50 ms held by each NIC on its own outbound side, by <code>tc netem</code> on the
+      baseline stack and by the in-forwarder queue on the DPDK stack.</li>
+      <li><strong>The consequence for the SYN-ACK is the point of the whole exercise.</strong>
+      The server's real SYN-ACK no longer pays any emulated distance: in the topology being
+      modelled the server sits right next to the ServerNIC, so its reply crosses one local
+      hop and is dropped there by the translator. It never travels the wide area at all.
+      Charging it a full wide-area crossing — which is exactly what putting the delay on the
+      server's egress did — was modelling a journey that this packet does not make, and it
+      was the reason the offset always arrived one round trip late.</li>
+      <li><strong>The 0-RTT logic itself was not touched.</strong> Forging, stamping,
+      buffering and translating are the same code that produced the earlier flat result;
+      what was added is the delay queue that models the wide area, and what changed is
+      which link it sits on.</li>
     </ul>
   </section>
 
   <section>
-    <h2>4 &nbsp;Results</h2>
-    <ul class="plain" style="margin-top:0;">
-      <li>Both stacks run back to back, identical parameters: 2000 connections at 500/s
-      across four ports, 1 KB per connection, 100 ms modelled round trip.</li>
-      <li>One run per stack, 2026-08-08; the statistics below describe variation
-      <em>within</em> those runs. Run-to-run variance is unmeasured — a 101 ms effect against
-      a ~1 ms spread leaves the direction certain but not the third decimal.</li>
-    </ul>
+    <h2>5 &nbsp;Results</h2>
+    <p>Both stacks were run back to back with identical parameters: 2000 connections
+    arriving at 500 per second across four ports, one kilobyte of request per connection,
+    100 ms of modelled round trip. Every connection succeeded on both stacks, and the
+    achieved arrival rate matched the requested rate, so neither run degraded into a burst.</p>
+
+    <div class="aside">
+      <div class="t">How much data this is — read the statistics accordingly</div>
+      <p><strong>One run per stack</strong> under this configuration: a single 2000-connection
+      baseline run and a single 2000-connection 0-RTT run, on 2026-08-08. Everything below is
+      computed over the 2000 connections <em>inside</em> those two runs.</p>
+      <p>So the mean, median, 99th percentile and worst case describe how much connections
+      varied <em>within</em> a run — which is what shows whether the saving is uniform or
+      carried by an average. They say nothing about run-to-run variation: nobody has yet
+      repeated the pair to see how much the numbers move between runs. Given an effect of
+      101 ms against a spread of about 1 ms across 2000 connections, the direction of the
+      result is not in doubt; the third decimal place is not yet earned. Repeated pairs are
+      the obvious cheap next step.</p>
+    </div>
 
     <div class="tw wide">
       <table>
@@ -643,68 +777,106 @@ tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
         <text class="sv-note g" x="546" y="222" text-anchor="middle">100 ms genuinely absent from the connection</text>
       </svg>
       <figcaption><b>Figure 3 — a typical connection on each stack</b>
-      Both pay the same modelled network. Plain TCP spends its first round trip blocked in
-      <code>connect()</code>; the 0-RTT connection spends the same interval delivering the
-      request, and finishes when plain TCP is halfway.</figcaption>
+      Both pay the same modelled network. Plain TCP spends its first round trip waiting for
+      permission to speak; the 0-RTT connection spends the same interval delivering the
+      request, and finishes when plain TCP is only halfway.</figcaption>
     </figure>
 
-    <h3 style="margin-top:34px;">Control: the server-side gap</h3>
-    <ul class="plain" style="margin-top:16px;">
-      <li><strong>Plain TCP: 101.5 ms.</strong> The server sends its SYN-ACK then waits a
-      full round trip for the client's reply, so the gap <em>is</em> the round trip.</li>
-      <li><strong>0-RTT: 0.259 ms.</strong> The request had already crossed the distance
-      during the handshake and was parked at the ServerNIC, reaching the server as soon as
-      the offset was known — the buffering overlaps the journey rather than adding to it.</li>
-    </ul>
+    <h3 style="margin-top:34px;">The control confirms the mechanism rather than a coincidence</h3>
+    <p>The clearest evidence that the buffering genuinely overlaps the journey — rather than
+    the saving arising some other way — is the server-side gap. In plain TCP the server
+    sends its SYN-ACK and then waits a full round trip for the client to react and reply, so
+    the gap <em>is</em> the round trip: 101.5 ms. Under 0-RTT the same gap is
+    <strong>0.259 ms</strong>. The request did not travel after the SYN-ACK; it was already
+    waiting a few metres away, having crossed the distance during the handshake, and reached
+    the server almost the instant the offset became known.</p>
   </section>
 
   <section>
-    <h2>5 &nbsp;What the results establish</h2>
+    <h2>6 &nbsp;What this means for the goal</h2>
+    <p>The project's aim was to remove one round trip from connection setup. Two distinct
+    claims follow from that aim, and they are worth keeping apart because only one of them
+    was ever in doubt.</p>
     <ul class="plain">
-      <li><strong>The application stops waiting a round trip early</strong> — 101.3 ms
-      across 2000 connections, 99th percentile under half a millisecond. This follows
-      directly from the spoofed SYN-ACK.</li>
-      <li><strong>The connection also finishes a round trip earlier</strong> — 101.9 ms,
-      holding through the median, 99th percentile and worst case. This is the claim the
-      design could have failed: the ServerNIC's buffering is a real cost and could have
-      consumed the whole saving. It does not, under the modelled topology.</li>
-      <li><strong>Each NIC must sit beside its own endpoint.</strong> The ServerNIC's buffer
-      releases only when the server's SYN-ACK arrives, so a ServerNIC↔server distance
-      <em>d</em> costs <strong>2 × <em>d</em></strong> straight out of the saving — here
-      <em>d</em> ≈ 0 (same LAN), so the buffer costs nothing. Symmetrically, a ClientNIC away
-      from the client delays its spoofed SYN-ACK and nothing unblocks early.</li>
-      <li><strong>Endpoint-side delay placement cancels the completion-time gain</strong>
-      exactly (§3, Figure 2). Because the ServerNIC's release is gated on the server's
-      SYN-ACK, any model that charges that one packet the modelled distance makes the
-      buffer's cost equal the spoof's saving. This is a property of the measurement setup,
-      not of the implementation.</li>
+      <li><strong>The application stops waiting a round trip early.</strong> This follows
+      directly from the forged SYN-ACK and was never seriously in question; it is confirmed
+      here at 101.3 ms across 2000 connections, with the 99th percentile under half a
+      millisecond.</li>
+      <li><strong>The connection also finishes a round trip earlier.</strong> This is the
+      claim that matters to a user, and it is the one the design could plausibly have failed
+      — the server-side buffering is a real cost and could have consumed the entire saving.
+      It does not: completion time falls by 101.9 ms, and the saving holds through the
+      median, the 99th percentile and the worst case, not merely on average.</li>
+      <li><strong>The ServerNIC has to be near the server.</strong> Not near the client —
+      near the <em>server</em>. Mechanically:
+      <ul>
+        <li>The ServerNIC is holding the client's data, and cannot release it until it knows
+        the sequence offset.</li>
+        <li>It learns that offset from <strong>the server's real SYN-ACK</strong>. So the
+        release time is set by how long the server takes to answer — that is, by the
+        ServerNIC↔server distance, call it <em>d</em>.</li>
+        <li>In this experiment <em>d</em> ≈ 0, since the two share a LAN. The client's data
+        arrives at the ServerNIC at <strong>t = 50 ms</strong>, one WAN crossing; the SYN
+        arrives at the same moment, the server replies instantly, and the SYN-ACK is back at
+        <strong>t ≈ 50 ms</strong>. Both land together, so the buffer holds for ~0 and costs
+        nothing.</li>
+        <li>Move the ServerNIC 20 ms away from the server and the SYN needs 20 ms more to
+        reach it and the SYN-ACK 20 ms to come back: the offset is known at t = 90 ms, while
+        the data has been sitting there since t = 50. <strong>The buffer now costs
+        2 × <em>d</em> = 40 ms</strong>, straight out of the saving.</li>
+      </ul>
+      The same argument puts the ClientNIC beside the client — otherwise its forged SYN-ACK
+      takes real time to come back and nothing unblocks early. Each NIC beside its own
+      endpoint, the distance between them: quote the result with that condition attached.</li>
     </ul>
+    <h3 style="margin-top:34px;">The other result is about measurement, and it travels further</h3>
+    <p>The implementation was correct the whole time. It was measured under a network model
+    that looked perfectly reasonable — <em>the server is far away, so make the server
+    slow</em> — and under that model the metric that mattered showed exactly zero benefit.</p>
+    <p>Nothing looked broken. Every check passed, all 2000 connections succeeded, the
+    analysis code was fine. The number was simply flat — and a flat number reads as
+    <em>the idea does not work</em>.</p>
+    <p>What had actually happened is that the model slowed down the one packet the design
+    waits on. The ServerNIC releases its buffered data when the server's SYN-ACK arrives;
+    the model had made that exact SYN-ACK pay the full modelled distance. So the time the
+    forgery saved and the time the buffer spent waiting were <em>the same time</em>, and
+    they cancelled.</p>
+    <p>No summary statistic can show you that. It only became visible by asking, metric by
+    metric, <strong>which single packet decides this number?</strong> — and then checking
+    whether the model had put a delay on that packet. That question is worth asking of any
+    middlebox measurement.</p>
   </section>
 
   <section>
-    <h2>6 &nbsp;Limitations and open questions</h2>
+    <h2>7 &nbsp;Limitations and open questions</h2>
     <ul class="plain">
-      <li><strong>The distance is emulated.</strong> Constant delay, no jitter, reordering
-      or loss; a real wide-area path has all four. A cross-region deployment is the natural
-      next step.</li>
-      <li><strong>Standard TCP extensions are disabled.</strong> Timestamps, SACK and window
-      scaling are off, because the translator does not rewrite TCP options. Without SACK a
-      lost segment has no fast-recovery path and waits for an RTO — so these results model
-      production TCP only loosely.</li>
-      <li><strong>Throughput is not measured.</strong> 1 KB per connection leaves sustained
-      transfer rate through the translator untested. An earlier observation suggested
-      per-connection throughput may be well below the kernel's; a design that saves a round
-      trip but costs bandwidth is not obviously a win.</li>
-      <li><strong>The run pair has not been repeated.</strong> One baseline run and one
-      0-RTT run; run-to-run variance is unmeasured. Read the headline as "about one round
-      trip". Repeating the pair is cheap and is the first thing to do.</li>
-      <li><strong>Scale is not demonstrated.</strong> 2000 connections here against a
-      100,000 target, at which point a single forwarding core's ability to absorb arrival
-      bursts binds before latency does.</li>
-      <li><strong>A latency outlier is unexplained.</strong> An earlier run showed a small
-      fraction of connections finishing several hundred ms late, consistent with a lost
-      segment paying the minimum RTO. It did not recur here; a retransmission counter
-      reading would settle it.</li>
+      <li><strong>The distance is emulated, not real.</strong> The model applies constant
+      delay with no jitter, reordering or loss. A real wide-area path has all four, and loss
+      in particular interacts badly with this design — see the next point. A cross-region
+      deployment is the natural next step.</li>
+      <li><strong>Standard TCP extensions are disabled.</strong> Timestamps, selective
+      acknowledgement and window scaling are switched off, because the translator does not
+      rewrite TCP options and the endpoints must therefore not negotiate them. Without
+      selective acknowledgement a single lost segment has no fast-recovery path and must wait
+      for a retransmission timeout. This limits how closely the results model production TCP.</li>
+      <li><strong>Throughput is not measured.</strong> Every connection carries one kilobyte,
+      which makes each flow a clean latency probe but leaves sustained transfer rate through
+      the translator untested. An earlier observation suggested per-connection throughput
+      might be substantially below the kernel's, and that question remains open — a design
+      that saves a round trip but costs bandwidth is not obviously a win.</li>
+      <li><strong>The run pair has not been repeated.</strong> These numbers come from one
+      baseline run and one 0-RTT run. The per-connection spread within them is small, but
+      run-to-run variance is unmeasured, so the headline should be read as "about one round
+      trip", not as three decimal places. Repeating the pair a handful of times is cheap and
+      is the first thing to do.</li>
+      <li><strong>Scale is not yet demonstrated.</strong> These results are 2000 connections.
+      The target is 100,000, at which point the ability of a single forwarding core to absorb
+      arrival bursts becomes the binding constraint rather than latency.</li>
+      <li><strong>A latency outlier remains unexplained.</strong> An earlier run showed a
+      small fraction of connections finishing several hundred milliseconds late, consistent
+      with a lost segment paying the minimum retransmission timeout. It did not recur in
+      these runs, but one clean run is not evidence of absence, and a single
+      retransmission counter reading would settle it.</li>
     </ul>
   </section>
 
