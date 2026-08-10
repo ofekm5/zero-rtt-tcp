@@ -27,13 +27,13 @@ on:
         description: "measurement rounds (CONNECTIONS; default: runner's own)"
         default: ""
       iperf_parallel:
-        description: "parallel TCP connections per round (IPERF_PARALLEL, default 100000)"
+        description: "parallel TCP connections per round (LOAD_PARALLEL, default 100000)"
         default: ""
       iperf_ports:
-        description: "server ports to spread load across (IPERF_PORTS, default 4)"
+        description: "server ports to spread load across (LOAD_PORTS, default 4)"
         default: ""
       iperf_timeout:
-        description: "seconds per round before SSM gives up (IPERF_TIMEOUT, default 1800)"
+        description: "seconds per round before SSM gives up (LOAD_TIMEOUT, default 1800)"
         default: ""
       pull_node_logs:
         description: "best-effort: pull full /tmp/*.log from each VM via SSM after the run"
@@ -87,9 +87,9 @@ jobs:
         run: |
           chmod +x experiments/${{ steps.cfg.outputs.exp_dir }}/run_experiment.sh
           if [ -n "${{ inputs.connections }}" ];    then export CONNECTIONS='${{ inputs.connections }}'; fi
-          if [ -n "${{ inputs.iperf_parallel }}" ]; then export IPERF_PARALLEL='${{ inputs.iperf_parallel }}'; fi
-          if [ -n "${{ inputs.iperf_ports }}" ];    then export IPERF_PORTS='${{ inputs.iperf_ports }}'; fi
-          if [ -n "${{ inputs.iperf_timeout }}" ];  then export IPERF_TIMEOUT='${{ inputs.iperf_timeout }}'; fi
+          if [ -n "${{ inputs.iperf_parallel }}" ]; then export LOAD_PARALLEL='${{ inputs.iperf_parallel }}'; fi
+          if [ -n "${{ inputs.iperf_ports }}" ];    then export LOAD_PORTS='${{ inputs.iperf_ports }}'; fi
+          if [ -n "${{ inputs.iperf_timeout }}" ];  then export LOAD_TIMEOUT='${{ inputs.iperf_timeout }}'; fi
           set +e
           ./experiments/${{ steps.cfg.outputs.exp_dir }}/run_experiment.sh 2>&1 | tee /tmp/experiment.log
           RC=${PIPESTATUS[0]}

@@ -139,6 +139,19 @@ class SmartNicsStack(Stack):
             actions=["ssm:GetParameter"],
             resources=["arn:aws:ssm:eu-central-1:*:parameter/zero-rtt/*"],
         ))
+        # GitHub PAT for cloning the private repo lives in Secrets Manager
+        # (nanoclaw/github-token) — the legacy SSM parameter token is expired,
+        # so the user-data clone fails at boot and the VMs come up with no repo.
+        # The experiment orchestrators clone on demand to self-heal that, but
+        # only if the instance role can actually read the secret. Without this
+        # grant the baseline stack cannot run any experiment at all; the DPDK
+        # stack has carried the same statement since the token was rotated.
+        role.add_to_policy(iam.PolicyStatement(
+            actions=["secretsmanager:GetSecretValue"],
+            resources=[
+                "arn:aws:secretsmanager:eu-central-1:*:secret:nanoclaw/github-token*"
+            ],
+        ))
 
         # ── Security groups ───────────────────────────────────────────────────────
         def make_sg(name, desc):

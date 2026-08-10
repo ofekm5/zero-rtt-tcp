@@ -34,7 +34,7 @@ struct pkt_buffer {
     uint16_t len;
 };
 
-/* Per-flow connection state (ServerNIC is the sole translator under T8) */
+/* Per-flow connection state (ServerNIC is the sole translator) */
 struct flow_entry {
     struct flow_key key;
     int             occupied;

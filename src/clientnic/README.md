@@ -78,7 +78,7 @@ src/clientnic/
 │   │       ├── translator.py         # Seq/ack rewriting + checksum recalc
 │   │       └── logger.py             # Logging setup
 │   └── tests/
-└── dpdk-forwarder/           # C/DPDK T8 variant: spoof + stamp V + transparent forward (live implementation)
+└── dpdk-forwarder/           # C/DPDK forwarder: spoof + stamp V + transparent forward (live implementation)
 ```
 
 ## Tests

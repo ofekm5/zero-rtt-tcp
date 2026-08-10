@@ -16,8 +16,8 @@ result in chat, and investigate any failures.
 
 > "Which experiment should I run?
 > 1. **Scapy** (AWS) — 0-RTT, Python/Scapy AF_PACKET (`experiments/scapy/run_experiment.sh`)
-> 2. **DPDK** (AWS) — 0-RTT T8, C/DPDK forwarder + translator (`experiments/dpdk/run_experiment.sh`)
-> 3. **Proxmox** — 0-RTT T8 DPDK on the RUNS lab via SSH gateway (`experiments/proxmox/run_experiment.sh`)
+> 2. **DPDK** (AWS) — 0-RTT, C/DPDK forwarder + translator (`experiments/dpdk/run_experiment.sh`)
+> 3. **Proxmox** — 0-RTT DPDK on the RUNS lab via SSH gateway (`experiments/proxmox/run_experiment.sh`)
 > 4. **Baseline** (AWS) — plain TCP, kernel forwarding, no middleware (`experiments/baseline-tcp/run_experiment.sh`)"
 
 Set variables based on the answer:
@@ -78,19 +78,28 @@ Per-node startup is delegated to scripts via the transport. Shared scripts live 
 | ClientNIC | `experiments/dpdk/clientnic.sh <GW_MAC>` | `$1` = ServerNIC eth1 MAC; `SKIP_BUILD=1` (core builds explicitly) |
 | Client | `iperf2 -c` via `run_ttfb_measurement` (`measure.sh`) | `experiments/nodes/client.sh` has an interactive `read` loop — never used for automation |
 
-**Load generator: iperf2 only.** An `iperf3` binary shadowing `iperf` is rejected by
-an explicit guard on client and server. Two knobs (defined in `measure.sh`, override
-via env):
-- **`IPERF_PARALLEL`** (default 100000) — total parallel TCP connections per round.
-- **`IPERF_PORTS`** (default 4) — contiguous server ports `[8080 .. 8080+N-1]` the
-  load is spread across. The server runs one `iperf -s` per port; the client runs one
-  `iperf -c -p <port> -P <IPERF_PARALLEL/IPERF_PORTS>` per port, concurrently.
+**Load generator: `experiments/utils/loadgen.py`** — a single-thread asyncio
+(epoll-driven) TCP generator. iperf has been removed; it was thread-per-connection
+and had no arrival pacing. Knobs (defined in `measure.sh`, override via env):
+- **`LOAD_PARALLEL`** (default 100000) — total TCP connections per round.
+- **`LOAD_PORTS`** (default 4) — contiguous server ports `[8080 .. 8080+N-1]` the
+  load is spread across, round-robin. One asyncio process serves all of them.
+- **`LOAD_RATE`** (default 2000 conn/s) — **arrival pacing**. Connections are
+  spawned on a schedule rather than all at once, so per-connection latency reflects
+  the network path instead of queueing behind the batch. `LOAD_RATE=0` restores the
+  burst; that is a capacity run, not a latency run (see `run_stress.sh`).
+- **`LOAD_BYTES`** (default 1024) — payload per connection. One segment, so flow
+  completion time is dominated by the handshake 0-RTT shortens, not by transfer.
+- **`LOAD_CONCURRENCY`** (default 2000) — in-flight connection ceiling.
+
+`LOAD_RATE` sets a wall-clock floor of `LOAD_PARALLEL / LOAD_RATE` seconds per round
+that `LOAD_TIMEOUT` must clear; `run_ttfb_measurement` warns when it does not.
 
 Spreading across multiple destination ports is what makes 100000 connections from a
 single client IP actually openable: each `(dst-ip, dst-port)` tuple has its own ~28K
 usable ephemeral-port space, so 4 ports × 25000 clears the per-port ceiling. The
 0-RTT data plane must cover the same range — both DPDK binaries take **`--port-count`**
-(default 1; the runner passes `IPERF_PORTS`), and iptables/tcpdump filters use the
+(default 1; the runner passes `LOAD_PORTS`), and iptables/tcpdump filters use the
 port range. `CONNECTIONS` controls how many sequential rounds run (default 1, since
 one round already opens 100000). Scapy is pinned to single-port/low-parallel (legacy
 Python data plane can't sustain this).
@@ -226,20 +235,20 @@ setsid bash experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &
 # 2a. ServerNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
 setsid python3 src/servernic/scapy/main.py --client-iface eth0 --server-iface eth1 \
     < /dev/null >> /tmp/servernic.log 2>&1 &
-# 2b. ServerNIC — DPDK T8 translator
+# 2b. ServerNIC — DPDK translator
 CLIENTNIC_GW_MAC=<cnic-eth1-mac> SERVER_GW_MAC=<server-eth0-mac> MIDDLE_ENI_MAC=<snic-eth1-mac> \
     SKIP_BUILD=1 setsid bash experiments/dpdk/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &
 
 # 3a. ClientNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
 setsid python3 src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
-# 3b. ClientNIC — DPDK T8 forwarder (GW_MAC = ServerNIC eth1 MAC)
+# 3b. ClientNIC — DPDK forwarder (GW_MAC = ServerNIC eth1 MAC)
 SKIP_BUILD=1 setsid bash experiments/dpdk/clientnic.sh <GW_MAC> < /dev/null >> /tmp/clientnic.log 2>&1 &
 
-# 4. Client — iperf2, 100000 parallel conns spread across 4 ports (25000 each), 1M
+# 4. Client — 100000 conns across 4 ports, paced at 2000/s, 1 KB each
 ulimit -n 1048576
-for p in 8080 8081 8082 8083; do
-    iperf -c <server-ip> -p "$p" -P 25000 -n 1M -f m &
-done; wait
+python3 experiments/utils/loadgen.py --mode client --host <server-ip> \
+    --port 8080 --port-count 4 --parallel 100000 --bytes 1024 \
+    --rate 2000 --concurrency-limit 2000
 ```
 
 ### Pre-flight checks

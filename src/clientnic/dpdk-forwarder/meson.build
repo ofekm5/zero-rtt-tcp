@@ -16,6 +16,7 @@ sources = files(
     'packet_processor.c',
     'forwarder.c',
     'pipeline.c',
+    'wan_delay.c',
 )
 
 executable('clientnic-dpdk-forwarder', sources,

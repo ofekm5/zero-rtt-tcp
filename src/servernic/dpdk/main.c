@@ -12,6 +12,7 @@
 #include <rte_mempool.h>
 
 #include "pipeline.h"
+#include "wan_delay.h"
 #include "log.h"
 
 #define MBUF_CACHE_SIZE 250
@@ -20,9 +21,12 @@
 #define TX_RING_SIZE    1024   /* must match io.c */
 /* NUM_MBUFS ≥ nb_ports * (nb_rxd + nb_txd + max_burst + nb_lcores * cache),
  * derived instead of a bare magic number so a third port or deeper ring can't
- * silently push headroom under the minimum (capacity-model.md §3). */
+ * silently push headroom under the minimum (capacity-model.md §3).
+ * WAN_DELAY_RING is added on top: with --wan-delay-us set, that many mbufs can
+ * be held in the emulated-WAN queue and are unavailable to the RX path. */
 #define MBUF_POOL_SIZE  (RTE_MAX((unsigned)(2 * (RX_RING_SIZE + TX_RING_SIZE + \
-                                 RX_BURST_SIZE + MBUF_CACHE_SIZE)), 8191U))
+                                 RX_BURST_SIZE + MBUF_CACHE_SIZE)), 8191U) \
+                         + (unsigned)WAN_DELAY_RING)
 #define STATS_INTERVAL_SEC 5   /* seconds between periodic per-port stats logs */
 
 static volatile int running = 1;
@@ -117,6 +121,7 @@ int main(int argc, char *argv[])
     uint8_t  server_port_mac[6] = {0};  /* local: our Server-facing ENI    */
     int      client_port_mac_set = 0;
     int      server_port_mac_set = 0;
+    uint32_t wan_delay_us = 0;          /* emulated WAN on the middle leg */
 
     static struct option long_opts[] = {
         {"port",             required_argument, NULL, 'p'},
@@ -125,11 +130,12 @@ int main(int argc, char *argv[])
         {"server-mac",       required_argument, NULL, 'G'},
         {"client-port-mac",  required_argument, NULL, 'c'},
         {"server-port-mac",  required_argument, NULL, 's'},
+        {"wan-delay-us",     required_argument, NULL, 'D'},
         {NULL, 0, NULL, 0}
     };
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "p:n:g:G:c:s:", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "p:n:g:G:c:s:D:", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'p':
             app_port = (uint16_t)atoi(optarg);
@@ -167,11 +173,15 @@ int main(int argc, char *argv[])
             }
             server_port_mac_set = 1;
             break;
+        case 'D':
+            wan_delay_us = (uint32_t)strtoul(optarg, NULL, 10);
+            break;
         default:
             fprintf(stderr,
                     "Usage: %s [EAL opts] -- --port=PORT [--port-count=N]"
                     " --gw-mac=CLIENTNIC_GW_MAC --server-mac=SERVER_MAC"
-                    " --client-port-mac=MAC --server-port-mac=MAC\n", argv[0]);
+                    " --client-port-mac=MAC --server-port-mac=MAC"
+                    " [--wan-delay-us=N]\n", argv[0]);
             return 1;
         }
     }
@@ -247,7 +257,7 @@ int main(int argc, char *argv[])
     LOG_INFO("Port map: ClientNIC-facing=port %u, Server-facing=port %u",
              client_port_id, server_port_id);
 
-    if (eth1_init(&eth1, client_port_id, mbuf_pool, gw_mac) < 0)
+    if (eth1_init(&eth1, client_port_id, mbuf_pool, gw_mac, wan_delay_us) < 0)
         return 1;
     if (eth2_init(&eth2, server_port_id, mbuf_pool, server_mac) < 0)
         return 1;
@@ -297,6 +307,12 @@ int main(int argc, char *argv[])
             rte_pktmbuf_free(rx_bufs2[i]);
         }
 
+        /* Release any middle-leg packets whose emulated WAN hold has expired.
+         * Unconditional: it is a no-op without --wan-delay-us, and skipping it
+         * on idle iterations would stall the queue exactly when there is no
+         * new traffic to piggyback on. */
+        eth1_wan_service(&eth1);
+
         /* Flush both TX batches once per loop iteration — amortizes the MMIO
          * doorbell write over up to TX_BATCH_SIZE packets instead of paying
          * it per packet (capacity-model.md §4/§9). */
@@ -338,11 +354,23 @@ int main(int argc, char *argv[])
                          ", packets=%" PRIu64 ", capacity-model §9/§12)",
                          (double)proc_cycles / (double)proc_packets,
                          rte_get_tsc_hz(), proc_packets);
+            if (wan_delay_enabled(&eth1.wan)) {
+                LOG_INFO("stats wan_delay: held=%u/%u released=%" PRIu64,
+                         wan_delay_count(&eth1.wan), WAN_DELAY_RING,
+                         eth1.wan.passed);
+                if (eth1.wan.dropped)
+                    LOG_WARN("stats wan_delay: dropped=%" PRIu64 " — the hold"
+                             " queue overflowed and manufactured packet loss,"
+                             " which invalidates FCT for this run. Raise"
+                             " WAN_DELAY_RING or lower the offered rate.",
+                             eth1.wan.dropped);
+            }
             next_stats = now + stats_period;
         }
     }
 
     LOG_INFO("Shutting down...");
+    eth1_wan_flush_all(&eth1);
     eth1_tx_flush(&eth1);
     eth2_tx_flush(&eth2);
     rte_eth_dev_stop(eth1.port_id);

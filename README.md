@@ -4,6 +4,11 @@ Proof-of-concept demonstrating **0-RTT TCP** — eliminating the 3-way handshake
 
 **Educational/demo use only. Not suitable for production.**
 
+📄 **[Results report — does the middlebox actually make connections faster?](https://claude.ai/code/artifact/882a2717-0bee-4c21-ba06-23f50921341a)**
+— measured 0-RTT vs plain TCP under a 100 ms emulated WAN, and why the WAN's placement decides
+the answer. Offline copy: [`docs/index.html`](docs/index.html) (open it locally, or enable GitHub
+Pages on `docs/` to serve it).
+
 ## Architecture
 
 ```
@@ -15,8 +20,8 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 | Component | Role |
 |-----------|------|
 | `src/client-app/` | Standard unmodified TCP client |
-| `src/clientnic/` | Core 0-RTT logic — intercepts SYN, sends spoofed SYN-ACK, stamps ISN in T8 mode |
-| `src/servernic/` | T8 mode: sole stateful translator (rewrites sequence numbers). Legacy Scapy mode: stateless forwarder |
+| `src/clientnic/` | Core 0-RTT logic — intercepts SYN, sends spoofed SYN-ACK, stamps ISN in live DPDK mode |
+| `src/servernic/` | Live DPDK mode: sole stateful translator (rewrites sequence numbers). Legacy Scapy mode: stateless forwarder |
 | `experiments/` | Experiment scripts and test reports |
 | `src/server-app/` | Standard unmodified TCP server |
 | `infra/` | AWS CDK stacks that provision the 4-VM topology |
@@ -51,7 +56,7 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
-The fields this project's translation logic touches directly: **Sequence Number** (rewritten server→client by `+= delta`), **Acknowledgment Number** (rewritten client→server by `-= delta`, and used by ClientNIC to stamp the spoofed ISN `V` in T8 mode), and **Checksum** (recalculated after every rewrite — see below).
+The fields this project's translation logic touches directly: **Sequence Number** (rewritten server→client by `+= delta`), **Acknowledgment Number** (rewritten client→server by `-= delta`, and used by ClientNIC to stamp the spoofed ISN `V` in live DPDK mode), and **Checksum** (recalculated after every rewrite — see below).
 
 ## Sequence Number Translation
 
@@ -102,39 +107,49 @@ cd infra/dpdk      # or infra/scapy
 
 Both scripts discover all 4 VMs via AWS SSM, pull latest code, rebuild if needed, start services in the correct order, run a client connection, capture packets, and validate 0-RTT behavior with `validate_0rtt_capture.py`. Exit code = number of failures.
 
-### iperf Stress Testing
+### Load Generation
 
-iperf (v2) is the traffic generator for load and stress testing. The 0-RTT translation layer is traffic-agnostic — iperf flows pass through ClientNIC unchanged.
+`experiments/utils/loadgen.py` is the traffic generator — a single-thread asyncio
+(epoll-driven) TCP client/server. The 0-RTT translation layer is traffic-agnostic;
+these flows pass through ClientNIC unchanged.
+
+iperf2 was the original generator and has been removed: `-P N` spawns N OS threads
+(25k threads/process at this project's scale is not viable), and it had no arrival
+pacing, so per-connection latency measured queueing rather than the network path.
 
 **Manual run (DPDK stack):** node scripts, in startup order:
 
 | Script | VM | What it does |
 |--------|----|--------------|
-| `experiments/nodes/server.sh` | Server | Starts `iperf -s` listeners on the port range |
-| `experiments/dpdk/servernic.sh` | ServerNIC | Builds + starts `servernic-dpdk` (T8 translator) |
+| `experiments/nodes/server.sh` | Server | Starts one asyncio listener across the port range |
+| `experiments/dpdk/servernic.sh` | ServerNIC | Builds + starts `servernic-dpdk` (translator) |
 | `experiments/dpdk/clientnic.sh` | ClientNIC | Builds + starts `clientnic-dpdk-forwarder` |
-| `experiments/nodes/client.sh` | Client | Auto-discovers server IP, drives iperf flows |
+| `experiments/nodes/client.sh` | Client | Auto-discovers server IP, drives load |
 
-**Test scenarios** (`src/client-app/iperf_client.sh`):
+**Load knobs** (`experiments/utils/measure.sh` is the single source of truth):
 
-| # | Scenario | Key flags | Purpose |
-|---|----------|-----------|---------|
-| 01 | Baseline single flow | `-t 10` | Throughput reference |
-| 02 | Sequential connections ×5 | `-t 5` ×5 loops | Repeated SYN / flow-table churn |
-| 03 | Parallel 4 streams | `-t 10 -P 4` | Moderate multi-stream load |
-| 04 | Parallel 16 streams | `-t 10 -P 16` | High multi-stream load |
-| 05 | Bulk 100 MB | `-n 100M` | Large transfer correctness |
-| 06 | Bulk 1 GB | `-n 1G` | Sustained seq-rewrite under bulk data |
-| 07 | Burst — 100 short conns | `-n 64K` ×100 loops | Hammers SYN path; most relevant to 0-RTT |
-| 08 | Simultaneous bidir | `-t 10 -d` | Full-duplex seq/ack rewriting |
-| 09 | Sequential bidir | `-t 10 -r` | Upload then download |
-| 10 | UDP flood 1 Gbps | `-u -b 1G -t 10` | NIC interrupt / buffer stress |
-| 11 | UDP flood 100 Mbps | `-u -b 100M -t 10` | Moderate UDP baseline |
-| 12 | Stress 32 streams / 60 s | `-t 60 -P 32` | Sustained high-concurrency load |
-| 13 | Large window 256 K | `-t 10 -w 256K` | Buffering under seq-number translation |
-| 14 | Large window 1 M | `-t 10 -w 1M` | Max-window buffering stress |
+| Knob | Default | Purpose |
+|------|---------|---------|
+| `LOAD_PARALLEL` | 100000 | Total TCP connections per round |
+| `LOAD_PORTS` | 4 | Contiguous server ports the load is spread across |
+| `LOAD_RATE` | 2000 conn/s | **Arrival pacing** — spreads SYNs so latency is measurable |
+| `LOAD_BYTES` | 1024 | One segment, so FCT ≈ handshake + 1 RTT |
+| `LOAD_CONCURRENCY` | 2000 | In-flight connection ceiling |
+| `LOAD_TIMEOUT` | 1800 s | Must exceed `LOAD_PARALLEL / LOAD_RATE` |
+| `NETEM_RTT_MS` | 100 | Emulated WAN RTT, applied on the **Server** egress only |
 
-Results are saved as text files in `/tmp/iperf_results/` on the Client VM, with a throughput summary printed at the end.
+### Two experiments, not one
+
+| Script | Question | Reads as |
+|--------|----------|----------|
+| `experiments/dpdk/run_experiment.sh` | Does 0-RTT remove one RTT? | Latency — `Send unlock` is the headline metric |
+| `experiments/dpdk/run_stress.sh` | Where does the data plane break? | Capacity — establishment success rate and throughput only |
+| `experiments/baseline-tcp/run_experiment.sh` | What does plain TCP cost? | The comparison point; same knobs, same endpoint setup |
+
+Fusing latency and capacity into one run answers neither: a burst makes every
+latency sample queue-dominated, and a success rate depressed by endpoint resource
+exhaustion says nothing about whether sequence-number translation is correct. See
+`experiments/measurement-methodology-review.md`.
 
 ## Quick Start (manual, on the VMs)
 
@@ -144,7 +159,7 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 # 1. Server VM
 ./experiments/nodes/server.sh
 
-# 2. ServerNIC VM — Scapy (deprecated, feasibility PoC only) or DPDK (T8 translator, live)
+# 2. ServerNIC VM — Scapy (deprecated, feasibility PoC only) or DPDK (translator, live)
 setsid python3 src/servernic/scapy/main.py < /dev/null >> /tmp/servernic.log 2>&1 &   # Scapy
 ./experiments/dpdk/servernic.sh                                                       # DPDK
 

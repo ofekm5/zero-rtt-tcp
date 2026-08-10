@@ -227,3 +227,162 @@ produced the result:
 finding. Confirm any failure against the forwarder/translator logs before
 touching data-plane code, and consider teaching the validator to separate
 "data-plane defect" from "I could not parse this" in its output.
+
+---
+
+## 2026-08-04 — First valid baseline-vs-0-RTT comparison: send_unlock drops a full RTT, FCT does not move
+
+**Source:** `experiments/baseline-tcp/reports/baseline-report-2026-08-04-200506.md`
+and the matching DPDK run, both at `LOAD_PARALLEL=2000 LOAD_RATE=500
+LOAD_PORTS=4 LOAD_BYTES=1024 NETEM_RTT_MS=100`, both 2000/2000 connections OK.
+First run using the shared `experiments/utils/endpoint.sh` setup, so the two
+stacks were configured by identical code.
+
+| Metric (mean) | Baseline | 0-RTT DPDK | Delta |
+|---|---|---|---|
+| `send_unlock` | 100.835 ms | **0.226 ms** | **-100.61 ms** |
+| `send_unlock` p99 | 101.354 ms | 0.421 ms | -100.93 ms |
+| `fct` | 201.636 ms | 201.546 ms | -0.09 ms |
+| `fct` max | 213.254 ms | 536.628 ms | +323 ms |
+| `server_gap` | 0.818 ms | 0.359 ms | -0.46 ms |
+
+**The mechanism works, exactly as specified.** `send_unlock` — first SYN out to
+first payload out — falls from one full emulated RTT to effectively zero. The
+spoofed SYN-ACK unblocks the client's `connect()` immediately; the saving is
+100.6 ms against a modelled 100 ms RTT, across 2000 flows with a p99 of 0.42 ms.
+
+**But flow completion time is unchanged**, and that is not a measurement
+artifact. `src/servernic/dpdk/syn_handler.c` buffers client→server packets in a
+PENDING flow entry and only flushes them once the *real* SYN-ACK arrives and the
+delta is known (the run logged 97 `buffered` / 79 `flushed`). The real SYN-ACK
+is delayed by the full server-egress RTT, so the client's data still cannot
+reach the server before t≈100 ms. 0-RTT does not remove the wait — **it relocates
+it from the client application to the ServerNIC.**
+
+That distinction is invisible unless `send_unlock` and `fct` are reported
+separately, which is why the metric split matters and why FCT alone was never
+going to show this.
+
+**Carry forward:**
+- The honest headline is "0-RTT eliminates one RTT of *application* blocking
+  time", not "0-RTT makes connections complete a round-trip sooner". Both are
+  now measured; only the first is true.
+- Whether the second is achievable is a real design question: it needs the
+  ServerNIC to forward client data before it knows the real ISN, which the
+  ISN-ack-num translation scheme does not currently allow.
+- The FCT tail regressed sharply (max 537 ms vs 213 ms baseline) while p99 did
+  not. Cause not established — see the dedicated entry below. Do not run at
+  100k scale before it is understood.
+
+---
+
+## 2026-08-04 — `tc` was never installed, so no experiment in this repo's history ran with emulated latency
+
+**Source:** the same pair of runs; found by the netem post-condition check added
+to `endpoint_tune()`.
+
+`tc` lives in the `iproute-tc` package, which neither CDK stack installs. Every
+netem command the harness has ever issued failed with `tc: command not found`
+and was swallowed by its own `2>/dev/null || true`. Every prior run labelled
+"50ms netem" actually measured the intra-VPC RTT of ~1.5 ms.
+
+This is the precise condition the 2026-07-14 retrospective predicted would make
+a 0-RTT benefit structurally unobservable — and it had been silently true the
+whole time. `endpoint_tune()` now installs the package and then *verifies* the
+qdisc on both endpoints, failing the run if the server lacks netem or the client
+has it.
+
+**Carry forward:** a knob that is applied with `|| true` and never read back is
+not a knob, it is a comment. Any environment setting a measurement depends on
+must be asserted after it is applied, not assumed from the fact that the command
+was issued.
+
+---
+
+## 2026-08-04 — Open: 0-RTT FCT tail reaches 537 ms while p99 sits at 201.6 ms; cause NOT established
+
+**Source:** the 2026-08-04 DPDK run
+(`experiments/dpdk/reports/integration-test-report-2026-08-04-smoke.log`),
+2000 flows, `NETEM_RTT_MS=100`.
+
+| `fct` | Baseline | 0-RTT DPDK |
+|---|---|---|
+| p50 | 201.571 ms | 201.368 ms |
+| p99 | 202.833 ms | 201.638 ms |
+| max | **213.254 ms** | **536.628 ms** |
+| max − p99 | 10.4 ms | **335.0 ms** |
+
+More than 99% of 0-RTT flows complete in ~201.5 ms — *tighter* than baseline at
+p99. The regression is confined to the top 1% (≤20 of 2000 flows), at least one
+of which takes 2.7× the median.
+
+**What the data rules out.** The tail is not in the parts of the path the other
+two metrics cover: `send_unlock` max is 2.061 ms (baseline: 112.429 ms) and
+`server_gap` max is 0.756 ms (baseline: 12.358 ms). Both 0-RTT tails are tighter
+than baseline's. So the excess is neither in the spoofed handshake nor in the
+server's own response latency — it is between "client's first payload leaves"
+and "flow completes".
+
+**Working hypothesis (UNCONFIRMED): a lost segment paying a retransmission
+timeout.** With timestamps, SACK and window scaling all disabled, a single loss
+falls back to an RTO, and Linux's `TCP_RTO_MIN` is 200 ms. 200 ms RTO plus one
+~100 ms round trip for the retransmission lands at ~300 ms of excess, against
+the 335 ms observed. The arithmetic fits; nothing yet proves it.
+
+**Explicitly NOT supported by evidence.** An earlier note in this file guessed
+the buffer/flush path in `syn_handler.c`. The captured log contains **zero**
+`flush dropped first c2s data` warnings — the counter that exists precisely to
+catch that case. It is not ruled out either: the fetched log was **truncated at
+the SSM 24 KB cap** (24,355 bytes) and covers only 97 `buffered` / 79 `flushed`
+lines, i.e. a prefix spanning well under 100 of the 2000 flows. Treat the
+buffer-overflow theory as untested, not disproven.
+
+**The stack has since been terminated**, so the untruncated `/tmp/servernic.log`
+is gone. Re-testing requires a redeploy.
+
+**How to resolve it, next run:**
+1. Fetch the NIC logs by running `grep -c` **on the node** and returning only
+   counts, instead of `cat`-ing a 24 KB prefix — the same fix `--summary`
+   already applies to analyzer output.
+2. Capture `nstat`/`netstat -s` retransmission counters on both endpoints
+   around the run. A non-zero `TcpRetransSegs` confirms or kills the RTO theory
+   in one number.
+3. Have `analyze_metrics.py --detail-out` identify the specific slow flows, then
+   pull just those 4-tuples out of the endpoint pcaps.
+
+---
+
+## Open follow-ups as of 2026-08-04
+
+Tracked here because they came out of a run; `roadmap.md` remains the repo's
+source of truth for what is scheduled.
+
+- [ ] **Resolve the FCT tail** (entry above) before any 100k-connection run.
+      Blocking, because a tail that is 1% of flows at 2k scale is 1000 flows at
+      100k and would dominate any aggregate.
+- [ ] **Run both stacks at full scale** (`LOAD_PARALLEL=100000`,
+      `LOAD_RATE=2000`, identical on both). Only the 2000-connection smoke has
+      been run. Note the port-space and pacing-floor guards both pass at that
+      size; the untested part is endpoint capacity under sustained arrival.
+- [ ] **Fix NIC-log retrieval past the 24 KB SSM cap.** Both `clientnic.log` and
+      `servernic.log` hit it in this run, so every count and grep the harness
+      reports over them is scoped to an arbitrary prefix. This actively
+      obstructed the FCT-tail diagnosis above.
+- [ ] **Restore NIC in-app TTFB instrumentation.** Both `clientnic TTFB` and
+      `servernic TTFB` reported "no samples found"; the harness warns that the
+      binary may predate the instrumentation. The internal rdtsc view is the
+      only thing that can localize latency *inside* the data plane.
+- [ ] **Decide whether FCT can be improved at all.** 0-RTT currently relocates
+      the RTT wait to the ServerNIC rather than removing it, because the
+      translator cannot forward client data before it knows the real ISN. If
+      end-to-end completion time is a goal, that is a design change, not a
+      tuning one — and it should be specced before more measurement work.
+- [ ] **Fix the baseline CDK user-data clone.** The IAM grant added on
+      2026-08-04 lets the orchestrator self-heal at run time, but the boot-time
+      clone still fails on the expired legacy SSM-parameter token. Changing the
+      user-data forces instance replacement, which is why it was left alone.
+- [ ] **Consider installing `iproute-tc` in both CDK stacks' user-data.**
+      `endpoint_tune()` installs it per-run, which costs ~25 s and needs the VM
+      to have package-repo access at run time.
+- [ ] **Retire `analyze_metrics.py --iperf-csv`.** Dead since iperf was removed;
+      still carries 6 tests.

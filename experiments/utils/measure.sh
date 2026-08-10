@@ -1,30 +1,47 @@
 #!/usr/bin/env bash
 # Shared measurement helpers for experiment orchestrators.
-# Source after ssm.sh. Requires: ssm_run, json_idx, pass, fail, warn.
+# Source after ssm.sh. Requires: ssm_run, json_idx, log, pass, fail, warn.
 #
 # Load-generator knobs (single source of truth; override via env):
-#   IPERF_PARALLEL : total parallel TCP connections per round (default 100000)
-#   IPERF_PORTS    : number of contiguous server ports the load is spread across
+#   LOAD_PARALLEL : total parallel TCP connections per round (default 100000)
+#   LOAD_PORTS    : number of contiguous server ports the load is spread across
 #                    (default 4). 100000 conns / 4 ports = 25000 per (dst-port)
 #                    tuple, comfortably under the ~28K-usable ephemeral range, so
 #                    one client source IP can actually open them all. The 0-RTT
 #                    data plane must cover the same port range (--port-count).
-#   IPERF_TIMEOUT  : seconds a measurement round may run before SSM gives up
+#   LOAD_TIMEOUT  : seconds a measurement round may run before SSM gives up
 #                    (default 1800). 100000 conns x 1 MB across a 50 ms-netem path
 #                    moves ~100 GB and takes far longer than the old 120 s cap —
 #                    ssm_run polls up to this value instead of the ~100 s waiter.
-#   IPERF_BYTES    : payload bytes sent per connection (default 1048576 = 1 MB,
-#                    matching the old iperf `-n 1M`). At high connection counts
-#                    this is bandwidth-delay-product bound (no window scaling +
-#                    50ms netem caps a single flow well under 1 MB/s) and the
-#                    aggregate pps across all flows can exceed the single-lcore
-#                    forwarder's throughput (capacity-model.md §4/§9/§11) —
-#                    lower this to validate connection *establishment* at scale
-#                    without also demanding full-throughput transfer per flow.
-IPERF_PARALLEL="${IPERF_PARALLEL:-100000}"
-IPERF_PORTS="${IPERF_PORTS:-4}"
-IPERF_TIMEOUT="${IPERF_TIMEOUT:-1800}"
-IPERF_BYTES="${IPERF_BYTES:-1048576}"
+#   LOAD_BYTES    : payload bytes sent per connection (default 1024 = one
+#                    segment). The old 1 MB default (matching iperf `-n 1M`) is
+#                    bandwidth-delay-product bound: with window scaling disabled
+#                    and 50ms netem, one flow is capped near 640 KB/s, so 1 MB
+#                    costs ~16 RTTs of transfer and the single RTT that 0-RTT
+#                    eliminates is ~6% of flow completion time — below the
+#                    run-to-run noise. One segment makes FCT ≈ handshake + 1 RTT,
+#                    where the saving is the dominant term. Raise this only for a
+#                    deliberate throughput comparison, never for latency claims.
+#   LOAD_RATE     : connection arrival rate in connections/sec (default 2000).
+#                    0 = burst (all LOAD_PARALLEL connections at once). Pacing
+#                    is what makes per-connection latency meaningful: in a burst
+#                    every flow's measured latency includes queueing behind every
+#                    other SYN, so the run reports the forwarder's SYN service
+#                    rate, not the round-trip the spoof removes. Paced, the same
+#                    LOAD_PARALLEL total becomes N independent latency samples
+#                    instead of one saturation event. Use 0 only for deliberate
+#                    stress runs, which must not be read as latency results.
+#   LOAD_CONCURRENCY : ceiling on simultaneously in-flight connections
+#                    (default 2000). Bounds endpoint fd/RAM pressure regardless
+#                    of pacing — per insights.md a t3.micro holds ~20–30k
+#                    sockets, and exceeding it produced connection failures that
+#                    were endpoint exhaustion, not data-plane defects.
+LOAD_PARALLEL="${LOAD_PARALLEL:-100000}"
+LOAD_PORTS="${LOAD_PORTS:-4}"
+LOAD_TIMEOUT="${LOAD_TIMEOUT:-1800}"
+LOAD_BYTES="${LOAD_BYTES:-1024}"
+LOAD_RATE="${LOAD_RATE:-2000}"
+LOAD_CONCURRENCY="${LOAD_CONCURRENCY:-2000}"
 #
 # Measurement points (all intra-host intervals — no cross-machine clock sync):
 #   - ClientNIC TTFB: stamped in clientnic-dpdk-forwarder (SYN ingress → 1st s2c data byte)
@@ -96,8 +113,8 @@ report_nic_ttfb() {
 
 # run_ttfb_measurement <client-iid> <server-ip> <port> <count> <repo-path> [timeout-sec] [label]
 # Runs <count> sequential rounds on the client VM via SSM. Each round opens
-# IPERF_PARALLEL total parallel TCP connections, spread across IPERF_PORTS
-# contiguous server ports ([port .. port+IPERF_PORTS-1]), via
+# LOAD_PARALLEL total parallel TCP connections, spread across LOAD_PORTS
+# contiguous server ports ([port .. port+LOAD_PORTS-1]), via
 # experiments/utils/loadgen.py — an asyncio (epoll-driven, single-thread)
 # event-driven load generator. Replaces iperf2's -P N, which spawns N OS
 # threads inside one process (25000 pthreads at 100k/4-ports is not viable at
@@ -105,11 +122,34 @@ report_nic_ttfb() {
 # Sets globals: CLIENT_STDOUT, CLIENT_STDERR
 run_ttfb_measurement() {
     local client_iid="$1" server_ip="$2" port="$3" count="$4" repo="$5"
-    local timeout="${6:-${IPERF_TIMEOUT:-1800}}" label="${7:-Client}"
-    local parallel="${IPERF_PARALLEL:-100000}"
-    local nports="${IPERF_PORTS:-1}"
+    local timeout="${6:-${LOAD_TIMEOUT:-1800}}" label="${7:-Client}"
+    local parallel="${LOAD_PARALLEL:-100000}"
+    local nports="${LOAD_PORTS:-1}"
     [[ "$nports" -lt 1 ]] && nports=1
-    local nbytes="${IPERF_BYTES:-1048576}"
+    local nbytes="${LOAD_BYTES:-1024}"
+    local rate="${LOAD_RATE:-2000}"
+    local conc="${LOAD_CONCURRENCY:-2000}"
+    # Client think time between connect() and the first write. 0 = HTTP-style
+    # send-immediately, the workload 0-RTT targets. Sweep with run_think_sweep.sh.
+    local think="${LOAD_THINK_MS:-0}"
+
+    # Pacing sets a wall-clock FLOOR the transport timeout must clear: at
+    # LOAD_RATE conn/s a round cannot finish sooner than parallel/rate seconds,
+    # before any transfer or teardown. A timeout tuned for the old burst shape
+    # would abort a correctly-paced run partway through and report it as a
+    # client failure, so say so up front rather than after 30 minutes.
+    # rate may be fractional, so do the arithmetic in python (bc is not installed
+    # on the Amazon Linux AMI); floor=0 signals "unpaced" back to the shell.
+    local floor
+    floor=$(python3 -c "r=float('$rate'); print(int($parallel/r*$count) if r>0 else 0)" 2>/dev/null || echo 0)
+    if (( floor > 0 )); then
+        log "Arrival pacing: ${rate} conn/s x $parallel conns x $count round(s) — minimum ${floor}s of spawn time"
+        if (( floor > timeout )); then
+            warn "LOAD_TIMEOUT=${timeout}s is below the ${floor}s pacing floor — raise LOAD_TIMEOUT or LOAD_RATE, or the round will be cut off mid-run"
+        fi
+    else
+        warn "LOAD_RATE=0 — connections arrive as one burst. This is a stress/capacity run; its latency numbers include SYN queueing and must not be read as 0-RTT latency results."
+    fi
 
     local result
     result=$(ssm_run "$client_iid" \
@@ -117,8 +157,8 @@ run_ttfb_measurement() {
          ulimit -n 1048576 2>/dev/null || true
          success=0
          for i in \$(seq 1 $count); do
-             echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections, $nbytes bytes/conn ---\"
-             python3 $repo/experiments/utils/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes && success=\$((success + 1))
+             echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections, $nbytes bytes/conn, ${rate} conn/s arrival, ${think}ms think, max $conc in flight ---\"
+             python3 $repo/experiments/utils/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --think-ms $think --concurrency-limit $conc && success=\$((success + 1))
          done
          echo \"Success: \${success}/$count\"" \
         "$timeout")
@@ -134,7 +174,7 @@ run_ttfb_measurement() {
     if echo "$CLIENT_STDOUT" | grep -qE "Success: ${count}/${count}"; then
         pass "$label: all $count connection(s) succeeded"
     elif echo "$CLIENT_STDOUT" | grep -qE "Success: [1-9][0-9]*/${count}"; then
-        warn "$label: partial success — see iperf output"
+        warn "$label: partial success — see client output above"
     else
         fail "$label: all $count connection(s) failed"
     fi

@@ -4,7 +4,7 @@ Analyze ClientNIC packet captures to validate 0-RTT behavior.
 
 Two modes depending on whether --server-pcap is supplied:
 
-T8 mode (--server-pcap omitted, default):
+Default mode (--server-pcap omitted):
   Real SYN-ACK is dropped at the ServerNIC — only the spoofed SYN-ACK reaches
   the client.  Checks (client-side pcap only):
     A. Spoofed SYN-ACK    -- at least one SYN-ACK per flow on eth0.
@@ -20,7 +20,7 @@ Legacy mode (--server-pcap supplied):
     D. Checksums          -- no bad checksums on either interface.
 
 Usage:
-    # T8 mode (ServerNIC drops real SYN-ACK):
+    # Default mode (ServerNIC drops real SYN-ACK):
     python3 validate_0rtt_capture.py --client-pcap /tmp/client_side.pcap
 
     # Legacy mode (ClientNIC drops real SYN-ACK, eth1 capture available):
@@ -128,11 +128,11 @@ def _find_syns(pkts) -> list:
             and bool(p[TCP].flags.S) and not bool(p[TCP].flags.A)]
 
 
-def analyze_t8(client_pcap: str) -> int:
-    """T8 mode: real SYN-ACK dropped at ServerNIC. Only client-side pcap available."""
+def analyze_default_mode(client_pcap: str) -> int:
+    """Default mode: real SYN-ACK dropped at ServerNIC. Only client-side pcap available."""
     failures = 0
 
-    log(f"T8 mode: loading {client_pcap}  (eth0 - client side)")
+    log(f"Default mode: loading {client_pcap}  (eth0 - client side)")
     try:
         client_pkts = rdpcap(client_pcap)
     except Exception as exc:
@@ -156,7 +156,7 @@ def analyze_t8(client_pcap: str) -> int:
         sas_by_flow.setdefault(p[TCP].dport, []).append(p)
 
     # --- A. Spoofed SYN-ACK present -------------------------------------------
-    log("\n-- A. Spoofed SYN-ACK on eth0 (T8 mode) ---------------------------------")
+    log("\n-- A. Spoofed SYN-ACK on eth0 -------------------------------------------")
     if not report("At least one SYN-ACK seen on eth0", bool(client_sas),
                   f"{len(client_sas)} SYN-ACK(s)"):
         failures += 1
@@ -402,14 +402,14 @@ def main():
         "--server-pcap",
         default=None,
         help="eth1 capture (server side, contains real SYN-ACK). "
-             "Omit for T8 mode (ServerNIC drops real SYN-ACK).",
+             "Omit to use the default mode (ServerNIC drops real SYN-ACK).",
     )
     args = parser.parse_args()
 
     if args.server_pcap:
         failures = analyze_legacy(args.client_pcap, args.server_pcap)
     else:
-        failures = analyze_t8(args.client_pcap)
+        failures = analyze_default_mode(args.client_pcap)
     sys.exit(1 if failures > 0 else 0)
 
 

@@ -13,7 +13,7 @@ Consolidated lessons from integration testing sessions (Jan-Feb 2026).
 - [Packet Re-capture Loop (ServerNIC)](#packet-re-capture-loop-servernic)
 - [Swapped SEQ/ACK Rewrite Fields](#swapped-seqack-rewrite-fields)
 - [Baseline Results](#baseline-results)
-- [IPERF_TIMEOUT / IPERF_PARALLEL Balance](#iperf_timeout--iperf_parallel-balance)
+- [LOAD_TIMEOUT / LOAD_PARALLEL Balance](#load_timeout--load_parallel-balance)
 
 ---
 
@@ -329,8 +329,10 @@ After all fixes applied (2026-03-12), 3/3 connections successful with true 0-RTT
 
 ---
 
-## IPERF_TIMEOUT / IPERF_PARALLEL Balance
+## LOAD_TIMEOUT / LOAD_PARALLEL Balance
 
-`IPERF_TIMEOUT` and `IPERF_PARALLEL` are coupled — keep them in sync:
-- Default `IPERF_TIMEOUT=1800` is intentional for high-load runs (`IPERF_PARALLEL` at full scale): `ssm_run` will block up to 30 min per round if iperf stalls.
-- For smoke tests with reduced `IPERF_PARALLEL`, **lower `IPERF_TIMEOUT` proportionally** so failures surface fast instead of waiting the full 30 min.
+`LOAD_TIMEOUT`, `LOAD_PARALLEL` and `LOAD_RATE` are coupled — keep them in sync:
+- Default `LOAD_TIMEOUT=1800` is intentional for high-load runs (`LOAD_PARALLEL` at full scale): `ssm_run` will block up to 30 min per round if the load generator stalls.
+- For smoke tests with reduced `LOAD_PARALLEL`, **lower `LOAD_TIMEOUT` proportionally** so failures surface fast instead of waiting the full 30 min.
+- **`LOAD_RATE` sets a wall-clock floor**: at `R` conn/s a round cannot finish sooner than `LOAD_PARALLEL / R` seconds of spawning alone. The defaults (100000 conns @ 2000 conn/s) floor a round at 50 s. `run_ttfb_measurement` computes this and warns when `LOAD_TIMEOUT` is below it — heed that warning, or the round is cut off mid-run and reported as a client failure.
+- `LOAD_RATE=0` restores the old all-at-once burst. That is a **stress/capacity** run: its per-connection latency includes SYN queueing behind the rest of the batch and must not be read as a 0-RTT latency result.

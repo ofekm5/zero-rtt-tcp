@@ -88,7 +88,7 @@ class SmartNicsStack(Stack):
 
         # User data for ServerNIC VM: DPDK 23.11 + hugepages + vfio-pci + servernic-dpdk build
         #
-        # ENI role pinning (T8 design, D1 dual-DPDK):
+        # ENI role pinning (design D1, dual-DPDK):
         #   eth0: primary ENI (Middle subnet, kernel) — SSM management only
         #   eth1: secondary ENI (Middle subnet, DPDK) — ClientNIC-facing data plane (vfio-pci)
         #   eth2: tertiary ENI (Server subnet, DPDK)  — Server-facing data plane (vfio-pci)
@@ -200,7 +200,7 @@ class SmartNicsStack(Stack):
             "echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode",
             "echo 'vfio-pci' > /etc/modules-load.d/vfio.conf",
             *_bind_data_enis_to_vfio(expected_enis=3),
-            # Build clientnic-dpdk-forwarder application (T8 variant: stamps V, no translation)
+            # Build clientnic-dpdk-forwarder application (stamps V, no translation)
             "export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig",
             "cd /home/ec2-user/zero-rtt-tcp/src/clientnic/dpdk-forwarder",
             "/usr/local/bin/meson setup builddir",
@@ -341,7 +341,7 @@ class SmartNicsStack(Stack):
         Tags.of(server_instance).add("Name", "smartnics-server")
 
         # Create ClientNIC VM with 3 ENIs — c5n.large for DPDK performance
-        # ENI role pinning (T8 design, D1 dual-DPDK):
+        # ENI role pinning (design D1, dual-DPDK):
         #   eth0: primary ENI (Client subnet, kernel) — SSM management only
         #   eth1: secondary ENI (Middle subnet, DPDK)  — ServerNIC-facing data plane (vfio-pci)
         #   eth2: tertiary ENI (Client subnet, DPDK)   — Client-facing data plane (vfio-pci)
@@ -409,7 +409,7 @@ class SmartNicsStack(Stack):
         )
 
         # Create ServerNIC VM with 3 ENIs — c5n.large for DPDK performance
-        # ENI role pinning (T8 design, D1 dual-DPDK):
+        # ENI role pinning (design D1, dual-DPDK):
         #   eth0: primary ENI (Middle subnet, kernel) — SSM management only
         #   eth1: secondary ENI (Middle subnet, DPDK)  — ClientNIC-facing data plane (vfio-pci)
         #   eth2: tertiary ENI (Server subnet, DPDK)   — Server-facing data plane (vfio-pci)
