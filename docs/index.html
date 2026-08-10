@@ -235,6 +235,10 @@
               font-size:18.5px;color:var(--ink-2);line-height:1.68}
   ul.plain li::before{content:"";position:absolute;left:0;top:.72em;
                       width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  ul.plain ul{list-style:none;padding:0;margin:11px 0 0;
+              display:flex;flex-direction:column;gap:8px}
+  ul.plain ul li{font-size:17px;padding-left:18px;color:var(--ink-3);line-height:1.6}
+  ul.plain ul li::before{width:5px;height:5px;top:.7em;background:var(--ink-3)}
 
   footer{margin-top:72px;padding-top:24px;border-top:1px solid var(--rule);
          font-family:var(--mono);font-size:12px;color:var(--ink-3);line-height:1.8}
@@ -491,17 +495,18 @@
       are actually asking about. The replacement starts connection <em>i</em> at a fixed
       point on a clock and reports the rate it really achieved, so a run that collapses into
       a burst is visible rather than mistaken for a latency result.</p></li>
-      <li><p><strong>What that cost us.</strong> Two things. A home-made Python tool is
-      easier to distrust than a standard benchmark everyone already knows — how do we know
-      the tool itself isn't inventing the result? And because every connection now sends
-      exactly one 1 KB request, we no longer learn anything about bandwidth: how fast a
-      long transfer runs through the translator is simply not tested any more.</p>
-      <p>The first worry does not survive contact with how the numbers are produced: every
-      timing in this report is read out of packet captures on the client and server, not
-      reported by the generator, so the results would be the same no matter what software
-      sent the traffic. The generator is only responsible for opening connections at the
-      right moments, and it does that to well under a millisecond against a 100 ms effect.
-      The second is a genuine gap, and it is listed as such in Section 7.</p></li>
+      <li><p><strong>What that cost us — two downsides, one of which survives.</strong></p>
+      <p><strong>Can you trust a tool we wrote ourselves?</strong> A well-known C benchmark
+      is credible on its own; ours is not. But we never ask the generator what time anything
+      happened. <code>tcpdump</code> runs on the client and on the server, and every number
+      in this report is computed from those captures — from packets on the wire. If the
+      generator's own clock were wrong, the results would not move. Its one real job is
+      <em>starting</em> connections at the right moments, and it does that to within half a
+      millisecond against a 100 ms effect. So this downside does not threaten the result.</p>
+      <p><strong>We stopped measuring throughput.</strong> Every connection now sends exactly
+      one 1 KB request, so nothing here tells you how fast a <em>large</em> transfer moves
+      through the translator. There is no defence for this one — it is a genuine hole, and
+      Section 7 lists it as such.</p></li>
     </ol>
   </section>
 
@@ -802,25 +807,44 @@ tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
       — the server-side buffering is a real cost and could have consumed the entire saving.
       It does not: completion time falls by 101.9 ms, and the saving holds through the
       median, the 99th percentile and the worst case, not merely on average.</li>
-      <li><strong>The saving depends on both NICs being at the right end of the path.</strong>
-      Each NIC has to be next to <em>its own</em> endpoint, with the wide area between them.
-      The ClientNIC must be near the client, or its forged SYN-ACK takes real time to come
-      back and the application does not unblock early. The ServerNIC must be near the
-      <em>server</em> — not the client — because it learns the sequence offset only when the
-      server's genuine SYN-ACK reaches it, and until then it is holding the client's data. If
-      the ServerNIC sat far from the server, that reply would take a long time to arrive, the
-      buffer would keep holding, and the completion-time saving would be spent on waiting.
-      What makes the buffer free here is that the offset becomes known while the client's
-      data is still in flight — so the result should always be quoted with that condition
-      attached.</li>
+      <li><strong>The ServerNIC has to be near the server.</strong> Not near the client —
+      near the <em>server</em>. Mechanically:
+      <ul>
+        <li>The ServerNIC is holding the client's data, and cannot release it until it knows
+        the sequence offset.</li>
+        <li>It learns that offset from <strong>the server's real SYN-ACK</strong>. So the
+        release time is set by how long the server takes to answer — that is, by the
+        ServerNIC↔server distance, call it <em>d</em>.</li>
+        <li>In this experiment <em>d</em> ≈ 0, since the two share a LAN. The client's data
+        arrives at the ServerNIC at <strong>t = 50 ms</strong>, one WAN crossing; the SYN
+        arrives at the same moment, the server replies instantly, and the SYN-ACK is back at
+        <strong>t ≈ 50 ms</strong>. Both land together, so the buffer holds for ~0 and costs
+        nothing.</li>
+        <li>Move the ServerNIC 20 ms away from the server and the SYN needs 20 ms more to
+        reach it and the SYN-ACK 20 ms to come back: the offset is known at t = 90 ms, while
+        the data has been sitting there since t = 50. <strong>The buffer now costs
+        2 × <em>d</em> = 40 ms</strong>, straight out of the saving.</li>
+      </ul>
+      The same argument puts the ClientNIC beside the client — otherwise its forged SYN-ACK
+      takes real time to come back and nothing unblocks early. Each NIC beside its own
+      endpoint, the distance between them: quote the result with that condition attached.</li>
     </ul>
-    <p style="margin-top:24px;">There is also a methodological result, arguably the more
-    transferable one. A correct implementation measured under a plausible but misplaced
-    network model reported <em>no benefit whatsoever</em> on the metric that mattered, and
-    the failure was silent: every check passed, every connection succeeded, and the number
-    was simply flat. The mechanism producing that flat number — a buffering delay tied to
-    the very packet the model had chosen to slow down — is invisible in aggregate statistics
-    and only surfaced by reasoning about which packet each metric depends on.</p>
+    <h3 style="margin-top:34px;">The other result is about measurement, and it travels further</h3>
+    <p>The implementation was correct the whole time. It was measured under a network model
+    that looked perfectly reasonable — <em>the server is far away, so make the server
+    slow</em> — and under that model the metric that mattered showed exactly zero benefit.</p>
+    <p>Nothing looked broken. Every check passed, all 2000 connections succeeded, the
+    analysis code was fine. The number was simply flat — and a flat number reads as
+    <em>the idea does not work</em>.</p>
+    <p>What had actually happened is that the model slowed down the one packet the design
+    waits on. The ServerNIC releases its buffered data when the server's SYN-ACK arrives;
+    the model had made that exact SYN-ACK pay the full modelled distance. So the time the
+    forgery saved and the time the buffer spent waiting were <em>the same time</em>, and
+    they cancelled.</p>
+    <p>No summary statistic can show you that. It only became visible by asking, metric by
+    metric, <strong>which single packet decides this number?</strong> — and then checking
+    whether the model had put a delay on that packet. That question is worth asking of any
+    middlebox measurement.</p>
   </section>
 
   <section>
