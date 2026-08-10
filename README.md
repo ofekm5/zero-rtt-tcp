@@ -4,6 +4,10 @@ Proof-of-concept demonstrating **0-RTT TCP** — eliminating the 3-way handshake
 
 **Educational/demo use only. Not suitable for production.**
 
+📄 **[Results report — does the middlebox actually make connections faster?](https://ofekm5.github.io/zero-rtt-tcp/)**
+— measured 0-RTT vs plain TCP under a 100 ms emulated WAN, and why the WAN's placement decides
+the answer. Source: [`docs/index.html`](docs/index.html).
+
 ## Architecture
 
 ```
