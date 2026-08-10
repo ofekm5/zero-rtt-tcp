@@ -17,7 +17,9 @@
     --good:#3B7355; --good-soft:#3B735514;
     --warn:#8A6208; --crit:#A8402F;
     --mono:"Cascadia Mono",ui-monospace,"SF Mono",Consolas,monospace;
-    --sans:ui-sans-serif,"Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+    --sans:Candara,"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,
+           -apple-system,sans-serif;
+    --serif:Georgia,"Iowan Old Style","Palatino Linotype","Book Antiqua",serif;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
@@ -47,23 +49,24 @@
   }
 
   *{box-sizing:border-box}
-  body{background:var(--ground);color:var(--ink);font-family:var(--sans);
-       font-size:17px;line-height:1.72;-webkit-font-smoothing:antialiased;margin:0}
+  body{background:var(--ground);color:var(--ink);font-family:var(--serif);
+       font-size:19px;line-height:1.75;-webkit-font-smoothing:antialiased;margin:0}
 
   .wrap{max-width:1040px;margin:0 auto;padding:0 32px 120px;
         display:flex;flex-direction:column;align-items:center}
   .col{width:100%;max-width:680px}
   .wide{width:100%;max-width:880px}
 
-  h1{font-size:clamp(32px,5.2vw,50px);line-height:1.08;font-weight:600;
-     letter-spacing:-.028em;text-wrap:balance;margin:0 0 22px}
-  h2{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.25;
+  h1,h2,h3{font-family:var(--sans)}
+  h1{font-size:clamp(34px,5.4vw,53px);line-height:1.1;font-weight:600;
+     letter-spacing:-.02em;text-wrap:balance;margin:0 0 22px}
+  h2{font-size:30px;font-weight:600;letter-spacing:-.012em;line-height:1.25;
      text-wrap:balance;margin:0 0 18px}
-  h3{font-size:19px;font-weight:600;letter-spacing:-.012em;margin:0 0 8px}
+  h3{font-size:21.5px;font-weight:600;letter-spacing:-.008em;margin:0 0 8px}
   p{margin:0}
   p+p{margin-top:18px}
-  .lede{color:var(--ink-2);font-size:21px;line-height:1.55;letter-spacing:-.011em}
-  .fine{font-size:15px;color:var(--ink-3);line-height:1.65}
+  .lede{font-family:var(--sans);color:var(--ink-2);font-size:23px;line-height:1.5}
+  .fine{font-size:16.5px;color:var(--ink-3);line-height:1.68}
   code{font-family:var(--mono);font-size:.85em;color:var(--accent);white-space:nowrap}
   strong{font-weight:640}
   em{font-style:italic}
@@ -71,20 +74,23 @@
   a:focus-visible,.hot:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
   header{padding:76px 0 0}
-  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.12em;
+  .kicker{font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;
           text-transform:uppercase;color:var(--accent);margin:0 0 20px}
-  .byline{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px;color:var(--ink-3);
+  .author{font-family:var(--sans);font-size:17px;color:var(--ink-2);
           margin-top:26px;padding-top:20px;border-top:1px solid var(--rule)}
+  .author b{color:var(--ink);font-weight:600}
+  .byline{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--sans);
+          font-size:15px;color:var(--ink-3);margin-top:10px}
   .byline span{white-space:nowrap}
-  .byline b{color:var(--ink-2);font-weight:560}
+  .byline b{color:var(--ink-2);font-weight:600}
 
   section{margin-top:64px;width:100%;display:flex;flex-direction:column;align-items:center}
   section>*{width:100%;max-width:680px}
   section>figure,section>.wide{max-width:880px}
 
   ul.sum{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:14px}
-  ul.sum li{position:relative;padding-left:22px;
-            font-size:18.5px;line-height:1.6;color:var(--ink-2)}
+  ul.sum li{position:relative;padding-left:24px;
+            font-size:20.5px;line-height:1.62;color:var(--ink-2)}
   ul.sum li::before{content:"";position:absolute;left:0;top:.7em;
                     width:7px;height:7px;border-radius:50%;background:var(--accent)}
   ul.sum li strong{color:var(--ink)}
@@ -104,7 +110,7 @@
   .rp-legend i.z{background:var(--accent)}
   .rp-row{padding:15px 0;border-bottom:1px solid var(--rule-soft)}
   .rp-row:last-of-type{border-bottom:0;padding-bottom:4px}
-  .rp-name{font-size:15px;color:var(--ink);margin-bottom:10px;
+  .rp-name{font-family:var(--sans);font-size:17px;color:var(--ink);margin-bottom:10px;
            display:flex;justify-content:space-between;gap:12px;align-items:baseline}
   .rp-delta{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--good);
             background:var(--good-soft);border-radius:4px;padding:2px 7px;
@@ -118,20 +124,29 @@
   .bar .v{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);
           font-variant-numeric:tabular-nums;text-align:right}
   .rp-foot{margin-top:14px;padding-top:13px;border-top:1px solid var(--rule);
-           font-size:13.5px;color:var(--ink-3);line-height:1.6}
+           font-size:16px;color:var(--ink-3);line-height:1.65}
 
   .aside{margin-top:26px;background:var(--sunk);border:1px solid var(--rule);
          border-radius:8px;padding:20px 22px}
-  .aside .t{font-family:var(--mono);font-size:12.5px;letter-spacing:.07em;
-            text-transform:uppercase;color:var(--accent);margin-bottom:9px}
-  .aside p{font-size:15.5px;color:var(--ink-2);line-height:1.65}
+  .aside .t{font-family:var(--mono);font-size:13px;letter-spacing:.07em;
+            text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  .aside p{font-size:17.5px;color:var(--ink-2);line-height:1.7}
+  .aside ul{list-style:none;padding:0;margin:12px 0 0;
+            display:flex;flex-direction:column;gap:10px}
+  .aside li{position:relative;padding-left:20px;font-size:17.5px;
+            color:var(--ink-2);line-height:1.65}
+  .aside li::before{content:"";position:absolute;left:0;top:.72em;width:6px;height:6px;
+                    border-radius:50%;background:var(--accent)}
+  .aside .cmd{display:block;font-family:var(--mono);font-size:14px;color:var(--ink-2);
+              white-space:pre-wrap;background:var(--panel);border:1px solid var(--rule);
+              border-radius:6px;padding:10px 13px;margin-top:10px;overflow-x:auto}
   .aside p+p{margin-top:11px}
 
   figure{background:var(--panel);border:1px solid var(--rule);border-radius:8px;
          padding:26px 10px 18px;overflow-x:auto;margin:30px 0 0}
   figure svg{display:block;min-width:640px;margin:0 auto}
-  figcaption{font-size:14.5px;color:var(--ink-3);padding:16px 22px 4px;
-             max-width:700px;margin:0 auto;line-height:1.62}
+  figcaption{font-size:16px;color:var(--ink-3);padding:16px 22px 4px;
+             max-width:700px;margin:0 auto;line-height:1.65}
   figcaption b{font-family:var(--mono);font-size:12px;letter-spacing:.08em;
                text-transform:uppercase;color:var(--accent);
                display:block;margin-bottom:6px}
@@ -178,7 +193,8 @@
 
   .tw{overflow-x:auto;border:1px solid var(--rule);border-radius:8px;
       background:var(--panel);margin-top:26px}
-  table{border-collapse:collapse;width:100%;font-size:15px;min-width:540px}
+  table{border-collapse:collapse;width:100%;font-family:var(--sans);
+        font-size:16.5px;min-width:540px}
   th,td{text-align:left;padding:13px 17px;border-bottom:1px solid var(--rule-soft);
         vertical-align:baseline}
   thead th{font-family:var(--mono);font-size:11px;letter-spacing:.1em;
@@ -198,10 +214,10 @@
      padding:18px 22px 16px}
   .m .nm{font-family:var(--mono);font-size:15px;font-weight:640;color:var(--ink);
          display:block;margin-bottom:12px}
-  .m dl{display:grid;grid-template-columns:76px 1fr;gap:9px 16px;margin:0;
-        font-size:15px;line-height:1.55}
-  .m dt{font-family:var(--mono);font-size:11px;letter-spacing:.09em;
-        text-transform:uppercase;color:var(--ink-3);padding-top:4px}
+  .m dl{display:grid;grid-template-columns:76px 1fr;gap:10px 16px;margin:0;
+        font-size:17px;line-height:1.6}
+  .m dt{font-family:var(--mono);font-size:11.5px;letter-spacing:.09em;
+        text-transform:uppercase;color:var(--ink-3);padding-top:6px}
   .m dd{margin:0;color:var(--ink-2)}
 
   ol.num{list-style:none;display:flex;flex-direction:column;gap:20px;
@@ -210,13 +226,13 @@
   ol.num li::before{content:counter(d);position:absolute;left:0;top:0;
                     font-family:var(--mono);font-size:13px;line-height:1.85;
                     color:var(--accent)}
-  ol.num p{font-size:16px;color:var(--ink-2);margin:0}
+  ol.num p{font-size:18px;color:var(--ink-2);margin:0}
   ol.num p+p{margin-top:10px}
 
   ul.plain{list-style:none;display:flex;flex-direction:column;gap:15px;
            padding:0;margin:24px 0 0}
-  ul.plain li{position:relative;padding-left:20px;
-              font-size:16.5px;color:var(--ink-2);line-height:1.65}
+  ul.plain li{position:relative;padding-left:22px;
+              font-size:18.5px;color:var(--ink-2);line-height:1.68}
   ul.plain li::before{content:"";position:absolute;left:0;top:.72em;
                       width:6px;height:6px;border-radius:50%;background:var(--accent)}
 
@@ -233,6 +249,7 @@
     server has seen it, letting the application send data a full round trip early. Whether
     that <em>also</em> makes the connection finish sooner turns out to depend on a detail of
     how the network is modelled — and getting that detail wrong hid the result entirely.</p>
+    <p class="author"><b>Ofek Markus</b></p>
     <div class="byline">
       <span><b>Platform</b> 4× AWS EC2, DPDK 23.11</span>
       <span><b>Load</b> 2000 conns · 500/s · 1 KB</span>
@@ -397,25 +414,24 @@
       a cosmetic choice.</figcaption>
     </figure>
 
-    <h3 style="margin-top:34px;">The client side: answer immediately, and leave a marker</h3>
-    <p>On seeing a SYN, the ClientNIC picks its own initial sequence number, returns a
-    forged SYN-ACK carrying it, and forwards the original SYN onward — with that invented
-    number written into the unused ack number field in the packet's TCP header. That turns
-    the SYN itself into the carrier of the information the far side will need, so no
-    separate signalling channel between the two NICs is required.</p>
-
-    <h3 style="margin-top:30px;">The server side: reconcile, buffer, and translate</h3>
-    <p>The ServerNIC reads the invented number out of the passing SYN and remembers it. When
-    the server's genuine SYN-ACK comes back it computes the fixed offset between the two,
-    discards the genuine SYN-ACK (the client has already been answered), and from then on
-    rewrites the acknowledgement number of every client-to-server packet and the sequence
-    number of every server-to-client packet.</p>
-    <p>Because the client begins sending immediately, its data will usually arrive at the
-    ServerNIC <em>before</em> the genuine SYN-ACK does — at which point the offset is not yet
-    known and the data cannot be corrected. Those packets are held in a per-connection
-    buffer and released the instant the offset becomes known. <strong>This buffer is the
-    crux of the whole result</strong>: whether it costs anything depends entirely on whether
-    the waiting overlaps something else useful.</p>
+    <h3 style="margin-top:34px;">The packet flow, in five steps</h3>
+    <ul class="plain">
+      <li><strong>ClientNIC sees the SYN</strong> → invents an initial sequence number and
+      answers the client with a forged SYN-ACK straight away.</li>
+      <li><strong>ClientNIC forwards the same SYN onward</strong>, with that invented number
+      written into the unused ack number field of its TCP header — so the SYN itself carries
+      the information the far side needs, and the two NICs need no channel of their own.</li>
+      <li><strong>ServerNIC reads and stores the invented number</strong> as the SYN passes,
+      then lets the SYN continue to the server untouched.</li>
+      <li><strong>The server's genuine SYN-ACK arrives at the ServerNIC</strong> → it
+      subtracts the two numbers to get a fixed offset, and drops the SYN-ACK, since the
+      client was answered long ago. From here it rewrites the ack number of every
+      client-to-server packet and the sequence number of every server-to-client packet.</li>
+      <li><strong>Client data that arrives before that offset is known is buffered</strong>
+      per connection and released the moment it is. <strong>This buffer is the crux of the
+      whole result</strong>: whether it costs anything depends entirely on whether the
+      waiting overlaps something else useful.</li>
+    </ul>
   </section>
 
   <section>
@@ -475,13 +491,17 @@
       are actually asking about. The replacement starts connection <em>i</em> at a fixed
       point on a clock and reports the rate it really achieved, so a run that collapses into
       a burst is visible rather than mistaken for a latency result.</p></li>
-      <li><p><strong>What that cost us.</strong> A Python event loop is a less trusted
-      stopwatch than a well-known C benchmark, and throughput is no longer measured at all,
-      since every connection now sends one 1 KB request.</p>
-      <p>The first is handled by taking every timing from packet captures rather than from
-      the generator — the numbers here would be the same whoever sent the traffic, and the
-      generator's own timings sit under half a millisecond against a 100 ms effect. The
-      second is simply an open gap, listed in Section 7.</p></li>
+      <li><p><strong>What that cost us.</strong> Two things. A home-made Python tool is
+      easier to distrust than a standard benchmark everyone already knows — how do we know
+      the tool itself isn't inventing the result? And because every connection now sends
+      exactly one 1 KB request, we no longer learn anything about bandwidth: how fast a
+      long transfer runs through the translator is simply not tested any more.</p>
+      <p>The first worry does not survive contact with how the numbers are produced: every
+      timing in this report is read out of packet captures on the client and server, not
+      reported by the generator, so the results would be the same no matter what software
+      sent the traffic. The generator is only responsible for opening connections at the
+      right moments, and it does that to well under a millisecond against a 100 ms effect.
+      The second is a genuine gap, and it is listed as such in Section 7.</p></li>
     </ol>
   </section>
 
@@ -493,7 +513,40 @@
     hardware. The subtlety is that such a delay applies to packets <em>leaving</em> a given
     machine, so choosing which machine to slow down chooses which part of the path is
     modelled as long.</p>
-    <p>An earlier configuration placed the entire delay on the server's outbound traffic.
+
+    <div class="aside">
+      <div class="t">How the 100 ms is made: <code>netem</code>, 50 ms per side</div>
+      <p>Every interface has a <strong>qdisc</strong> — the kernel's outbound packet
+      scheduler, the last thing a packet passes on its way to the NIC. <strong>netem</strong>
+      is a qdisc that timestamps each packet, parks it in a timer queue, and releases it
+      <code>delay</code> later. Nothing is looped back or rewritten, and the application
+      cannot tell: it is pure waiting, inserted one layer below TCP.</p>
+      <code class="cmd">loadgen → socket → TCP → qdisc (netem: hold 50 ms) → NIC → wire
+
+# run on each NIC VM's middle-leg interface (baseline stack)
+tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
+      <ul>
+        <li><strong>Where 50 ms comes from.</strong> <code>NETEM_RTT_MS=100</code> is the
+        round trip we want to model. A packet crosses the ClientNIC↔ServerNIC leg once in
+        each direction, and each NIC delays its own outbound side, so each holds
+        <code>NETEM_RTT_MS / 2</code> = 50 ms. 50 ms out + 50 ms back = the 100 ms round
+        trip. Both stacks read that single parameter, so they cannot drift apart.</li>
+        <li><strong>Why any delay at all.</strong> The four VMs share one AWS VPC and are
+        genuinely ~1.5 ms apart. The effect under study is 50–200 ms, so at the real distance
+        the entire saving would be lost in noise.</li>
+        <li><strong>Why <code>limit 1000000</code>.</strong> netem's default queue is 1000
+        packets; at this delay and this many parallel flows it would overflow and tail-drop,
+        manufacturing packet loss the model never intended. The raised limit keeps it pure
+        delay.</li>
+        <li><strong>Why the DPDK stack cannot use it.</strong> Its middle-leg ports are
+        bound to <code>vfio-pci</code> and invisible to the kernel, so <code>tc</code> cannot
+        touch them. Both forwarders instead take <code>--wan-delay-us=50000</code> — a
+        timestamped FIFO on middle-leg TX, drained by the existing poll loop — computed from
+        the same <code>NETEM_RTT_MS</code> by <code>wan_delay_us()</code>.</li>
+      </ul>
+    </div>
+
+    <p style="margin-top:26px;">An earlier configuration placed the entire delay on the server's outbound traffic.
     That is a defensible reading — the server is far away, so its replies take a long time —
     and it produces a correct <code>send_unlock</code> result. But it also makes a
     completion-time gain arithmetically impossible, and it took a careful look to see why.</p>
@@ -592,14 +645,26 @@
     between them. The earlier configuration modelled the network incorrectly, and the
     baseline is measured under the identical model, so neither stack is advantaged.</p>
 
-    <p style="margin-top:16px;">One practical obstacle was worth the effort it took. The
-    kernel's traffic-shaping tools (<code>tc netem</code>) cannot reach the interfaces of the
-    DPDK machines at all, because those interfaces have been removed from the kernel to
-    achieve line-rate forwarding. The delay therefore had to be implemented inside the
-    forwarders themselves, as a timestamped queue on the outbound path that releases each
-    packet once its holding time has elapsed. The plain-TCP baseline, whose middle machines
-    are ordinary routers, uses the standard kernel mechanism — with both derived from the
-    same <code>NETEM_RTT_MS</code> parameter, so the two cannot drift apart.</p>
+    <h3 style="margin-top:34px;">What was actually changed</h3>
+    <ul class="plain">
+      <li><strong>Both endpoints were stripped of all artificial delay.</strong> The client
+      and the server now run with a clean qdisc, and the harness reads it back and fails the
+      run if any netem is still attached to either of them.</li>
+      <li><strong>The whole modelled distance moved onto the ClientNIC↔ServerNIC leg</strong>
+      — 50 ms held by each NIC on its own outbound side, by <code>tc netem</code> on the
+      baseline stack and by the in-forwarder queue on the DPDK stack.</li>
+      <li><strong>The consequence for the SYN-ACK is the point of the whole exercise.</strong>
+      The server's real SYN-ACK no longer pays any emulated distance: in the topology being
+      modelled the server sits right next to the ServerNIC, so its reply crosses one local
+      hop and is dropped there by the translator. It never travels the wide area at all.
+      Charging it a full wide-area crossing — which is exactly what putting the delay on the
+      server's egress did — was modelling a journey that this packet does not make, and it
+      was the reason the offset always arrived one round trip late.</li>
+      <li><strong>The 0-RTT logic itself was not touched.</strong> Forging, stamping,
+      buffering and translating are the same code that produced the earlier flat result;
+      what was added is the delay queue that models the wide area, and what changed is
+      which link it sits on.</li>
+    </ul>
   </section>
 
   <section>
@@ -608,6 +673,20 @@
     arriving at 500 per second across four ports, one kilobyte of request per connection,
     100 ms of modelled round trip. Every connection succeeded on both stacks, and the
     achieved arrival rate matched the requested rate, so neither run degraded into a burst.</p>
+
+    <div class="aside">
+      <div class="t">How much data this is — read the statistics accordingly</div>
+      <p><strong>One run per stack</strong> under this configuration: a single 2000-connection
+      baseline run and a single 2000-connection 0-RTT run, on 2026-08-08. Everything below is
+      computed over the 2000 connections <em>inside</em> those two runs.</p>
+      <p>So the mean, median, 99th percentile and worst case describe how much connections
+      varied <em>within</em> a run — which is what shows whether the saving is uniform or
+      carried by an average. They say nothing about run-to-run variation: nobody has yet
+      repeated the pair to see how much the numbers move between runs. Given an effect of
+      101 ms against a spread of about 1 ms across 2000 connections, the direction of the
+      result is not in doubt; the third decimal place is not yet earned. Repeated pairs are
+      the obvious cheap next step.</p>
+    </div>
 
     <div class="tw wide">
       <table>
@@ -723,10 +802,17 @@
       — the server-side buffering is a real cost and could have consumed the entire saving.
       It does not: completion time falls by 101.9 ms, and the saving holds through the
       median, the 99th percentile and the worst case, not merely on average.</li>
-      <li><strong>The saving is a property of where the NICs sit.</strong> The buffer is free
-      only because the server's reply reaches the ServerNIC quickly — that is, because the
-      ServerNIC is near the server. Placed far from it, the wait would begin costing again.
-      The result should always be quoted with that condition attached.</li>
+      <li><strong>The saving depends on both NICs being at the right end of the path.</strong>
+      Each NIC has to be next to <em>its own</em> endpoint, with the wide area between them.
+      The ClientNIC must be near the client, or its forged SYN-ACK takes real time to come
+      back and the application does not unblock early. The ServerNIC must be near the
+      <em>server</em> — not the client — because it learns the sequence offset only when the
+      server's genuine SYN-ACK reaches it, and until then it is holding the client's data. If
+      the ServerNIC sat far from the server, that reply would take a long time to arrive, the
+      buffer would keep holding, and the completion-time saving would be spent on waiting.
+      What makes the buffer free here is that the offset becomes known while the client's
+      data is still in flight — so the result should always be quoted with that condition
+      attached.</li>
     </ul>
     <p style="margin-top:24px;">There is also a methodological result, arguably the more
     transferable one. A correct implementation measured under a plausible but misplaced
@@ -754,6 +840,11 @@
       the translator untested. An earlier observation suggested per-connection throughput
       might be substantially below the kernel's, and that question remains open — a design
       that saves a round trip but costs bandwidth is not obviously a win.</li>
+      <li><strong>The run pair has not been repeated.</strong> These numbers come from one
+      baseline run and one 0-RTT run. The per-connection spread within them is small, but
+      run-to-run variance is unmeasured, so the headline should be read as "about one round
+      trip", not as three decimal places. Repeating the pair a handful of times is cheap and
+      is the first thing to do.</li>
       <li><strong>Scale is not yet demonstrated.</strong> These results are 2000 connections.
       The target is 100,000, at which point the ability of a single forwarding core to absorb
       arrival bursts becomes the binding constraint rather than latency.</li>
