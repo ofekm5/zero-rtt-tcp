@@ -83,10 +83,10 @@
   section>figure,section>.wide{max-width:880px}
 
   ul.sum{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:14px}
-  ul.sum li{display:grid;grid-template-columns:auto 1fr;gap:14px;
-            font-size:18.5px;line-height:1.6;color:var(--ink-2);align-items:baseline}
-  ul.sum li::before{content:"";width:7px;height:7px;border-radius:50%;
-                    background:var(--accent);margin-top:.55em}
+  ul.sum li{position:relative;padding-left:22px;
+            font-size:18.5px;line-height:1.6;color:var(--ink-2)}
+  ul.sum li::before{content:"";position:absolute;left:0;top:.7em;
+                    width:7px;height:7px;border-radius:50%;background:var(--accent)}
   ul.sum li strong{color:var(--ink)}
 
   /* results mini-panel */
@@ -206,18 +206,19 @@
 
   ol.num{list-style:none;display:flex;flex-direction:column;gap:20px;
          counter-reset:d;padding:0;margin:26px 0 0}
-  ol.num li{counter-increment:d;display:grid;grid-template-columns:28px 1fr;gap:16px}
-  ol.num li::before{content:counter(d);font-family:var(--mono);font-size:13px;
-                    color:var(--accent);padding-top:3px}
+  ol.num li{counter-increment:d;position:relative;padding-left:44px}
+  ol.num li::before{content:counter(d);position:absolute;left:0;top:0;
+                    font-family:var(--mono);font-size:13px;line-height:1.85;
+                    color:var(--accent)}
   ol.num p{font-size:16px;color:var(--ink-2);margin:0}
   ol.num p+p{margin-top:10px}
 
   ul.plain{list-style:none;display:flex;flex-direction:column;gap:15px;
            padding:0;margin:24px 0 0}
-  ul.plain li{display:grid;grid-template-columns:auto 1fr;gap:14px;
-              font-size:16.5px;color:var(--ink-2);align-items:baseline;line-height:1.65}
-  ul.plain li::before{content:"";width:6px;height:6px;border-radius:50%;
-                      background:var(--accent);margin-top:.6em}
+  ul.plain li{position:relative;padding-left:20px;
+              font-size:16.5px;color:var(--ink-2);line-height:1.65}
+  ul.plain li::before{content:"";position:absolute;left:0;top:.72em;
+                      width:6px;height:6px;border-radius:50%;background:var(--accent)}
 
   footer{margin-top:72px;padding-top:24px;border-top:1px solid var(--rule);
          font-family:var(--mono);font-size:12px;color:var(--ink-3);line-height:1.8}
