@@ -1,0 +1,15 @@
+{
+  "infra": "dpdk",
+  "exp_dir": "dpdk",
+  "stamp_utc": "20260811-074339",
+  "exit_code": null,
+  "checks_failed": null,
+  "git_sha": "cb3414f5b3664e988a2a28217c9c859a574e193f",
+  "git_ref": "main",
+  "repo_ref_on_vms": "main",
+  "run_url": "https://github.com/ofekm5/zero-rtt-tcp/actions/runs/31470051657",
+  "requested_infra": "both",
+  "knobs": {
+    "REPO_REF": "main"
+  }
+}
