@@ -1,0 +1,53 @@
+===== /tmp/clone.log =====
+Cloning into '/home/ec2-user/zero-rtt-tcp'...
+===== /tmp/server.log =====
+[1;33m[07:57:09] Killing any leftover load-generator processes...[0m
+[1;33m[07:57:10] Open-file limit (ulimit -n): 1048576[0m
+[1;33m[07:57:10] Syncing code to origin/fix/secret-rename (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            fix/secret-rename -> FETCH_HEAD
+HEAD is now at 506b0f0 fix(ci): stop preflight and bundle steps inheriting bash -e
+[1;33m[07:57:11] Server VM IP: 10.1.2.160[0m
+[1;33m[07:57:11] Will listen on 0.0.0.0:8080-8083 (4 port(s))[0m
+
+[1;33m[07:57:11] Starting load-generator server on ports 8080-8083 ? press Ctrl+C to stop.[0m
+
+Listening on ports [8080, 8081, 8082, 8083]
+Received 3021824 bytes across 2951 connections (so far)
+Received 7053312 bytes across 6888 connections (so far)
+Received 11214848 bytes across 10952 connections (so far)
+Received 15320064 bytes across 14961 connections (so far)
+Received 19417088 bytes across 18962 connections (so far)
+Received 23512064 bytes across 22961 connections (so far)
+Received 26214400 bytes across 25600 connections (so far)
+Received 30669824 bytes across 29951 connections (so far)
+Received 35769344 bytes across 34931 connections (so far)
+Received 40538112 bytes across 39588 connections (so far)
+Received 44634112 bytes across 43588 connections (so far)
+Received 49154048 bytes across 48002 connections (so far)
+Received 52420608 bytes across 51192 connections (so far)
+Received 53801984 bytes across 52541 connections (so far)
+Received 56398848 bytes across 55077 connections (so far)
+Received 60386304 bytes across 58971 connections (so far)
+Received 62491648 bytes across 61027 connections (so far)
+Received 66588672 bytes across 65028 connections (so far)
+Received 72053760 bytes across 70365 connections (so far)
+Received 76621824 bytes across 74826 connections (so far)
+Received 78669824 bytes across 76826 connections (so far)
+Received 80650240 bytes across 78760 connections (so far)
+Received 85826560 bytes across 83815 connections (so far)
+Received 90445824 bytes across 88326 connections (so far)
+Received 95493120 bytes across 93255 connections (so far)
+Received 100201472 bytes across 97853 connections (so far)
+Received 102282240 bytes across 99885 connections (so far)
+Received 102282240 bytes across 99885 connections (final)
+_GatheringFuture exception was never retrieved
+future: <_GatheringFuture finished exception=CancelledError()>
+concurrent.futures._base.CancelledError
+===== /tmp/tcpdump_hiprec.log =====
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 128 bytes
+819998 packets captured
+819998 packets received by filter
+0 packets dropped by kernel
+===== pcap inventory =====
+-rw-r--r-- 1 tcpdump tcpdump 65601328 Aug 11 08:01 /tmp/server_side.pcap

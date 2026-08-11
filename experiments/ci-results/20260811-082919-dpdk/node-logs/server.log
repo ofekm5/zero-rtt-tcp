@@ -1,0 +1,67 @@
+===== /tmp/clone.log =====
+Cloning into '/home/ec2-user/zero-rtt-tcp'...
+===== /tmp/server.log =====
+[1;33m[08:06:02] Killing any leftover load-generator processes...[0m
+[1;33m[08:06:03] Open-file limit (ulimit -n): 1048576[0m
+[1;33m[08:06:03] Syncing code to origin/fix/secret-rename (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            fix/secret-rename -> FETCH_HEAD
+HEAD is now at 2773c33 ci: experiment baseline bundle 20260811-080308 [skip ci]
+[1;33m[08:06:04] Server VM IP: 10.1.2.50[0m
+[1;33m[08:06:04] Will listen on 0.0.0.0:8080-8083 (4 port(s))[0m
+
+[1;33m[08:06:04] Starting load-generator server on ports 8080-8083 ? press Ctrl+C to stop.[0m
+
+Listening on ports [8080, 8081, 8082, 8083]
+Received 2904064 bytes across 2836 connections (so far)
+Received 7001088 bytes across 6837 connections (so far)
+Received 11097088 bytes across 10837 connections (so far)
+Received 15194112 bytes across 14838 connections (so far)
+Received 19289088 bytes across 18837 connections (so far)
+Received 23386112 bytes across 22838 connections (so far)
+Received 27483136 bytes across 26839 connections (so far)
+Received 31579136 bytes across 30839 connections (so far)
+Received 35675136 bytes across 34839 connections (so far)
+Received 39772160 bytes across 38840 connections (so far)
+Received 43868160 bytes across 42840 connections (so far)
+Received 47964160 bytes across 46840 connections (so far)
+Received 52061184 bytes across 50841 connections (so far)
+Received 56157184 bytes across 54841 connections (so far)
+Received 60254208 bytes across 58842 connections (so far)
+Received 64351232 bytes across 62843 connections (so far)
+Received 68447232 bytes across 66843 connections (so far)
+Received 69995520 bytes across 68355 connections (so far)
+Received 75972608 bytes across 74192 connections (so far)
+Received 76940288 bytes across 75137 connections (so far)
+Received 76945408 bytes across 75142 connections (so far)
+Received 77255680 bytes across 75445 connections (so far)
+Received 77819904 bytes across 75996 connections (so far)
+Received 77858816 bytes across 76034 connections (so far)
+Received 77859840 bytes across 76035 connections (so far)
+Received 78173184 bytes across 76341 connections (so far)
+Received 78619648 bytes across 76777 connections (so far)
+Received 78674944 bytes across 76831 connections (so far)
+Received 78675968 bytes across 76832 connections (so far)
+Received 79220736 bytes across 77364 connections (so far)
+Received 79961088 bytes across 78087 connections (so far)
+Received 80023552 bytes across 78148 connections (so far)
+Received 80756736 bytes across 78864 connections (so far)
+Received 81355776 bytes across 79449 connections (so far)
+Received 81401856 bytes across 79494 connections (so far)
+Received 81812480 bytes across 79895 connections (so far)
+Received 81926144 bytes across 80006 connections (so far)
+Received 82478080 bytes across 80545 connections (so far)
+Received 82479104 bytes across 80546 connections (so far)
+Received 82873344 bytes across 80931 connections (so far)
+Received 83342336 bytes across 81389 connections (so far)
+Received 83389440 bytes across 81435 connections (so far)
+Received 83880960 bytes across 81915 connections (so far)
+Received 84568064 bytes across 82586 connections (so far)
+Received 85016576 bytes across 83024 connections (so far)
+===== /tmp/tcpdump_hiprec.log =====
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 128 bytes
+912028 packets captured
+912028 packets received by filter
+0 packets dropped by kernel
+===== pcap inventory =====
+-rw-r--r-- 1 tcpdump tcpdump 71648380 Aug 11 08:25 /tmp/server_side.pcap

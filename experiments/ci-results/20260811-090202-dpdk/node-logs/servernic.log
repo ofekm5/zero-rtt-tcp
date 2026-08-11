@@ -1,0 +1,428 @@
+===== /tmp/b.log =====
+The Meson build system
+Version: 1.11.2
+Source dir: /home/ec2-user/zero-rtt-tcp/src/servernic/dpdk
+Build dir: /home/ec2-user/zero-rtt-tcp/src/servernic/dpdk/builddir
+Build type: native build
+Project name: servernic-dpdk
+Project version: 0.1.0
+C compiler for the host machine: cc (gcc 7.3.1 "cc (GCC) 7.3.1 20180712 (Red Hat 7.3.1-18)")
+C linker for the host machine: cc ld.bfd 2.29.1-31
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Found pkg-config: YES (/usr/bin/pkg-config) 0.27.1
+Run-time dependency libdpdk found: YES 23.11.0
+Build targets in project: 1
+
+Found ninja-1.11.1.git.kitware.jobserver-1 at /usr/local/bin/ninja
+NOTICE: You are using Python 3.7 which is EOL. Starting with v1.12.0, Meson will require Python 3.10 or newer
+[1/10] Compiling C object servernic-dpdk.p/flow_table.c.o
+[2/10] Compiling C object servernic-dpdk.p/checksum.c.o
+[3/10] Compiling C object servernic-dpdk.p/log.c.o
+[4/10] Compiling C object servernic-dpdk.p/syn_handler.c.o
+[5/10] Compiling C object servernic-dpdk.p/main.c.o
+[6/10] Compiling C object servernic-dpdk.p/io.c.o
+../io.c: In function 'eth1_send':
+../io.c:124:21: warning: pointer targets in initialization differ in signedness [-Wpointer-sign]
+     uint8_t *data = rte_pktmbuf_append(m, len);
+                     ^~~~~~~~~~~~~~~~~~
+../io.c: In function 'eth2_send':
+../io.c:262:21: warning: pointer targets in initialization differ in signedness [-Wpointer-sign]
+     uint8_t *data = rte_pktmbuf_append(m, len);
+                     ^~~~~~~~~~~~~~~~~~
+[7/10] Compiling C object servernic-dpdk.p/translator.c.o
+[8/10] Compiling C object servernic-dpdk.p/pipeline.c.o
+[9/10] Compiling C object servernic-dpdk.p/wan_delay.c.o
+[10/10] Linking target servernic-dpdk
+===== /tmp/clone.log =====
+Cloning into '/home/ec2-user/zero-rtt-tcp'...
+===== /tmp/servernic.log =====
+[1;33m[08:59:47] Killing any leftover servernic processes...[0m
+[1;33m[08:59:48] Syncing code to origin/fix/secret-rename (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            fix/secret-rename -> FETCH_HEAD
+HEAD is now at 7313ced ci: experiment baseline bundle 20260811-085652 [skip ci]
+[1;33m[08:59:48] SKIP_BUILD=1 ? skipping meson+ninja build.[0m
+[1;33m[08:59:48] Using existing binary: /home/ec2-user/zero-rtt-tcp/src/servernic/dpdk/builddir/servernic-dpdk[0m
+[1;33m[08:59:48] ClientNIC-side gateway MAC (peer):  02:9a:5a:ea:c9:95[0m
+[1;33m[08:59:48] Server-side peer MAC (peer):        02:54:02:7d:3e:39[0m
+[1;33m[08:59:48] Our ClientNIC-facing port MAC (eth1): 02:f2:55:12:4c:cb[0m
+[1;33m[08:59:48] Our Server-facing port MAC (eth2):    02:73:fc:e3:56:b5[0m
+[1;33m[08:59:48] IP forwarding: enabled[0m
+[1;33m[08:59:48] Starting servernic-dpdk ? watching for flows. Press Ctrl+C to stop.[0m
+[1;33m[08:59:48]   --port=8080 --port-count=4 --gw-mac=02:9a:5a:ea:c9:95 --server-mac=02:54:02:7d:3e:39[0m
+[1;33m[08:59:48]   --client-port-mac=02:f2:55:12:4c:cb --server-port-mac=02:73:fc:e3:56:b5[0m
+[1;33m[08:59:48]   --wan-delay-us=50000 (emulated WAN, middle leg ? must match ClientNIC)[0m
+
+EAL: Detected CPU lcores: 2
+EAL: Detected NUMA nodes: 1
+EAL: Detected shared linkage of DPDK
+EAL: Multi-process socket /var/run/dpdk/rte/mp_socket
+EAL: Selected IOVA mode 'PA'
+EAL: VFIO support initialized
+EAL: Using IOMMU type 8 (No-IOMMU)
+EAL: Probe PCI driver: net_ena (1d0f:ec20) device: 0000:00:06.0 (socket -1)
+ena_get_metrics_entries(): 0x6 customer metrics are supported
+EAL: Probe PCI driver: net_ena (1d0f:ec20) device: 0000:00:07.0 (socket -1)
+ena_get_metrics_entries(): 0x6 customer metrics are supported
+TELEMETRY: No legacy callbacks, legacy socket not created
+SERVERNIC: ServerNIC DPDK starting (port=8080..8083)
+SERVERNIC: Port map: ClientNIC-facing=port 0, Server-facing=port 1
+SERVERNIC: wan-delay: holding middle-leg TX for 50000 us (150000000 cycles, ring=8192 packets)
+SERVERNIC: eth1: DPDK port 0 started (MAC=02:f2:55:12:4c:cb)
+SERVERNIC: eth2: DPDK port 1 started (MAC=02:73:fc:e3:56:b5)
+SERVERNIC: Entering busy-poll loop...
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: SYN: new flow, V=0xdb6084f7
+SERVERNIC: SYN-ACK: delta=0x80dd2fab, V=0xdb6084f7, real_isn=0x5a83554c
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xde2fe45e
+SERVERNIC: SYN-ACK: delta=0x251b1164, V=0xde2fe45e, real_isn=0xb914d2fa
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x52ab2164
+SERVERNIC: SYN-ACK: delta=0xf5b92741, V=0x52ab2164, real_isn=0x5cf1fa23
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xe4072840
+SERVERNIC: SYN-ACK: delta=0x229a47a4, V=0xe4072840, real_isn=0xc16ce09c
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xc40427d4
+SERVERNIC: SYN-ACK: delta=0x1fcb8882, V=0xc40427d4, real_isn=0xa4389f52
+SERVERNIC: SYN: new flow, V=0x2852be73
+SERVERNIC: SYN-ACK: delta=0x52730a27, V=0x2852be73, real_isn=0xd5dfb44c
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x63569030
+SERVERNIC: SYN-ACK: delta=0xd62dfd19, V=0x63569030, real_isn=0x8d289317
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xc999162e
+SERVERNIC: SYN-ACK: delta=0x12c3309c, V=0xc999162e, real_isn=0xb6d5e592
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x966f17d2
+SERVERNIC: SYN-ACK: delta=0xe5a71eff, V=0x966f17d2, real_isn=0xb0c7f8d3
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x1cde3d12
+SERVERNIC: SYN-ACK: delta=0x0ab0a093, V=0x1cde3d12, real_isn=0x122d9c7f
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x0431842b
+SERVERNIC: SYN-ACK: delta=0x98dd1f8f, V=0x0431842b, real_isn=0x6b54649c
+SERVERNIC: SYN-ACK: flushed 2 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x9d460827
+SERVERNIC: SYN-ACK: delta=0xf52ecf23, V=0x9d460827, real_isn=0xa8173904
+SERVERNIC: SYN: new flow, V=0xd1b0b489
+SERVERNIC: SYN-ACK: delta=0xdcab9278, V=0xd1b0b489, real_isn=0xf5052211
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x853db32e
+SERVERNIC: SYN-ACK: delta=0x05272597, V=0x853db32e, real_isn=0x80168d97
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xa2eee736
+SERVERNIC: SYN-ACK: delta=0xfbebec53, V=0xa2eee736, real_isn=0xa702fae3
+SERVERNIC: SYN: new flow, V=0x6582bbdd
+SERVERNIC: SYN-ACK: delta=0x06173cf6, V=0x6582bbdd, real_isn=0x5f6b7ee7
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xdc1a3a11
+SERVERNIC: SYN-ACK: delta=0xd2f83961, V=0xdc1a3a11, real_isn=0x092200b0
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x3dd53fca
+SERVERNIC: SYN-ACK: delta=0x1dc44188, V=0x3dd53fca, real_isn=0x2010fe42
+SERVERNIC: SYN: new flow, V=0x9d9716b7
+SERVERNIC: SYN-ACK: delta=0x1a6e5f5c, V=0x9d9716b7, real_isn=0x8328b75b
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x859ec52d
+SERVERNIC: SYN-ACK: delta=0xd13786b9, V=0x859ec52d, real_isn=0xb4673e74
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x440ba328
+SERVERNIC: SYN-ACK: delta=0xfbed235a, V=0x440ba328, real_isn=0x481e7fce
+SERVERNIC: SYN: new flow, V=0xe2ad41a7
+SERVERNIC: SYN-ACK: delta=0x2758ccb5, V=0xe2ad41a7, real_isn=0xbb5474f2
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x7e30c7dd
+SERVERNIC: SYN-ACK: delta=0xc793cae3, V=0x7e30c7dd, real_isn=0xb69cfcfa
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xa143dcb3
+SERVERNIC: SYN-ACK: delta=0xf9b38000, V=0xa143dcb3, real_isn=0xa7905cb3
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xe9f0316d
+SERVERNIC: SYN-ACK: delta=0x391e8f65, V=0xe9f0316d, real_isn=0xb0d1a208
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x8c9aae38
+SERVERNIC: SYN-ACK: delta=0x528260bb, V=0x8c9aae38, real_isn=0x3a184d7d
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x14971153
+SERVERNIC: SYN-ACK: delta=0x8eb1e1d7, V=0x14971153, real_isn=0x85e52f7c
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x4ea4b64e
+SERVERNIC: SYN-ACK: delta=0x64d9a092, V=0x4ea4b64e, real_isn=0xe9cb15bc
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x76f9424c
+SERVERNIC: SYN-ACK: delta=0x38f72b4a, V=0x76f9424c, real_isn=0x3e021702
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x12957460
+SERVERNIC: SYN-ACK: delta=0xecd526ce, V=0x12957460, real_isn=0x25c04d92
+SERVERNIC: SYN: new flow, V=0x46158e83
+SERVERNIC: SYN-ACK: delta=0x39ca680e, V=0x46158e83, real_isn=0x0c4b2675
+SERVERNIC: SYN: new flow, V=0x19b435e1
+SERVERNIC: SYN-ACK: delta=0xf9da1fe8, V=0x19b435e1, real_isn=0x1fda15f9
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x12a600e3
+SERVERNIC: SYN-ACK: delta=0x9515dff6, V=0x12a600e3, real_isn=0x7d9020ed
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x48fc5bf8
+SERVERNIC: SYN-ACK: delta=0xc8b9fe06, V=0x48fc5bf8, real_isn=0x80425df2
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x7a1188f6
+SERVERNIC: SYN-ACK: delta=0x6be2e762, V=0x7a1188f6, real_isn=0x0e2ea194
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x11167e40
+SERVERNIC: SYN-ACK: delta=0x44152086, V=0x11167e40, real_isn=0xcd015dba
+SERVERNIC: SYN: new flow, V=0x3d78f7d1
+SERVERNIC: SYN-ACK: delta=0x7a1e241d, V=0x3d78f7d1, real_isn=0xc35ad3b4
+SERVERNIC: SYN: new flow, V=0x02ede292
+SERVERNIC: SYN-ACK: delta=0x6e86a332, V=0x02ede292, real_isn=0x94673f60
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xa5299397
+SERVERNIC: SYN-ACK: delta=0x1ef0baf3, V=0xa5299397, real_isn=0x8638d8a4
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xa2b4eefd
+SERVERNIC: SYN-ACK: delta=0x2f6ce788, V=0xa2b4eefd, real_isn=0x73480775
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x6e5c3d57
+SERVERNIC: SYN-ACK: delta=0xb7face10, V=0x6e5c3d57, real_isn=0xb6616f47
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xae228c01
+SERVERNIC: SYN-ACK: delta=0xd7cc342a, V=0xae228c01, real_isn=0xd65657d7
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x02b64625
+SERVERNIC: SYN-ACK: delta=0x36fb596c, V=0x02b64625, real_isn=0xcbbaecb9
+SERVERNIC: stats ClientNIC-facing (port 0): rx=170 tx=34 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=127 tx=170 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14252/16383 low-water=14241
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats cycles_per_packet: 28657.9 (tsc_hz=3000000000, packets=297, capacity-model ?9/?12)
+SERVERNIC: stats wan_delay: held=50/8192 released=34
+SERVERNIC: SYN: new flow, V=0x7af96f2d
+SERVERNIC: SYN-ACK: delta=0x6986e4b5, V=0x7af96f2d, real_isn=0x11728a78
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x0589c18c
+SERVERNIC: SYN-ACK: delta=0xd891c60c, V=0x0589c18c, real_isn=0x2cf7fb80
+SERVERNIC: SYN: new flow, V=0xb86588c4
+SERVERNIC: SYN-ACK: delta=0x64a90c78, V=0xb86588c4, real_isn=0x53bc7c4c
+SERVERNIC: SYN: new flow, V=0x2772ef80
+SERVERNIC: SYN-ACK: delta=0xf134d383, V=0x2772ef80, real_isn=0x363e1bfd
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xe4b72d0e
+SERVERNIC: SYN-ACK: delta=0x68b1c09e, V=0xe4b72d0e, real_isn=0x7c056c70
+SERVERNIC: SYN: new flow, V=0x59ac1ca1
+SERVERNIC: SYN-ACK: delta=0x525967f8, V=0x59ac1ca1, real_isn=0x0752b4a9
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x8cd4983b
+SERVERNIC: SYN-ACK: delta=0x7dd353df, V=0x8cd4983b, real_isn=0x0f01445c
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x5a0e4d2b
+SERVERNIC: SYN-ACK: delta=0x844fe827, V=0x5a0e4d2b, real_isn=0xd5be6504
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x2eaa5bbc
+SERVERNIC: SYN-ACK: delta=0x21009ccc, V=0x2eaa5bbc, real_isn=0x0da9bef0
+SERVERNIC: SYN: new flow, V=0x2b930a68
+SERVERNIC: SYN-ACK: delta=0x1e0a16dc, V=0x2b930a68, real_isn=0x0d88f38c
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x62c5a65e
+SERVERNIC: SYN-ACK: delta=0x8541d0ec, V=0x62c5a65e, real_isn=0xdd83d572
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x9370758e
+SERVERNIC: SYN-ACK: delta=0xb0c033ee, V=0x9370758e, real_isn=0xe2b041a0
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xeaf30890
+SERVERNIC: SYN-ACK: delta=0x4706329a, V=0xeaf30890, real_isn=0xa3ecd5f6
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x4af27bc1
+SERVERNIC: SYN-ACK: delta=0x5fa7d602, V=0x4af27bc1, real_isn=0xeb4aa5bf
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x7e8e052e
+SERVERNIC: SYN-ACK: delta=0x235374a6, V=0x7e8e052e, real_isn=0x5b3a9088
+SERVERNIC: SYN: new flow, V=0xa1973858
+SERVERNIC: SYN-ACK: delta=0x2ce5c601, V=0xa1973858, real_isn=0x74b17257
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xe87c1f41
+SERVERNIC: SYN-ACK: delta=0xe9e23a7d, V=0xe87c1f41, real_isn=0xfe99e4c4
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xb383bdb8
+SERVERNIC: SYN-ACK: delta=0x5af43e73, V=0xb383bdb8, real_isn=0x588f7f45
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x8ddf5751
+SERVERNIC: SYN-ACK: delta=0x257ee6ed, V=0x8ddf5751, real_isn=0x68607064
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x99e00a28
+SERVERNIC: SYN-ACK: delta=0xab12d84e, V=0x99e00a28, real_isn=0xeecd31da
+SERVERNIC: SYN: new flow, V=0x0cd3b117
+SERVERNIC: SYN-ACK: delta=0xd9b1ef9e, V=0x0cd3b117, real_isn=0x3321c179
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x619b124b
+SERVERNIC: SYN-ACK: delta=0x0a65e35a, V=0x619b124b, real_isn=0x57352ef1
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x45dc079d
+SERVERNIC: SYN-ACK: delta=0x9b96e186, V=0x45dc079d, real_isn=0xaa452617
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x68057b8e
+SERVERNIC: SYN-ACK: delta=0x75d9fb37, V=0x68057b8e, real_isn=0xf22b8057
+SERVERNIC: SYN-ACK: flushed 2 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x8781600d
+SERVERNIC: SYN-ACK: delta=0x096a8cfa, V=0x8781600d, real_isn=0x7e16d313
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x6b3f40d9
+SERVERNIC: SYN-ACK: delta=0xb5213f47, V=0x6b3f40d9, real_isn=0xb61e0192
+SERVERNIC: SYN: new flow, V=0x93ed990c
+SERVERNIC: SYN-ACK: delta=0x3f03af57, V=0x93ed990c, real_isn=0x54e9e9b5
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xa6f415f0
+SERVERNIC: SYN-ACK: delta=0xce3766e4, V=0xa6f415f0, real_isn=0xd8bcaf0c
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xb4d47e8a
+SERVERNIC: SYN-ACK: delta=0xb38ced45, V=0xb4d47e8a, real_isn=0x01479145
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x820e9be4
+SERVERNIC: SYN-ACK: delta=0xe63492a0, V=0x820e9be4, real_isn=0x9bda0944
+SERVERNIC: SYN: new flow, V=0x4b436fa6
+SERVERNIC: SYN-ACK: delta=0x8db39cf6, V=0x4b436fa6, real_isn=0xbd8fd2b0
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x7a1591bb
+SERVERNIC: SYN-ACK: delta=0x513280dd, V=0x7a1591bb, real_isn=0x28e310de
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x593f1ae7
+SERVERNIC: SYN-ACK: delta=0xd19c8856, V=0x593f1ae7, real_isn=0x87a29291
+SERVERNIC: SYN: new flow, V=0x58db656f
+SERVERNIC: SYN-ACK: delta=0x083812f9, V=0x58db656f, real_isn=0x50a35276
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x347ddef7
+SERVERNIC: SYN-ACK: delta=0xc0600591, V=0x347ddef7, real_isn=0x741dd966
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xd9abea7a
+SERVERNIC: SYN-ACK: delta=0xd3f0482b, V=0xd9abea7a, real_isn=0x05bba24f
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x08328d38
+SERVERNIC: SYN-ACK: delta=0xb27057a9, V=0x08328d38, real_isn=0x55c2358f
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x06cfdb07
+SERVERNIC: SYN-ACK: delta=0xdb9b23f8, V=0x06cfdb07, real_isn=0x2b34b70f
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xd67bdfac
+SERVERNIC: SYN-ACK: delta=0x8ca57678, V=0xd67bdfac, real_isn=0x49d66934
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x21da7e9e
+SERVERNIC: SYN-ACK: delta=0xdc721f1d, V=0x21da7e9e, real_isn=0x45685f81
+SERVERNIC: SYN: new flow, V=0xe5e6da9c
+SERVERNIC: SYN-ACK: delta=0x665b604a, V=0xe5e6da9c, real_isn=0x7f8b7a52
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x93fb62de
+SERVERNIC: SYN-ACK: delta=0xe2c82f81, V=0x93fb62de, real_isn=0xb133335d
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x99e9585a
+SERVERNIC: SYN-ACK: delta=0x3411f57f, V=0x99e9585a, real_isn=0x65d762db
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xb57a2f8d
+SERVERNIC: SYN-ACK: delta=0x075cec04, V=0xb57a2f8d, real_isn=0xae1d4389
+SERVERNIC: SYN: new flow, V=0x0f3ea93c
+SERVERNIC: SYN-ACK: delta=0x351cd5d3, V=0x0f3ea93c, real_isn=0xda21d369
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x404a3a8a
+SERVERNIC: SYN-ACK: delta=0xbc32843d, V=0x404a3a8a, real_isn=0x8417b64d
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xc804de7a
+SERVERNIC: SYN-ACK: delta=0x9e1dd8f2, V=0xc804de7a, real_isn=0x29e70588
+SERVERNIC: SYN: new flow, V=0x76dae284
+SERVERNIC: SYN-ACK: delta=0x82833eb4, V=0x76dae284, real_isn=0xf457a3d0
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xae77c607
+SERVERNIC: SYN-ACK: delta=0x87880ec4, V=0xae77c607, real_isn=0x26efb743
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x0fa3d561
+SERVERNIC: SYN-ACK: delta=0xc8ced6e8, V=0x0fa3d561, real_isn=0x46d4fe79
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x1d8abdc5
+SERVERNIC: SYN-ACK: delta=0x1b99cd4f, V=0x1d8abdc5, real_isn=0x01f0f076
+SERVERNIC: SYN-ACK: flushed 2 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xfbddb0f6
+SERVERNIC: SYN-ACK: delta=0x7fd7a809, V=0xfbddb0f6, real_isn=0x7c0608ed
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x6694cbd6
+SERVERNIC: SYN-ACK: delta=0x0d4f0918, V=0x6694cbd6, real_isn=0x5945c2be
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x4cfd5455
+SERVERNIC: SYN-ACK: delta=0x785bc372, V=0x4cfd5455, real_isn=0xd4a190e3
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x9f696556
+SERVERNIC: SYN-ACK: delta=0x5441c4da, V=0x9f696556, real_isn=0x4b27a07c
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xadb84208
+SERVERNIC: SYN-ACK: delta=0xec5ce62a, V=0xadb84208, real_isn=0xc15b5bde
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x3664e7d1
+SERVERNIC: SYN-ACK: delta=0xf6905a94, V=0x3664e7d1, real_isn=0x3fd48d3d
+SERVERNIC: SYN: new flow, V=0x635c2325
+SERVERNIC: SYN-ACK: delta=0xcb1582ad, V=0x635c2325, real_isn=0x9846a078
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x1140e44c
+SERVERNIC: SYN-ACK: delta=0xc2125058, V=0x1140e44c, real_isn=0x4f2e93f4
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x2d45c578
+SERVERNIC: SYN-ACK: delta=0x6ef3bdc0, V=0x2d45c578, real_isn=0xbe5207b8
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xe4efc13e
+SERVERNIC: SYN-ACK: delta=0x261000d9, V=0xe4efc13e, real_isn=0xbedfc065
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x53c2477f
+SERVERNIC: SYN-ACK: delta=0xaf8732b8, V=0x53c2477f, real_isn=0xa43b14c7
+SERVERNIC: SYN: new flow, V=0xb9fcb74d
+SERVERNIC: SYN-ACK: delta=0xe8d31f7f, V=0xb9fcb74d, real_isn=0xd12997ce
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x934cbf42
+SERVERNIC: SYN-ACK: delta=0x6a3f1f61, V=0x934cbf42, real_isn=0x290d9fe1
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x3fff6c6c
+SERVERNIC: SYN-ACK: delta=0x9ef52b3a, V=0x3fff6c6c, real_isn=0xa10a4132
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xd5fa1895
+SERVERNIC: SYN-ACK: delta=0xfbe26573, V=0xd5fa1895, real_isn=0xda17b322
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x8c6b9577
+SERVERNIC: SYN-ACK: delta=0xbea6ce92, V=0x8c6b9577, real_isn=0xcdc4c6e5
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xa97a291c
+SERVERNIC: SYN-ACK: delta=0xf15a4382, V=0xa97a291c, real_isn=0xb81fe59a
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x2d5911c8
+SERVERNIC: SYN-ACK: delta=0xc8c8cf4a, V=0x2d5911c8, real_isn=0x6490427e
+SERVERNIC: SYN-ACK: flushed 1 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x9dc7af4d
+SERVERNIC: SYN-ACK: delta=0x5ec386a8, V=0x9dc7af4d, real_isn=0x3f0428a5
+SERVERNIC: SYN: new flow, V=0xe6a63d8f
+SERVERNIC: SYN-ACK: delta=0x3f3744b4, V=0xe6a63d8f, real_isn=0xa76ef8db
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V--output truncated--

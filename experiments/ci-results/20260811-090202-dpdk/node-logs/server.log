@@ -1,0 +1,25 @@
+===== /tmp/clone.log =====
+Cloning into '/home/ec2-user/zero-rtt-tcp'...
+===== /tmp/server.log =====
+[1;33m[08:59:39] Killing any leftover load-generator processes...[0m
+[1;33m[08:59:40] Open-file limit (ulimit -n): 1048576[0m
+[1;33m[08:59:40] Syncing code to origin/fix/secret-rename (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            fix/secret-rename -> FETCH_HEAD
+HEAD is now at 7313ced ci: experiment baseline bundle 20260811-085652 [skip ci]
+[1;33m[08:59:41] Server VM IP: 10.1.2.50[0m
+[1;33m[08:59:41] Will listen on 0.0.0.0:8080-8083 (4 port(s))[0m
+
+[1;33m[08:59:41] Starting load-generator server on ports 8080-8083 ? press Ctrl+C to stop.[0m
+
+Listening on ports [8080, 8081, 8082, 8083]
+Received 423936 bytes across 414 connections (so far)
+Received 1447936 bytes across 1414 connections (so far)
+Received 2048000 bytes across 2000 connections (so far)
+===== /tmp/tcpdump_hiprec.log =====
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 128 bytes
+16000 packets captured
+16000 packets received by filter
+0 packets dropped by kernel
+===== pcap inventory =====
+-rw-r--r-- 1 tcpdump tcpdump 1284024 Aug 11 09:00 /tmp/server_side.pcap
