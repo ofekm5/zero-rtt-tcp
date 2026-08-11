@@ -98,7 +98,7 @@ run_experiment() {
     # ─── Pull latest code (clone if missing) ──────────────────────────────────
     # On a fresh stack the CDK user-data clone can fail (e.g. expired token),
     # leaving VMs with no repo. Clone-on-demand here using the GitHub PAT from
-    # Secrets Manager (nanoclaw/github-token) so the run is self-healing.
+    # Secrets Manager (zero-rtt/github-token) so the run is self-healing.
     #
     # REPO_REF selects which ref the VMs run. It defaults to main, so normal runs
     # are unchanged — but a harness change cannot be validated on real infra
@@ -115,7 +115,7 @@ run_experiment() {
                  sudo -u ec2-user git -C $REPO_PATH checkout -B $ref origin/$ref 2>&1 && \
                  sudo -u ec2-user git -C $REPO_PATH reset --hard origin/$ref 2>&1 || true; \
              else \
-                 GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"'); \
+                 GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"'); \
                  sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git\" $REPO_PATH 2>&1 || true; \
                  sudo -u ec2-user git -C $REPO_PATH checkout $ref 2>&1 || true; \
                  chown -R ec2-user:ec2-user $REPO_PATH 2>/dev/null || true; \

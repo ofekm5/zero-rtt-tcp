@@ -80,7 +80,7 @@ class SmartNicsStack(Stack):
             "yum install -y git iperf",
             "amazon-linux-extras install -y BCC",
             "yum install -y bpftrace",
-            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"')",
+            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"')",
             'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" /home/ec2-user/zero-rtt-tcp',
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
             "chmod -R 755 /home/ec2-user/zero-rtt-tcp",
@@ -98,7 +98,7 @@ class SmartNicsStack(Stack):
             "yum update -y",
             "yum install -y git gcc make numactl-devel kernel-devel libpcap-devel pciutils python3-pip",
             # Clone repo
-            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token "
+            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token "
             "--query SecretString --output text --region eu-central-1 | tr -d '\"')",
             'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" '
             "/home/ec2-user/zero-rtt-tcp",
@@ -161,7 +161,7 @@ class SmartNicsStack(Stack):
             "yum update -y",
             "yum install -y git gcc make numactl-devel kernel-devel libpcap-devel pciutils python3-pip",
             # Clone repo
-            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id nanoclaw/github-token "
+            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token "
             "--query SecretString --output text --region eu-central-1 | tr -d '\"')",
             'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" '
             "/home/ec2-user/zero-rtt-tcp",
@@ -226,11 +226,11 @@ class SmartNicsStack(Stack):
             resources=["arn:aws:ssm:eu-central-1:*:parameter/zero-rtt/*"],
         ))
         # GitHub PAT for cloning the private repo lives in Secrets Manager
-        # (nanoclaw/github-token) — the legacy SSM parameter token is expired.
+        # (zero-rtt/github-token) — the legacy SSM parameter token is expired.
         role.add_to_policy(iam.PolicyStatement(
             actions=["secretsmanager:GetSecretValue"],
             resources=[
-                "arn:aws:secretsmanager:eu-central-1:*:secret:nanoclaw/github-token*"
+                "arn:aws:secretsmanager:eu-central-1:*:secret:zero-rtt/github-token*"
             ],
         ))
 
