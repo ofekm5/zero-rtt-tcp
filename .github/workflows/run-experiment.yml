@@ -1,16 +1,25 @@
-# Run a 0-RTT experiment in CI and save ALL data for offline analysis.
+# Run 0-RTT experiments in CI and save ALL data for offline analysis.
 #
-# This is the automation-only counterpart of the `run-experiment` skill: it picks
-# the infra type, runs the orchestrator, and archives every artifact it produces —
-# but does NO LLM reasoning. Investigate the saved bundle afterwards, offline, with
-# the `offline-analysis` skill (reads experiments/ci-results/<stamp>-<infra>/).
+# This is the automation-only counterpart of the `run-experiment` skill: it
+# discovers the stack, runs the orchestrator(s) on live AWS infra over SSM, and
+# archives every artifact produced — but does NO LLM reasoning. Investigate the
+# saved bundle afterwards with the `offline-analysis` skill (reads
+# experiments/ci-results/<stamp>-<infra>/).
 #
-# Trigger: gh workflow run run-experiment.yml -f infra=dpdk -f connections=1
-#   (or from the GitHub UI → Actions → run-experiment → Run workflow)
+# Trigger:
+#   gh workflow run run-experiment.yml -f infra=both
+#   gh workflow run run-experiment.yml -f infra=dpdk -f rounds=1 -f load_parallel=5000
+#   (or GitHub UI -> Actions -> run-experiment -> Run workflow)
 #
-# Auth: OIDC -> IAM role zero-rtt-demo-github-actions (repo variable AWS_ROLE_ARN),
-# same as aws-ops.yml. Proxmox is NOT selectable here — it needs the F5 VPN + SSH
-# gateway, which a GitHub-hosted runner cannot reach. Use dpdk / scapy / baseline.
+# `infra=both` runs baseline then dpdk with IDENTICAL load knobs — the only way
+# the two reports are comparable (see the "Load Parameters" table each runner
+# writes). Both must go green for the pair to count as a valid comparison.
+#
+# Auth: OIDC -> IAM role in repo variable AWS_ROLE_ARN. Proxmox is NOT selectable
+# here — it needs the F5 VPN + SSH gateway, unreachable from a GitHub runner.
+#
+# Knobs not exposed as first-class inputs (LOAD_BYTES, LOAD_CONCURRENCY,
+# LOAD_THINK_MS, ...) go through `extra_env`; workflow_dispatch caps at 10 inputs.
 
 name: run-experiment
 
@@ -18,29 +27,37 @@ on:
   workflow_dispatch:
     inputs:
       infra:
-        description: Infra type / experiment variant
+        description: Which experiment(s) to run
         type: choice
         required: true
-        default: dpdk
-        options: [dpdk, scapy, baseline]
-      connections:
-        description: "measurement rounds (CONNECTIONS; default: runner's own)"
+        default: both
+        options: [both, dpdk, baseline, scapy]
+      repo_ref:
+        description: "git branch the VMs hard-reset to (default: this workflow's ref)"
         default: ""
-      iperf_parallel:
-        description: "parallel TCP connections per round (LOAD_PARALLEL, default 100000)"
+      rounds:
+        description: "measurement rounds — CONNECTIONS (default 1)"
         default: ""
-      iperf_ports:
-        description: "server ports to spread load across (LOAD_PORTS, default 4)"
+      load_parallel:
+        description: "connections per round — LOAD_PARALLEL (default 100000)"
         default: ""
-      iperf_timeout:
-        description: "seconds per round before SSM gives up (LOAD_TIMEOUT, default 1800)"
+      load_rate:
+        description: "arrival rate conn/s — LOAD_RATE (default 2000; 0 = burst, NOT a latency run)"
         default: ""
-      pull_node_logs:
-        description: "best-effort: pull full /tmp/*.log from each VM via SSM after the run"
-        type: boolean
-        default: true
+      load_ports:
+        description: "server ports load is spread across — LOAD_PORTS (default 4)"
+        default: ""
+      load_timeout:
+        description: "seconds per round before SSM gives up — LOAD_TIMEOUT (default 1800)"
+        default: ""
+      netem_rtt_ms:
+        description: "emulated RTT on the ClientNIC<->ServerNIC leg — NETEM_RTT_MS (default 100)"
+        default: ""
+      extra_env:
+        description: "extra KEY=VALUE overrides, space separated (e.g. LOAD_BYTES=4096 LOAD_THINK_MS=20)"
+        default: ""
 
-# One AWS operation at a time — experiments share the same stack as deploys.
+# One AWS operation at a time — experiments share the stacks with deploys.
 concurrency:
   group: aws-ops
   cancel-in-progress: false
@@ -53,27 +70,101 @@ env:
   AWS_REGION: eu-central-1
 
 jobs:
-  experiment:
+  # Turn the single `infra` choice into the list of runs. `both` = the paired
+  # baseline+dpdk comparison; baseline first so the dpdk bundle ends up newest
+  # and latest.txt points at the 0-RTT side.
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    outputs:
+      matrix: ${{ steps.p.outputs.matrix }}
+    steps:
+      - id: p
+        env:
+          INFRA: ${{ inputs.infra }}
+        run: |
+          case "$INFRA" in
+            both)                 M='["baseline","dpdk"]' ;;
+            dpdk|scapy|baseline)  M="[\"$INFRA\"]" ;;
+            *) echo "::error::unknown infra '$INFRA' (both|dpdk|baseline|scapy)"; exit 1 ;;
+          esac
+          echo "matrix=$M" >> "$GITHUB_OUTPUT"
+          echo "will run: $M"
+
+  experiment:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false      # a failed baseline must not cancel the dpdk run
+      max-parallel: 1       # serialised: both write experiments/ci-results/ and push
+      matrix:
+        infra: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # need real refs to validate repo_ref exists on origin
 
-      - name: Resolve inputs
+      - name: Resolve config
         id: cfg
+        env:
+          INFRA: ${{ matrix.infra }}
         run: |
-          INFRA='${{ inputs.infra }}'
-          case "$INFRA" in dpdk|scapy|baseline) ;; *)
-            echo "::error::unknown infra '$INFRA' (choose dpdk|scapy|baseline)"; exit 1 ;; esac
-          # experiments/ and tag prefix differ for baseline
-          EXP_DIR="$INFRA"; TAG_PREFIX="smartnics"
-          if [ "$INFRA" = "baseline" ]; then EXP_DIR="baseline-tcp"; TAG_PREFIX="baseline"; fi
+          # experiments/<dir>/ and the EC2 Name-tag prefix differ for baseline.
+          case "$INFRA" in
+            baseline) EXP_DIR=baseline-tcp; TAG_PREFIX=baseline  ;;
+            *)        EXP_DIR="$INFRA";     TAG_PREFIX=smartnics ;;
+          esac
           {
             echo "infra=$INFRA"
             echo "exp_dir=$EXP_DIR"
             echo "tag_prefix=$TAG_PREFIX"
           } >> "$GITHUB_OUTPUT"
           echo "infra=$INFRA exp_dir=$EXP_DIR tag_prefix=$TAG_PREFIX"
+
+      - name: Export experiment knobs
+        env:
+          IN_REPO_REF:   ${{ inputs.repo_ref }}
+          IN_ROUNDS:     ${{ inputs.rounds }}
+          IN_PARALLEL:   ${{ inputs.load_parallel }}
+          IN_RATE:       ${{ inputs.load_rate }}
+          IN_PORTS:      ${{ inputs.load_ports }}
+          IN_TIMEOUT:    ${{ inputs.load_timeout }}
+          IN_NETEM:      ${{ inputs.netem_rtt_ms }}
+          IN_EXTRA:      ${{ inputs.extra_env }}
+          DEFAULT_REF:   ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Only export knobs that were actually given — an empty value would
+          # override the script default with "" and break the arithmetic in
+          # measure.sh (e.g. LOAD_PARALLEL="").
+          set_if() { [ -n "${2:-}" ] && echo "$1=$2" >> "$GITHUB_ENV" || true; }
+          set_if CONNECTIONS      "$IN_ROUNDS"
+          set_if LOAD_PARALLEL    "$IN_PARALLEL"
+          set_if LOAD_RATE        "$IN_RATE"
+          set_if LOAD_PORTS       "$IN_PORTS"
+          set_if LOAD_TIMEOUT     "$IN_TIMEOUT"
+          set_if NETEM_RTT_MS     "$IN_NETEM"
+
+          # REPO_REF is what every node script hard-resets to. Without it the VMs
+          # silently run origin/main while CI thinks it tested this branch.
+          REPO_REF="${IN_REPO_REF:-$DEFAULT_REF}"
+          echo "REPO_REF=$REPO_REF" >> "$GITHUB_ENV"
+          if ! git ls-remote --exit-code --heads origin "$REPO_REF" >/dev/null 2>&1; then
+            echo "::error::REPO_REF='$REPO_REF' is not a branch on origin — the VMs run 'git reset --hard origin/<ref>' and would fail or run stale code. Push the branch first."
+            exit 1
+          fi
+
+          # Free-form overrides. Allowlisted so a dispatch input can't inject shell.
+          if [ -n "$IN_EXTRA" ]; then
+            if ! printf '%s' "$IN_EXTRA" | grep -Eq '^([A-Z][A-Z0-9_]*=[A-Za-z0-9._:/-]*[[:space:]]*)+$'; then
+              echo "::error::extra_env must be space-separated UPPER_CASE=value pairs; got: $IN_EXTRA"
+              exit 1
+            fi
+            for kv in $IN_EXTRA; do echo "$kv" >> "$GITHUB_ENV"; done
+          fi
+
+          echo "--- experiment knobs (unset = runner default) ---"
+          cat "$GITHUB_ENV"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -82,24 +173,52 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 14400
 
+      - name: Preflight — stack is up and reachable over SSM
+        run: |
+          set -uo pipefail
+          PREFIX='${{ steps.cfg.outputs.tag_prefix }}'
+          MISSING=0
+          for role in client clientnic servernic server; do
+            IID=$(aws ec2 describe-instances \
+                    --filters "Name=tag:Name,Values=$PREFIX-$role" "Name=instance-state-name,Values=running" \
+                    --query 'Reservations[0].Instances[0].InstanceId' \
+                    --output text --region "$AWS_REGION" 2>/dev/null)
+            if [ -z "$IID" ] || [ "$IID" = "None" ]; then
+              echo "::error::no running instance tagged $PREFIX-$role — deploy the stack first"
+              MISSING=1; continue
+            fi
+            PING=$(aws ssm describe-instance-information \
+                     --filters "Key=InstanceIds,Values=$IID" \
+                     --query 'InstanceInformationList[0].PingStatus' \
+                     --output text --region "$AWS_REGION" 2>/dev/null)
+            echo "  $PREFIX-$role = $IID (SSM: ${PING:-unknown})"
+            if [ "$PING" != "Online" ]; then
+              echo "::error::$PREFIX-$role ($IID) SSM agent is '${PING:-unreachable}' — the orchestrator drives every node over SSM"
+              MISSING=1
+            fi
+          done
+          # Fail fast rather than burning the LOAD_TIMEOUT budget on a dead stack.
+          [ "$MISSING" = "0" ] || exit 1
+
       - name: Run experiment
         id: run
         run: |
-          chmod +x experiments/${{ steps.cfg.outputs.exp_dir }}/run_experiment.sh
-          if [ -n "${{ inputs.connections }}" ];    then export CONNECTIONS='${{ inputs.connections }}'; fi
-          if [ -n "${{ inputs.iperf_parallel }}" ]; then export LOAD_PARALLEL='${{ inputs.iperf_parallel }}'; fi
-          if [ -n "${{ inputs.iperf_ports }}" ];    then export LOAD_PORTS='${{ inputs.iperf_ports }}'; fi
-          if [ -n "${{ inputs.iperf_timeout }}" ];  then export LOAD_TIMEOUT='${{ inputs.iperf_timeout }}'; fi
+          EXP_DIR='${{ steps.cfg.outputs.exp_dir }}'
+          # Marker: only files the runner writes AFTER this point go in the bundle.
+          # reports/ carries ~600 KB of committed historical logs otherwise.
+          mkdir -p "experiments/$EXP_DIR/reports"
+          touch /tmp/run-marker
+          chmod +x "experiments/$EXP_DIR/run_experiment.sh"
           set +e
-          ./experiments/${{ steps.cfg.outputs.exp_dir }}/run_experiment.sh 2>&1 | tee /tmp/experiment.log
+          "./experiments/$EXP_DIR/run_experiment.sh" 2>&1 | tee /tmp/experiment.log
           RC=${PIPESTATUS[0]}
           set -e
           echo "exit_code=$RC" >> "$GITHUB_OUTPUT"
-          echo "Experiment exit code: $RC (0 = all checks passed; N = failed checks)"
-          exit 0   # never fail the job here — the bundle must be saved either way
+          echo "Experiment exit code: $RC (0 = all checks passed; N = N failed checks)"
+          exit 0   # never fail here — the bundle must be saved either way
 
       - name: Pull full node logs (best effort)
-        if: always() && inputs.pull_node_logs
+        if: always()
         continue-on-error: true
         run: |
           source experiments/utils/ssm.sh
@@ -111,8 +230,8 @@ jobs:
               echo "skip $role — no running instance ($PREFIX-$role)"; continue
             fi
             echo "== $role ($IID) =="
-            # Full /tmp/*.log (subject to SSM's own output cap) + a pcap inventory so
-            # offline analysis knows which captures still live on the VM.
+            # Full /tmp/*.log (subject to SSM's own 24 KB output cap) + a pcap
+            # inventory so offline analysis knows which captures live on the VM.
             ssm_stdout "$IID" \
               'for f in /tmp/*.log; do [ -e "$f" ] || continue; echo "===== $f ====="; cat "$f"; done; echo "===== pcap inventory ====="; ls -la /tmp/*.pcap 2>/dev/null || echo "(no pcaps)"' \
               120 > "/tmp/nodelogs/$role.log" 2>/dev/null || echo "(fetch failed for $role)"
@@ -123,47 +242,62 @@ jobs:
         if: always()
         id: bundle
         run: |
-          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          set -uo pipefail
+          export STAMP=$(date -u +%Y%m%d-%H%M%S)   # exported: the python heredoc below reads it
           INFRA='${{ steps.cfg.outputs.infra }}'
           EXP_DIR='${{ steps.cfg.outputs.exp_dir }}'
           RC='${{ steps.run.outputs.exit_code }}'
           OUT="experiments/ci-results/$STAMP-$INFRA"
           mkdir -p "$OUT/node-logs" "$OUT/reports"
-          echo "out=$OUT" >> "$GITHUB_OUTPUT"
-          echo "stamp=$STAMP" >> "$GITHUB_OUTPUT"
-
-          # 1. Machine-readable run metadata — the key the offline-analysis skill reads.
-          cat > "$OUT/run-meta.json" <<JSON
           {
-            "infra": "$INFRA",
-            "exp_dir": "$EXP_DIR",
-            "stamp_utc": "$STAMP",
-            "exit_code": ${RC:-null},
-            "checks_failed": ${RC:-null},
-            "git_sha": "${{ github.sha }}",
-            "git_ref": "${{ github.ref_name }}",
-            "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "inputs": {
-              "connections": "${{ inputs.connections }}",
-              "iperf_parallel": "${{ inputs.iperf_parallel }}",
-              "iperf_ports": "${{ inputs.iperf_ports }}",
-              "iperf_timeout": "${{ inputs.iperf_timeout }}"
-            }
-          }
-          JSON
+            echo "out=$OUT"
+            echo "stamp=$STAMP"
+          } >> "$GITHUB_OUTPUT"
 
-          # 2. FULL experiment log (untruncated — this is the primary data source).
+          # 1. Machine-readable run metadata — what offline-analysis reads first.
+          #    The resolved knobs are recorded so a baseline/dpdk pair can be
+          #    checked for load-parameter equality before being compared.
+          python3 - "$OUT/run-meta.json" <<'PY'
+          import json, os, sys
+          knobs = ["CONNECTIONS", "LOAD_PARALLEL", "LOAD_PORTS", "LOAD_RATE",
+                   "LOAD_BYTES", "LOAD_CONCURRENCY", "LOAD_THINK_MS",
+                   "LOAD_TIMEOUT", "NETEM_RTT_MS", "REPO_REF"]
+          rc = os.environ.get("RC", "")
+          meta = {
+            "infra": os.environ["INFRA"],
+            "exp_dir": os.environ["EXP_DIR"],
+            "stamp_utc": os.environ["STAMP"],
+            "exit_code": int(rc) if rc.isdigit() else None,
+            "checks_failed": int(rc) if rc.isdigit() else None,
+            "git_sha": os.environ["GITHUB_SHA"],
+            "git_ref": os.environ["GITHUB_REF_NAME"],
+            "repo_ref_on_vms": os.environ.get("REPO_REF", ""),
+            "run_url": "%s/%s/actions/runs/%s" % (os.environ["GITHUB_SERVER_URL"],
+                                                  os.environ["GITHUB_REPOSITORY"],
+                                                  os.environ["GITHUB_RUN_ID"]),
+            "requested_infra": os.environ.get("REQUESTED_INFRA", ""),
+            # Only knobs explicitly set for this run; absent = the runner's own
+            # default (see experiments/utils/measure.sh + endpoint.sh).
+            "knobs": {k: os.environ[k] for k in knobs if os.environ.get(k)},
+          }
+          json.dump(meta, open(sys.argv[1], "w"), indent=2)
+          print(json.dumps(meta, indent=2))
+          PY
+
+          # 2. FULL experiment log (untruncated — the primary data source).
           [ -f /tmp/experiment.log ] && cp /tmp/experiment.log "$OUT/experiment.log"
 
-          # 3. The auto-generated report + every file the runner left in reports/.
+          # 3. Only reports this run produced (see the marker in "Run experiment").
           if [ -d "experiments/$EXP_DIR/reports" ]; then
-            LATEST=$(ls -t experiments/$EXP_DIR/reports/*.md 2>/dev/null | head -1 || true)
+            find "experiments/$EXP_DIR/reports" -type f -newer /tmp/run-marker \
+              -exec cp {} "$OUT/reports/" \; 2>/dev/null || true
+            LATEST=$(find "experiments/$EXP_DIR/reports" -name '*.md' -newer /tmp/run-marker \
+                       -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
             [ -n "$LATEST" ] && cp "$LATEST" "$OUT/report.md"
-            cp -r experiments/$EXP_DIR/reports/. "$OUT/reports/" 2>/dev/null || true
           fi
 
           # 4. Full node logs pulled over SSM (best effort; may be absent).
-          if [ -d /tmp/nodelogs ]; then cp /tmp/nodelogs/*.log "$OUT/node-logs/" 2>/dev/null || true; fi
+          cp /tmp/nodelogs/*.log "$OUT/node-logs/" 2>/dev/null || true
 
           # 5. Human-readable index for the bundle.
           {
@@ -172,6 +306,7 @@ jobs:
             echo "- Exit code (failed checks): ${RC:-not-run}"
             echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo "- Commit: ${{ github.sha }} on \`${{ github.ref_name }}\`"
+            echo "- VMs ran ref: \`${REPO_REF:-main}\`"
             echo ""
             echo "## Files"
             echo '```'
@@ -181,26 +316,43 @@ jobs:
             echo "Analyze offline with the \`offline-analysis\` skill (point it at this dir)."
           } > "$OUT/README.md"
 
-          # Stable pointer so a plain \`git pull\` always finds the newest bundle.
+          # Stable pointers so a plain `git pull` always finds the newest bundle.
+          # Per-infra pointer too: a `both` run leaves two bundles and the
+          # comparison needs to find each side.
           mkdir -p experiments/ci-results
-          {
-            echo "latest_bundle: $OUT"
-            echo "infra: $INFRA"
-            echo "stamp_utc: $STAMP"
-            echo "exit_code: ${RC:-null}"
-          } > experiments/ci-results/latest.txt
+          for f in experiments/ci-results/latest.txt "experiments/ci-results/latest-$INFRA.txt"; do
+            {
+              echo "latest_bundle: $OUT"
+              echo "infra: $INFRA"
+              echo "stamp_utc: $STAMP"
+              echo "exit_code: ${RC:-null}"
+              echo "run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            } > "$f"
+          done
 
-          cat "$OUT/README.md" >> "$GITHUB_STEP_SUMMARY"
-          [ -f "$OUT/report.md" ] && cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+          {
+            cat "$OUT/README.md"
+            [ -f "$OUT/report.md" ] && cat "$OUT/report.md"
+          } >> "$GITHUB_STEP_SUMMARY" || true
+        env:
+          INFRA: ${{ steps.cfg.outputs.infra }}
+          EXP_DIR: ${{ steps.cfg.outputs.exp_dir }}
+          RC: ${{ steps.run.outputs.exit_code }}
+          REQUESTED_INFRA: ${{ inputs.infra }}
 
       - name: Commit results bundle
         if: always() && steps.bundle.outputs.out != ''
         run: |
+          set -uo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add experiments/ci-results/
           git commit -m "ci: experiment ${{ steps.cfg.outputs.infra }} bundle ${{ steps.bundle.outputs.stamp }} [skip ci]" || {
             echo "nothing to commit"; exit 0; }
+          # The runner also rewrites experiments/<dir>/reports/ in the worktree;
+          # rebase refuses to run with those unstaged. The bundle already has
+          # copies, so drop them (ephemeral runner, nothing else is at stake).
+          git reset --hard HEAD
           git pull --rebase origin "${{ github.ref_name }}" || true
           git push origin "HEAD:${{ github.ref_name }}"
 
@@ -212,12 +364,13 @@ jobs:
           path: ${{ steps.bundle.outputs.out }}
           if-no-files-found: warn
 
-      - name: Reflect experiment result in job status
+      - name: Verdict
         if: always()
         run: |
           RC='${{ steps.run.outputs.exit_code }}'
-          if [ "${RC:-1}" = "0" ]; then
-            echo "All checks passed."
-          else
-            echo "::warning::experiment finished with ${RC:-unknown} failed check(s) — bundle saved under experiments/ci-results/. Job left green so the data is preserved; run the offline-analysis skill to investigate."
+          if [ "${RC:-}" = "0" ]; then
+            echo "✅ ${{ matrix.infra }}: all checks passed — bundle ${{ steps.bundle.outputs.out }}"
+            exit 0
           fi
+          echo "::error::${{ matrix.infra }}: experiment finished with ${RC:-unknown} failed check(s). Bundle saved at ${{ steps.bundle.outputs.out }} — run the offline-analysis skill to investigate."
+          exit 1

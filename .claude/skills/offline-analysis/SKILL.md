@@ -21,6 +21,9 @@ so the newest committed bundle is present.
 
 - **Newest bundle**: read `experiments/ci-results/latest.txt` — its `latest_bundle:`
   line is the path. Use this unless the user names a specific run.
+- **A specific stack's newest bundle**: `latest-<infra>.txt` (e.g. `latest-dpdk.txt`,
+  `latest-baseline.txt`). A `infra=both` workflow run leaves **two** bundles — one
+  baseline, one dpdk — and these pointers are how you find each side of the pair.
 - **A specific run**: the user may give a stamp, an infra type, or a GitHub Actions
   run URL. Match it against the directory names; `run-meta.json` inside each bundle
   carries `run_url`, `git_sha`, and `stamp_utc` to disambiguate.
@@ -28,8 +31,12 @@ so the newest committed bundle is present.
   artifact somewhere else, point at that directory instead — same layout.
 
 If no bundle exists, say so and tell the user to trigger the workflow
-(`gh workflow run run-experiment.yml -f infra=<dpdk|scapy|baseline>`) — do **not**
-try to run the experiment yourself from here.
+(`gh workflow run run-experiment.yml -f infra=<both|dpdk|baseline|scapy>`) — do
+**not** try to run the experiment yourself from here.
+
+**Comparing a baseline/dpdk pair**: before quoting a 0-RTT saving, check that both
+bundles' `run-meta.json` `knobs` blocks match. Any difference in `LOAD_*` or
+`NETEM_RTT_MS` is a confound; say so instead of reporting a delta.
 
 ## Step 1 — Read the bundle
 
@@ -37,7 +44,7 @@ Each bundle contains:
 
 | File | What it holds |
 |------|---------------|
-| `run-meta.json` | infra, `exit_code` (= failed-check count), inputs, git sha, run URL |
+| `run-meta.json` | infra, `exit_code` (= failed-check count), `knobs` (resolved load/netem overrides), `repo_ref_on_vms`, git sha, run URL |
 | `experiment.log` | **full, untruncated** orchestrator output — the primary source |
 | `report.md` | the runner's auto-generated report (latency summary + tailed logs) |
 | `reports/` | every file the runner left in `experiments/<dir>/reports/` |
