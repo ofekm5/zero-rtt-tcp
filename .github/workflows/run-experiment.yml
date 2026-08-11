@@ -357,12 +357,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           REF='${{ github.ref_name }}'
-          git add experiments/ci-results/
+          EXP_DIR='${{ steps.cfg.outputs.exp_dir }}'
+          # Two destinations on purpose. The bundle (experiment.log, node-logs/,
+          # run-meta.json, report) goes to ci-results/; the runner's report ALSO
+          # goes to experiments/<mode>/reports/, which is where a locally-run
+          # experiment leaves it. Committing only the bundle made "the dpdk
+          # report" live in a different place depending on whether the run
+          # happened in CI or on a workstation.
+          git add experiments/ci-results/ "experiments/$EXP_DIR/reports/"
           git commit -m "ci: experiment ${{ steps.cfg.outputs.infra }} bundle ${{ steps.bundle.outputs.stamp }} [skip ci]" || {
             echo "nothing to commit"; exit 0; }
-          # The runner also rewrites experiments/<dir>/reports/ in the worktree;
-          # rebase refuses to run with those unstaged. The bundle already has
-          # copies, so drop them (ephemeral runner, nothing else is at stake).
+          # Anything the runner left unstaged would make rebase refuse; the
+          # bundle already has copies (ephemeral runner, nothing else at stake).
           git reset --hard HEAD
 
           # Every matrix job writes the shared latest.txt pointer, so the second
