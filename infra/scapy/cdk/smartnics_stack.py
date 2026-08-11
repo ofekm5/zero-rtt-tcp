@@ -31,7 +31,7 @@ class SmartNicsStack(Stack):
             "pip3 install scapy",
             "amazon-linux-extras install -y BCC",
             "yum install -y bpftrace",
-            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"')",
+            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"[:space:]')",
             'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" /home/ec2-user/zero-rtt-tcp',
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
         )
@@ -42,7 +42,7 @@ class SmartNicsStack(Stack):
             "yum update -y",
             "yum install -y python3-pip git",
             "pip3 install scapy",
-            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"')",
+            "GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"[:space:]')",
             'git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git" /home/ec2-user/zero-rtt-tcp',
             "chown -R ec2-user:ec2-user /home/ec2-user/zero-rtt-tcp",
             # Enable IP forwarding

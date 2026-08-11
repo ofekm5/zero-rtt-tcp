@@ -115,7 +115,7 @@ run_experiment() {
                  sudo -u ec2-user git -C $REPO_PATH checkout -B $ref origin/$ref 2>&1 && \
                  sudo -u ec2-user git -C $REPO_PATH reset --hard origin/$ref 2>&1 || true; \
              else \
-                 GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"'); \
+                 GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"[:space:]'); \
                  sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git\" $REPO_PATH 2>&1 || true; \
                  sudo -u ec2-user git -C $REPO_PATH checkout $ref 2>&1 || true; \
                  chown -R ec2-user:ec2-user $REPO_PATH 2>/dev/null || true; \
