@@ -1,0 +1,15 @@
+{
+  "infra": "dpdk",
+  "exp_dir": "dpdk",
+  "stamp_utc": "20260811-082919",
+  "exit_code": 1,
+  "checks_failed": 1,
+  "git_sha": "506b0f0d0fb9d8bff6a13b69e1bb62ddeef45518",
+  "git_ref": "fix/secret-rename",
+  "repo_ref_on_vms": "fix/secret-rename",
+  "run_url": "https://github.com/ofekm5/zero-rtt-tcp/actions/runs/31470893516",
+  "requested_infra": "both",
+  "knobs": {
+    "REPO_REF": "fix/secret-rename"
+  }
+}

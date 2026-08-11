@@ -58,6 +58,12 @@ cover/
 
 # Django stuff:
 *.log
+# ...but a CI experiment bundle is curated output, not build noise. `*.log` was
+# silently dropping experiment.log (the full untruncated orchestrator output)
+# and node-logs/*.log from every committed bundle, leaving only the report —
+# so offline analysis had nothing to read once the 90-day Actions artifact
+# expired. See .claude/skills/offline-analysis/SKILL.md.
+!experiments/ci-results/**/*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal

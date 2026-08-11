@@ -1,0 +1,23 @@
+{
+  "infra": "dpdk",
+  "exp_dir": "dpdk",
+  "stamp_utc": "20260811-090202",
+  "exit_code": 0,
+  "checks_failed": 0,
+  "git_sha": "ab297356f49c4556eb475aea83bb1c3ba520b5b3",
+  "git_ref": "fix/secret-rename",
+  "repo_ref_on_vms": "fix/secret-rename",
+  "run_url": "https://github.com/ofekm5/zero-rtt-tcp/actions/runs/31475131041",
+  "requested_infra": "both",
+  "knobs": {
+    "CONNECTIONS": "1",
+    "LOAD_PARALLEL": "2000",
+    "LOAD_PORTS": "4",
+    "LOAD_RATE": "500",
+    "LOAD_BYTES": "1024",
+    "LOAD_CONCURRENCY": "2000",
+    "LOAD_THINK_MS": "0",
+    "NETEM_RTT_MS": "100",
+    "REPO_REF": "fix/secret-rename"
+  }
+}
