@@ -175,25 +175,29 @@ jobs:
 
       - name: Preflight — stack is up and reachable over SSM
         run: |
-          set -uo pipefail
+          # GitHub runs steps as `bash -e`; `set -uo pipefail` does NOT clear that.
+          # Without +e the first failing aws call aborts the step before a single
+          # role is reported, which is the opposite of what a preflight is for.
+          set +e
+          source experiments/utils/ssm.sh
           PREFIX='${{ steps.cfg.outputs.tag_prefix }}'
           MISSING=0
           for role in client clientnic servernic server; do
-            IID=$(aws ec2 describe-instances \
-                    --filters "Name=tag:Name,Values=$PREFIX-$role" "Name=instance-state-name,Values=running" \
-                    --query 'Reservations[0].Instances[0].InstanceId' \
-                    --output text --region "$AWS_REGION" 2>/dev/null)
+            IID=$(get_iid "$PREFIX-$role" 2>/tmp/awserr)
             if [ -z "$IID" ] || [ "$IID" = "None" ]; then
               echo "::error::no running instance tagged $PREFIX-$role — deploy the stack first"
+              head -3 /tmp/awserr 2>/dev/null
               MISSING=1; continue
             fi
-            PING=$(aws ssm describe-instance-information \
-                     --filters "Key=InstanceIds,Values=$IID" \
-                     --query 'InstanceInformationList[0].PingStatus' \
-                     --output text --region "$AWS_REGION" 2>/dev/null)
-            echo "  $PREFIX-$role = $IID (SSM: ${PING:-unknown})"
-            if [ "$PING" != "Online" ]; then
-              echo "::error::$PREFIX-$role ($IID) SSM agent is '${PING:-unreachable}' — the orchestrator drives every node over SSM"
+            # Reachability via a real round-trip rather than PingStatus: this is
+            # the exact call pair the orchestrator uses for every node, and it
+            # needs no permission the run doesn't already exercise.
+            PROBE=$(ssm_stdout "$IID" "echo SSM_OK" 30 2>/tmp/awserr)
+            if echo "$PROBE" | grep -q SSM_OK; then
+              echo "  $PREFIX-$role = $IID (SSM round-trip OK)"
+            else
+              echo "::error::$PREFIX-$role ($IID) did not answer an SSM round-trip — the orchestrator drives every node over SSM"
+              head -5 /tmp/awserr 2>/dev/null
               MISSING=1
             fi
           done
@@ -242,7 +246,10 @@ jobs:
         if: always()
         id: bundle
         run: |
-          set -uo pipefail
+          # +e is load-bearing: GitHub runs steps as `bash -e`, and this step must
+          # save whatever data exists even when the run never produced some of it
+          # (e.g. no /tmp/experiment.log because preflight failed).
+          set +e
           export STAMP=$(date -u +%Y%m%d-%H%M%S)   # exported: the python heredoc below reads it
           INFRA='${{ steps.cfg.outputs.infra }}'
           EXP_DIR='${{ steps.cfg.outputs.exp_dir }}'
@@ -343,7 +350,10 @@ jobs:
       - name: Commit results bundle
         if: always() && steps.bundle.outputs.out != ''
         run: |
-          set -uo pipefail
+          # Fail-fast here on purpose: a push that silently fails would strand the
+          # bundle on the runner. The one tolerated failure (nothing to commit) is
+          # handled by its own `||` branch below.
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add experiments/ci-results/
