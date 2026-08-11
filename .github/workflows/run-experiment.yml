@@ -356,6 +356,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          REF='${{ github.ref_name }}'
           git add experiments/ci-results/
           git commit -m "ci: experiment ${{ steps.cfg.outputs.infra }} bundle ${{ steps.bundle.outputs.stamp }} [skip ci]" || {
             echo "nothing to commit"; exit 0; }
@@ -363,8 +364,33 @@ jobs:
           # rebase refuses to run with those unstaged. The bundle already has
           # copies, so drop them (ephemeral runner, nothing else is at stake).
           git reset --hard HEAD
-          git pull --rebase origin "${{ github.ref_name }}" || true
-          git push origin "HEAD:${{ github.ref_name }}"
+
+          # Every matrix job writes the shared latest.txt pointer, so the second
+          # one to finish rebases into an add/add conflict. `-X theirs` keeps THIS
+          # job's copy (during a rebase "theirs" is the commit being replayed),
+          # i.e. last-writer-wins — with max-parallel:1 the final infra's bundle
+          # becomes latest.txt, which is the intent. Per-bundle dirs never clash.
+          pushed=0
+          for attempt in 1 2 3; do
+            git fetch -q origin "$REF"
+            if ! git rebase -X theirs "origin/$REF"; then
+              git rebase --abort || true
+              echo "rebase attempt $attempt failed — retrying"
+              continue
+            fi
+            if git push origin "HEAD:$REF"; then pushed=1; break; fi
+            echo "push attempt $attempt rejected — retrying"
+          done
+          [ "$pushed" = "1" ] || {
+            echo "::error::could not push the results bundle after 3 attempts — it exists only as a run artifact"; exit 1; }
+
+          # Prove it landed. A swallowed rebase conflict previously left the repo
+          # mid-rebase, made `git push` print "Everything up-to-date", and dropped
+          # a whole bundle while the step stayed green.
+          git fetch -q origin "$REF"
+          git diff --quiet HEAD "origin/$REF" -- experiments/ci-results/ || {
+            echo "::error::bundle missing from origin/$REF after push"; exit 1; }
+          echo "bundle pushed to $REF: ${{ steps.bundle.outputs.out }}"
 
       - name: Upload results artifact
         if: always() && steps.bundle.outputs.out != ''
