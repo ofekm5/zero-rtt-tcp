@@ -291,9 +291,10 @@
 
       <p class="rp-foot">2000 / 2000 connections completed on both stacks. The saving holds
       through the median, 99th percentile and worst case — it is not carried by the mean.
-      The pair was repeated on 2026-08-11 on a separately deployed stack, driven by CI
-      rather than a workstation: every mean landed within 0.51 ms of the figures above
-      (§4).</p>
+      The pair has since been run <strong>twelve times per stack</strong> — 24,000 flows
+      each side, across three separately deployed stacks and two orchestration paths —
+      with every run passing every check. No mean of the blocked time moved by more than
+      <strong>1.27 ms</strong> on plain TCP or <strong>0.22 ms</strong> on 0-RTT (§4).</p>
     </div>
 
     <ul class="sum" style="margin-top:26px;">
@@ -444,7 +445,7 @@
       <li><strong>Paced arrivals.</strong> Connection <em>i</em> starts at a fixed point on a
       clock and the achieved rate is reported, so a run that collapses into a burst is
       visible rather than mistaken for a latency result. Achieved rate matched the requested
-      500/s in both runs.</li>
+      500/s in every run.</li>
       <li><strong>The generator's clock is not trusted.</strong> Every number in this report
       comes from the endpoint packet captures; the generator's only timing role is
       <em>starting</em> connections, accurate to within 0.5 ms against a 100 ms effect.</li>
@@ -560,10 +561,12 @@ tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
       across four ports, 1 KB per connection, 100 ms modelled round trip.</li>
       <li>The table below is the run pair of 2026-08-08, and its statistics describe
       variation <em>within</em> those runs.</li>
-      <li>The pair was repeated on 2026-08-11 at identical parameters, on a separately
-      deployed stack driven by GitHub Actions rather than a workstation. Both runs are
-      tabulated together under "Reproduction" — the direction and magnitude hold, and
-      run-to-run spread is now bounded rather than unknown.</li>
+      <li>The pair was repeated at identical parameters on 2026-08-11 (a separately
+      deployed stack driven by GitHub Actions rather than a workstation) and again on
+      2026-08-17 as a <strong>ten-run series per stack</strong> on a third deployment.
+      All twelve runs per stack are tabulated under "Reproduction" — the direction and
+      magnitude hold, and run-to-run spread is now <em>measured across a series</em>
+      rather than bounded by two samples.</li>
     </ul>
 
     <div class="tw wide">
@@ -612,69 +615,84 @@ tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
     </div>
 
     <h3 style="margin-top:38px;">Reproduction</h3>
-    <p style="margin-top:10px;">The pair was run again on 2026-08-11 at identical
-    parameters — same 2000 connections at 500/s across four ports, 1 KB each, 100 ms
-    modelled round trip — on a separately deployed stack, orchestrated by GitHub Actions
-    instead of a workstation. The load parameters of both stacks were recorded per run and
-    checked equal before comparing, so neither side could drift.</p>
+    <p style="margin-top:10px;">The pair has been run twelve times per stack at identical
+    parameters — 2000 connections at 500/s across four ports, 1 KB each, 100 ms modelled
+    round trip. Once on 2026-08-08 from a workstation, once on 2026-08-11 on a separately
+    deployed stack orchestrated by GitHub Actions, and ten more times on 2026-08-17 on a
+    third deployment. The load parameters of both stacks were recorded per run and checked
+    equal before comparing, so neither side could drift. Every one of the 24 runs passed
+    every check.</p>
 
     <div class="tw wide">
       <table>
         <thead>
           <tr><th>Mean</th><th class="n">2026-08-08</th><th class="n">2026-08-11</th>
-              <th class="n">Spread</th><th class="n">Pooled</th></tr>
+              <th class="n">2026-08-17 (n=10)</th><th class="n">Range, 12 runs</th>
+              <th class="n">Pooled</th></tr>
         </thead>
         <tbody>
           <tr class="headline">
             <td class="metric">Application blocked — plain TCP</td>
             <td class="n">101.532 ms</td><td class="n">101.901 ms</td>
-            <td class="n flat">0.369 ms</td><td class="n">101.717 ms</td>
+            <td class="n">101.528 ± 0.388 ms</td><td class="n flat">101.277 – 102.549</td>
+            <td class="n">101.559 ms</td>
           </tr>
           <tr class="headline">
             <td class="metric">Application blocked — 0-RTT</td>
             <td class="n">0.263 ms</td><td class="n">0.443 ms</td>
-            <td class="n flat">0.180 ms</td><td class="n">0.353 ms</td>
+            <td class="n">0.244 ± 0.031 ms</td><td class="n flat">0.228 – 0.443</td>
+            <td class="n">0.262 ms</td>
           </tr>
           <tr>
             <td class="metric">Connection completed — plain TCP</td>
             <td class="n">202.919 ms</td><td class="n">203.179 ms</td>
-            <td class="n flat">0.260 ms</td><td class="n">203.049 ms</td>
+            <td class="n">202.769 ± 0.588 ms</td><td class="n flat">202.369 – 204.357</td>
+            <td class="n">202.816 ms</td>
           </tr>
           <tr>
             <td class="metric">Connection completed — 0-RTT</td>
             <td class="n">101.067 ms</td><td class="n">101.571 ms</td>
-            <td class="n flat">0.504 ms</td><td class="n">101.319 ms</td>
+            <td class="n">100.650 ± 0.030 ms</td><td class="n flat">100.621 – 101.571</td>
+            <td class="n">100.762 ms</td>
           </tr>
           <tr>
             <td class="metric">Server-side gap — plain TCP</td>
             <td class="n">101.523 ms</td><td class="n">101.869 ms</td>
-            <td class="n flat">0.346 ms</td><td class="n">101.696 ms</td>
+            <td class="n">101.410 ± 0.298 ms</td><td class="n flat">101.243 – 102.243</td>
+            <td class="n">101.458 ms</td>
           </tr>
           <tr>
             <td class="metric">Server-side gap — 0-RTT</td>
             <td class="n">0.259 ms</td><td class="n">0.437 ms</td>
-            <td class="n flat">0.178 ms</td><td class="n">0.348 ms</td>
+            <td class="n">0.227 ± 0.027 ms</td><td class="n flat">0.211 – 0.437</td>
+            <td class="n">0.247 ms</td>
           </tr>
           <tr>
             <td class="metric">Connections completed</td>
             <td class="n">2000 / 2000</td><td class="n">2000 / 2000</td>
-            <td class="n flat">—</td><td class="n">4000 / 4000</td>
+            <td class="n">20,000 / 20,000</td><td class="n flat">—</td>
+            <td class="n">24,000 / 24,000</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <p style="margin-top:22px;">Across both runs the saving is
-    <strong>−101.36 ms</strong> of application blocking and <strong>−101.73 ms</strong> of
-    completion time. No mean moved by more than <strong>0.51 ms</strong> between runs —
-    half a percent of the effect — so the headline is reproducible, not a single
-    favourable sample.</p>
+    <p style="margin-top:22px;">Pooled across all twelve runs per stack the saving is
+    <strong>−101.30 ms</strong> of application blocking and <strong>−102.05 ms</strong> of
+    completion time. The <em>entire</em> observed range of plain-TCP blocked time
+    (101.277 – 102.549 ms) sits more than two orders of magnitude above the entire
+    observed range for 0-RTT (0.228 – 0.443 ms): the two distributions do not approach
+    each other, let alone overlap. The ten-run series also shows the 0-RTT side is the
+    <em>steadier</em> of the two — its blocked time varies by 0.031 ms between runs
+    against plain TCP's 0.388 ms, because it no longer waits on a network round trip
+    whose own jitter it would inherit.</p>
 
-    <p class="fine" style="margin-top:14px;">Pooled figures are means only. Both runs
-    carry exactly 2000 flows, so averaging their means gives the true pooled mean; a
-    pooled <em>median</em> or 99th percentile cannot be recovered from per-run summaries
-    and is therefore not claimed. The percentiles in the table above remain
-    within-run.</p>
+    <p class="fine" style="margin-top:14px;">Pooled figures are means only, equally
+    weighted: every run carries exactly 2000 flows, so averaging the twelve run means
+    gives the true pooled mean. A pooled <em>median</em> or 99th percentile cannot be
+    recovered from per-run summaries and is therefore not claimed; the percentiles in the
+    table above remain within-run. The ± figure is the standard deviation of the ten
+    run means of 2026-08-17 — dispersion of run means, not of individual connections.</p>
 
     <figure>
       <svg viewBox="0 0 700 236" role="img" aria-label="Timeline comparing a plain TCP connection with a 0-RTT connection from zero to 220 milliseconds">
@@ -767,19 +785,27 @@ tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
       transfer rate through the translator untested. An earlier observation suggested
       per-connection throughput may be well below the kernel's; a design that saves a round
       trip but costs bandwidth is not obviously a win.</li>
-      <li><strong>The run pair has been repeated once.</strong> Two baseline runs and two
-      0-RTT runs, agreeing to within 0.51 ms on every mean (§4). That bounds run-to-run
-      spread rather than establishing a distribution: two samples per stack cannot show
-      whether the spread is stable or whether a rarer mode exists. Read the headline as
+      <li><strong>The run pair has been repeated eleven times.</strong> Twelve baseline
+      runs and twelve 0-RTT runs across three deployments — 24,000 flows per stack — all
+      passing every check, with the blocked-time mean varying by 1.27 ms on plain TCP and
+      0.22 ms on 0-RTT (§4). That is a measured distribution of run means, not a bound
+      from two samples. It remains a distribution of <em>means</em>: a rare per-connection
+      mode smaller than a run's own averaging would still be invisible, and every run
+      shares one region, one instance type and one modelled RTT. Read the headline as
       "about one round trip".</li>
-      <li><strong>Scale is not demonstrated, and one attempt has now failed.</strong> The
-      results above are 2000 connections against a 100,000 target. A 100k pair was run on
-      2026-08-11 at 2000 conn/s: plain TCP completed 100,000 of 100,000, while 0-RTT
-      completed <strong>84,143 of 100,000</strong> — 15,857 connections never established
-      through the data plane. Latency at that load is not interpretable on either stack
-      (plain TCP's 95th-percentile blocking time reached 64.7 s, which is queueing, not
-      path). Whether the shortfall is endpoint exhaustion or a data-plane limit is
-      unresolved; no figure in this report depends on it.</li>
+      <li><strong>Scale is not demonstrated, and both attempts have now failed.</strong>
+      The results above are 2000 connections against a 100,000 target. Two 100k pairs have
+      been run at 2000 conn/s. On 2026-08-11 plain TCP completed 100,000 of 100,000 while
+      0-RTT completed 84,143. On 2026-08-17 <em>neither</em> side completed: plain TCP
+      managed <strong>99,728 of 100,000</strong> (272 failed) and 0-RTT
+      <strong>87,073 of 100,000</strong> (12,927 failed). Both runs failed their endpoint
+      metric check outright — 326 and 171 unresolvable metric events respectively — so the
+      earlier "plain TCP completes 100k cleanly" reading does not replicate and should not
+      be relied on. Latency at that load is not interpretable on either stack (plain TCP's
+      95th-percentile blocking time reached 64.1 s, which is queueing, not path). The
+      0-RTT shortfall is the larger and reproduces across both attempts; whether it is
+      endpoint exhaustion or a data-plane limit is still unresolved. No figure in this
+      report depends on it.</li>
       <li><strong>A latency outlier is unexplained.</strong> An earlier run showed a small
       fraction of connections finishing several hundred ms late, consistent with a lost
       segment paying the minimum RTO. It did not recur here; a retransmission counter
