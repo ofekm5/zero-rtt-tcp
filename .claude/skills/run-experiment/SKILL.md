@@ -1,6 +1,6 @@
 ---
 name: run-experiment
-description: End-to-end integration testing for the 0-RTT TCP demo across all 4 nodes (Client, ClientNIC, ServerNIC, Server) on AWS EC2 or the RUNS Proxmox lab. Use when running experiments, validating 0-RTT behavior, measuring TTFB/FCT, diagnosing packet flow issues, verifying sequence number translation, or troubleshooting the 4-VM chain. Triggers on phrases like "run experiment", "run integration tests", "test 0-RTT", "measure latency", "check the VMs", "verify packet flow", "debug the demo", or "validate the setup".
+description: Run 0-RTT TCP experiments end-to-end across the 4-node chain (Client, ClientNIC, ServerNIC, Server) on AWS EC2 or the RUNS Proxmox lab, and interpret the result. INVOKE THIS SKILL — do not hand-run the orchestrator or read this file as documentation — whenever the request involves running, repeating, or sweeping an experiment on the dpdk / baseline / scapy / proxmox stacks; measuring TTFB, FCT, send_unlock, or server_gap; comparing 0-RTT against the plain-TCP baseline; updating anything under experiments/*/reports/; or diagnosing the 4-VM chain. Triggers on "run experiment", "run N experiments", "run the sweep", "rerun the benchmark", "run integration tests", "test 0-RTT", "measure latency", "compare dpdk vs baseline", "update the reports", "check the VMs", "verify packet flow", "debug the demo", "validate the setup" — and on a /goal or task whose objective is any of those, even when the request is phrased as raw CDK output or bare instance IDs.
 ---
 
 # Run Experiment — 0-RTT Integration Tester
@@ -22,8 +22,13 @@ result in chat, and investigate any failures.
 
 Set variables based on the answer:
 
+A comparison request ("dpdk vs baseline", "does 0-RTT actually win") is **not** a
+mode choice — it is `infra=both` in one dispatch (Step 1). Don't run the two stacks
+as separate dispatches with hand-matched knobs.
+
 | Variable | Scapy | DPDK (AWS) | Proxmox | Baseline |
 |----------|-------|------------|---------|----------|
+| Workflow `infra` input | `scapy` | `dpdk` | *(not available in CI)* | `baseline` |
 | `EXPERIMENT_SCRIPT` | `experiments/scapy/run_experiment.sh` | `experiments/dpdk/run_experiment.sh` | `experiments/proxmox/run_experiment.sh` | `experiments/baseline-tcp/run_experiment.sh` |
 | `REPORT_DIR` | `experiments/scapy/reports/` | `experiments/dpdk/reports/` | `experiments/proxmox/reports/` | `experiments/baseline-tcp/reports/` |
 | Report filename | `integration-test-report-YYYY-MM-DD.md` | `integration-test-report-YYYY-MM-DD.md` | `proxmox-test-report-YYYY-MM-DD.md` | `baseline-report-YYYY-MM-DD-HHMMSS.md` |
@@ -34,15 +39,103 @@ Set variables based on the answer:
 | Infra stack | `infra/scapy` | `infra/dpdk` | RUNS Proxmox lab | `infra/baseline` |
 | Pcap validator | `validate_0rtt_capture.py` | `analyze_metrics.py` | `analyze_metrics.py` | (none) |
 
-## Step 1 — Run the automated script
+## Step 1 — Run it (GitHub Actions is the default path)
+
+**Dispatch `.github/workflows/run-experiment.yml`** unless the mode is Proxmox or
+the user asks for a local run. It drives the same orchestrators over SSM, but also
+archives every artifact and commits a results bundle — which is what Step 6 reads.
+
+> ⛔ **Never dispatch without `load_parallel` and `load_rate`.** Omitting them
+> silently selects 100000 @ 2000 conn/s — a capacity setting that saturates the
+> t3.micro endpoints and fails the run. See "Load knobs are mandatory" below
+> before you copy anything here.
 
 ```bash
-CONNECTIONS=5 ./<EXPERIMENT_SCRIPT>      # CONNECTIONS env var is optional
+# Latency run — the comparable operating point. This is the default invocation.
+gh workflow run run-experiment.yml -f infra=both \
+    -f load_parallel=2000 -f load_rate=500
+
+# One stack only, same knobs.
+gh workflow run run-experiment.yml -f infra=dpdk \
+    -f load_parallel=2000 -f load_rate=500
+
+gh run watch "$(gh run list --workflow=run-experiment.yml -L1 --json databaseId -q '.[0].databaseId')"
 ```
+
+| Input | Maps to | Default if omitted |
+|-------|---------|--------------------|
+| `infra` | `both` \| `dpdk` \| `baseline` \| `scapy` | `both` |
+| `repo_ref` | branch the VMs hard-reset to | the workflow's own ref |
+| `rounds` | `CONNECTIONS` | 1 |
+| `load_parallel` | `LOAD_PARALLEL` | 100000 ⛔ never omit |
+| `load_rate` | `LOAD_RATE` conn/s | 2000 ⛔ never omit |
+| `load_ports` | `LOAD_PORTS` | 4 |
+| `load_timeout` | `LOAD_TIMEOUT` | 1800 |
+| `netem_rtt_ms` | `NETEM_RTT_MS` | 100 |
+| `extra_env` | `KEY=VALUE ...` (`LOAD_BYTES`, `LOAD_CONCURRENCY`, …) | — |
+
+Why this path is preferred:
+
+- **`infra=both` is the only way to get a comparable pair** — one dispatch applies
+  identical knobs to baseline and dpdk, serialised, so neither side can drift. Both
+  jobs must go green for the comparison to count.
+- Needs no local AWS credentials, and survives the workstation going away.
+- Saves a full bundle per run to `experiments/ci-results/<stamp>-<infra>/`
+  (`run-meta.json`, untruncated `experiment.log`, `report.md`, `node-logs/`) **and**
+  copies the report into `experiments/<mode>/reports/`, then commits both.
+- The workflow does **zero reasoning** on purpose. Step 6 supplies it.
+
+**Repeat runs / sweeps**: dispatch once per repetition (the `aws-ops` concurrency
+group serialises them; the stacks cannot be shared anyway). Each dispatch produces
+its own timestamped bundle, so nothing overwrites — unlike the local DPDK runner,
+whose report filename is date-only and self-overwrites within a day.
+
+### Load knobs are mandatory — the workflow's defaults will fail the run
+
+The workflow only exports a knob that was **explicitly passed**; anything omitted
+falls through to the runner default in `experiments/utils/measure.sh`, which is
+**`LOAD_PARALLEL=100000`, `LOAD_RATE=2000`**. That is a *capacity* setting, not a
+latency setting, and on the t3.micro endpoints it fails:
+
+| Stack | Observed at 100k @ 2000/s (2026-08-17) |
+|---|---|
+| Baseline | 272/100000 connections failed, 326 `missing=` metric events, p95 send_unlock **64 s** |
+| DPDK | 171 `missing=` server events, p95 send_unlock **1.0 s**, p99 **31.7 s** |
+
+Both exit non-zero on `Endpoint analysis: N missing metric event(s)`. The numbers
+are not a 0-RTT result — the queueing dominates the path — and this ceiling is
+already recorded in `docs/index.html` (a prior 100k attempt completed 84143/100000
+on the 0-RTT side).
+
+**Rule**: every dispatch passes `load_parallel` and `load_rate` explicitly.
+Use **`load_parallel=2000`, `load_rate=500`** — the operating point every
+committed report since 2026-08-08 was taken at — unless the user asks for
+something else, and always match the reports you intend to compare against.
+
+**Deliberately running at capacity?** Then say so in the summary and read only
+establishment-success and throughput from it. `missing=` events and multi-second
+percentiles are expected there, not a regression — and never quote its latency as
+a 0-RTT saving. Pair it with `-f load_timeout=3600`, since 100k @ 2000/s needs
+~50 s of spawn plus several minutes of drain per round.
+
+### Step 1b — Local orchestrator (fallback)
+
+Required for **Proxmox** (the GitHub runner cannot reach the lab: F5 VPN + SSH
+gateway), and for iterating with uncommitted local changes.
+
+```bash
+LOAD_PARALLEL=2000 LOAD_RATE=500 ./<EXPERIMENT_SCRIPT>
+```
+
+The same rule applies here — a bare `./<EXPERIMENT_SCRIPT>` inherits the identical
+100000 @ 2000 conn/s default and fails the same way. `CONNECTIONS=N` adds
+measurement rounds and is optional.
 
 Exit code = number of failed checks (0 = all passed). The script handles node
 discovery, code pull, service startup, packet capture, client test, log checks,
-metric analysis, **and report writing** automatically.
+metric analysis, **and report writing** automatically. Local runs produce no
+ci-results bundle, so Steps 3–5 are done against the inline output instead of
+Step 6's offline handoff.
 
 See `references/test-scripts.md` for the full step-by-step breakdown and expected
 output of each script.
@@ -125,7 +218,8 @@ spoofing, no pcap validator.
 ## Step 2 — Report is written automatically
 
 **The script writes the report itself** to `<REPORT_DIR><filename>` before exiting.
-Do **not** hand-author a duplicate. After the run:
+Do **not** hand-author a duplicate. A workflow run commits that same report to
+`<REPORT_DIR>` *and* copies it into its bundle as `report.md`. After the run:
 
 1. Confirm the report file exists and read it back to verify it captured the run.
 2. If a section is empty because a step failed (e.g. empty ClientNIC log), note that
@@ -201,6 +295,32 @@ If it does:
    > `experiments/insights.md`?"
 3. On confirmation, append the entry (never overwrite or reorder prior
    entries). On decline, discard the draft — don't save it elsewhere.
+
+## Step 6 — Close with the `offline-analysis` skill (CI runs)
+
+**Every workflow-dispatched run ends here.** `run-experiment.yml` archives the
+data but deliberately does no reasoning; `offline-analysis` is that missing half,
+and it is the closing step of this skill — not an optional follow-up.
+
+```bash
+git pull                                   # the bundle is committed by the workflow
+cat experiments/ci-results/latest.txt      # latest_bundle: -> the path
+```
+
+Then invoke the **`offline-analysis`** skill against the bundle. It performs
+Steps 3–5 (summary, failure diagnosis, candidate insights) from
+`run-meta.json` + the untruncated `experiment.log` + `node-logs/`, which is
+strictly more data than the inline output a local run leaves behind — SSM
+truncates fetched logs at 24 KB, the bundle's copies are not truncated.
+
+- **`infra=both`**: analyze **both** bundles — `latest-baseline.txt` and
+  `latest-dpdk.txt` — and confirm their `run-meta.json` `knobs` blocks match
+  before quoting any 0-RTT saving. Mismatched knobs = confound, not a result.
+- **Sweeps**: run it over every bundle in the sweep, then report cross-run
+  spread (mean-of-means, min/max per metric). A single run's mean says nothing
+  about run-to-run variance.
+- **Local runs (Step 1b)**: no bundle exists — do Steps 3–5 inline instead and
+  skip this step.
 
 ---
 

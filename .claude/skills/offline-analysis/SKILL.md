@@ -30,9 +30,18 @@ so the newest committed bundle is present.
 - **A downloaded artifact**: if the user unzipped a `experiment-<infra>-<stamp>`
   artifact somewhere else, point at that directory instead — same layout.
 
-If no bundle exists, say so and tell the user to trigger the workflow
-(`gh workflow run run-experiment.yml -f infra=<both|dpdk|baseline|scapy>`) — do
-**not** try to run the experiment yourself from here.
+If no bundle exists, say so and tell the user to trigger the workflow — do
+**not** try to run the experiment yourself from here:
+
+```bash
+gh workflow run run-experiment.yml -f infra=<both|dpdk|baseline|scapy> \
+    -f load_parallel=2000 -f load_rate=500
+```
+
+The load knobs are not optional: omitted, they fall through to 100000 @ 2000
+conn/s, which saturates the t3.micro endpoints and produces `missing=` metric
+events instead of a usable latency measurement. See the `run-experiment` skill,
+"Load knobs are mandatory".
 
 **Comparing a baseline/dpdk pair**: before quoting a 0-RTT saving, check that both
 bundles' `run-meta.json` `knobs` blocks match. Any difference in `LOAD_*` or
