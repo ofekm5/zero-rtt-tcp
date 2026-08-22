@@ -9,6 +9,10 @@ Proof-of-concept demonstrating **0-RTT TCP** — eliminating the 3-way handshake
 the answer. Offline copy: [`docs/index.html`](docs/index.html) (open it locally, or enable GitHub
 Pages on `docs/` to serve it).
 
+🗺️ **[Architecture map](https://claude.ai/code/artifact/d6523fae-e687-4ceb-8477-fad152e75b72)**
+— interactive explorer of all 15 components across 5 tracks (live data plane, harness, outputs,
+deprecated code, BlueField), traced from the repo via `graphify`.
+
 ## Architecture
 
 ```
