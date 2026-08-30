@@ -301,10 +301,11 @@
       <li><strong>Conditions.</strong> The saving requires each NIC beside its own endpoint,
       with the modelled distance on the ClientNIC↔ServerNIC leg. Any endpoint-side placement
       of the delay cancels the completion-time gain exactly (§3).</li>
-      <li><strong>Scope.</strong> Two runs per stack, 2000 connections, 1 KB per connection,
-      TCP options disabled. Run-to-run spread is now bounded but rests on two runs;
-      throughput and scale to 100k remain unmeasured, and a 100k attempt failed on the
-      0-RTT side (§6).</li>
+      <li><strong>Scope.</strong> Twelve runs per stack, 2000 connections each, 1 KB per
+      connection, TCP options disabled. Those 2000 connections arrive at 500/s and hold
+      only 50–100 open at once, so sustained concurrency is untested. Throughput is
+      unmeasured, and behaviour at 100k is not demonstrated on either stack — both fail
+      there, unequally, for reasons this work does not resolve (§6).</li>
     </ul>
   </section>
 
@@ -793,6 +794,13 @@ tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
       mode smaller than a run's own averaging would still be invisible, and every run
       shares one region, one instance type and one modelled RTT. Read the headline as
       "about one round trip".</li>
+      <li><strong>Concurrency is lower than the load parameters suggest.</strong>
+      The headline runs are 2000 connections <em>in total</em>, arriving at 500/s. With a
+      mean flow completing in 203 ms (plain TCP) or 101 ms (0-RTT), that holds roughly
+      50–100 connections open at any instant, not 2000: the generator's 2000-connection
+      concurrency cap never binds at this volume, because the run never has 2000 flows
+      alive to cap. Sustained high concurrency is therefore untested, and is a separate
+      question from the total-volume limit below.</li>
       <li><strong>Scale is not demonstrated, and both attempts have now failed.</strong>
       The results above are 2000 connections against a 100,000 target. Two 100k pairs have
       been run at 2000 conn/s. On 2026-08-11 plain TCP completed 100,000 of 100,000 while
@@ -805,7 +813,22 @@ tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
       95th-percentile blocking time reached 64.1 s, which is queueing, not path). The
       0-RTT shortfall is the larger and reproduces across both attempts; whether it is
       endpoint exhaustion or a data-plane limit is still unresolved. No figure in this
-      report depends on it.</li>
+      report depends on it.
+      <br><br>
+      This is scoped out rather than answered, and the scoping is deliberately narrow:
+      the shortfall is <em>not</em> attributed to shared infrastructure. Under identical
+      conditions the baseline lost 0.3&nbsp;% of connections where 0-RTT lost 12.9&nbsp;%,
+      an asymmetry a common endpoint or harness ceiling would not produce. The claim made
+      here is only that behaviour at 100k is not demonstrated, in either direction.</li>
+      <li><strong>The reported arrival rate is not a measure of establishment.</strong>
+      The generator derives "achieved conn/s" from how quickly it schedules its tasks, not
+      from when connections actually opened — each task takes the concurrency semaphore
+      after it is created, so the scheduling loop never feels backpressure. At the
+      2000-connection load the two agree, because nothing queues. At 100k they diverge
+      sharply: scheduling finished in 50.000 s exactly on target while the run itself took
+      985 s, with a 99th-percentile time-to-first-byte of 31.7 s. Read the arrival rate as
+      a requested ceiling that was met by the scheduler, never as evidence that
+      connections were established at that rate.</li>
       <li><strong>A latency outlier is unexplained.</strong> An earlier run showed a small
       fraction of connections finishing several hundred ms late, consistent with a lost
       segment paying the minimum RTO. It did not recur here; a retransmission counter

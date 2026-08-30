@@ -1,13 +1,23 @@
 ---
 type: Wiki Entry
 title: "Roadmap"
-description: "Open work — scope, verified infra state, and success criteria; includes the F2–F16 measurement-flaw classification and the open FCT-tail observation."
+description: "Open work — scope, verified infra state, and success criteria; includes the F2–F16 measurement-flaw classification and the open FCT-tail observation, both of which no longer exist in the source roadmap.md."
 tags: [project, planning]
-timestamp: 2026-08-09T17:49:32+03:00
+timestamp: 2026-08-27T00:00:00+03:00
 ---
 
-Source: `roadmap.md`
+Source: `roadmap.md` — synced 2026-08-27.
 See also: [[wiki/Measurement Methodology]], [[wiki/Load Generation and Think Time]]
+
+> **Divergence from the source.** Two sections here — *Measurement flaws*
+> (F2–F16, with the FCT-tail closing note) and *AWS cross-region deployment* —
+> are **not** in `roadmap.md`. They were dropped by commit `4c93d85`
+> ("graphify added"), a 220-line pure deletion with no other roadmap edit, so
+> this is the surviving copy rather than a retirement. Live code comments still
+> cite the F-numbers (`experiments/dpdk/clientnic.sh`, `servernic.sh`,
+> `experiments/baseline-tcp/run_experiment.sh`, `experiments/utils/endpoint.sh`,
+> `run_core.sh`, `run_think_sweep.sh` reference "roadmap.md F2 / F15"). Restore
+> them to `roadmap.md` or re-home the F-numbers before deleting them here.
 
 # Roadmap
 
@@ -18,9 +28,7 @@ Open work only. Completed items are recorded in their reports, PRs, and
 
 | Item | State |
 | --- | --- |
-| [Measurement flaws (F3–F16)](#measurement-flaws) | Open — F2 resolved 2026-08-08, nothing blocking |
-| [#21 — DPDK vs. baseline comparison](#21--run-experiment-on-both-dpdk-and-baseline-stacks) | Open — not started |
-| [Client-side pcap analysis at 100k](#client-side-pcap-analysis-doesnt-scale-to-100k) | Open — root cause not isolated |
+| [Measurement flaws (F3–F16)](#measurement-flaws) | Open — F2 resolved 2026-08-08, nothing blocking; **not in `roadmap.md`, see note** |
 | [Idea: close the 100k connection-burst gap](#idea-close-the-100k-connection-burst-gap) | Idea — not yet an OpenSpec change |
 | [Demo A — BlueField reflector, no NIC VMs](#demo-a--bluefield-reflector-no-nic-vms) | Sketch — not scoped |
 | [Demo B — all-VM 4-chain on Proxmox](#demo-b--all-vm-4-chain-on-proxmox) | Sketch — not scoped |
@@ -28,7 +36,7 @@ Open work only. Completed items are recorded in their reports, PRs, and
 | [Human-readable experiment output](#human-readable-experiment-output) | Idea — not scoped |
 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Idea — not scoped |
 | [DDoS resistance](#ddos-resistance) | Idea — threat model not written |
-| [AWS cross-region deployment](#aws-cross-region-deployment) | Idea — not scoped |
+| [AWS cross-region deployment](#aws-cross-region-deployment) | Idea — not scoped; **not in `roadmap.md`, see note** |
 | [`verify-eswitch-tcp-seq-offload`](openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | In progress — DPU left mutated, restore first |
 | [`bluefield-servernic-hw-offload`](openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Proposed — blocked on the spike |
 | [BlueField lab deployment change](#gap-bluefield-lab-deployment-change-not-yet-proposed) | Gap — no proposal exists yet |
@@ -211,8 +219,9 @@ will stall in the same place.
 
 - **F9** is the existing [multi-round send](#multi-round-send-in-the-load-generator)
   item; it is also the coverage gap most likely to explain the FCT tail.
-- **F10** is [#21](#21--run-experiment-on-both-dpdk-and-baseline-stacks) at full
-  scale, gated on F2 only.
+- **F10** is the DPDK-vs-baseline comparison at full scale — the 2000-conn
+  pair is done (Done ledger); 100k is not, and both attempts failed (see the
+  [burst-gap idea](#idea-close-the-100k-connection-burst-gap)).
 - **F11** is a design constraint, not a bug: the translator does not rewrite TCP
   options, so the endpoints must not negotiate them. Revisit only if option
   rewriting is ever specced.
@@ -225,74 +234,36 @@ will stall in the same place.
   a fallback rather than the mechanism.
 - **F16** Mirror or move `insights.md`'s open follow-ups here.
 
-## #21 — Run experiment on both DPDK and baseline stacks
-
-**Goal:** run the integration experiment on both the live DPDK 0-RTT stack
-(`infra/dpdk`) and the plain-TCP baseline (`infra/baseline`), so TTFB/FCT numbers
-are directly comparable.
-
-### Scope
-- `experiments/dpdk/run_experiment.sh` — live DPDK 0-RTT data plane
-- `experiments/baseline-tcp/run_experiment.sh` — plain-TCP baseline (kernel-routed NIC VMs)
-- Deploy each stack, run end-to-end, collect both reports.
-
-### Success criteria
-- [ ] `experiments/dpdk/run_experiment.sh` completes, report under `experiments/dpdk/reports/`
-- [ ] `experiments/baseline-tcp/run_experiment.sh` completes, report under `experiments/baseline-tcp/reports/`
-- [ ] Both reports cover the same connection load for a fair comparison
-- [ ] TTFB/FCT delta documented (expected ~1-RTT / 50-200ms improvement per `CLAUDE.md`)
-
-### Sequencing note
-Run the comparison at whatever scale currently works (100 connections passes
-clean); a 100k re-run only becomes meaningful once the burst-gap idea below is
-scoped and landed.
-
-## Client-side pcap analysis doesn't scale to 100k
-
-Carried over from #20 as a known follow-up, not a blocker.
-
-`analyze_metrics.py --client-pcap` failed against the 112 MB / 100k-connection
-client-side capture — non-zero exit, no `missing=` diagnostic, only ~72 flows
-processed instead of the ~68,779 successful connections. Server-side analysis
-(`server_gap`) against a comparable pcap succeeded cleanly, so the fault is
-likely the tcpdump-text-streaming approach itself, not the DPDK data plane.
-
-- [ ] Isolate the root cause (snaplen / ring buffer / text-streaming parse)
-- [ ] Decide between a larger snaplen+ring buffer and a binary-parsing rewrite
-- [ ] Re-run client-side analysis on a 100k capture and get a full flow set
-
-## Infra hand-tailoring — closed
-
-Everything from this stream landed 2026-07-25 (see the Done ledger). The last
-open item — security-group scoping — is **decided: leave the SG as-is**
-(`10.1.0.0/16`).
-
-The item was never a security question; it was a Nitro-conntrack performance
-one. AWS stops tracking connections only when a rule is wide open in both
-directions, so the narrow scope keeps every connection in the conntrack table,
-and at 100k that could in principle hit the per-instance allowance. It doesn't:
-`conntrack_allowance_exceeded` (and the other four counters) read 0 on both
-endpoints after the 100k run. Widening buys nothing measurable and weakens
-isolation on a lab that only ever talks to its own VMs.
-
-Re-open only if a future run reports `conntrack_allowance_exceeded > 0` in
-`ethtool -S eth0`.
-
 ## Idea: close the 100k connection-burst gap
 
 **Not yet an OpenSpec change — candidate for `spec-planning:openspec-propose-change`
 once prioritized.**
 
-#20's live 100k run established 68,779/100,000. The shortfall is diagnosed:
-`experiments/utils/loadgen.py`'s `asyncio.gather()` fires all 100,000
-`open_connection()` calls at once, producing an instantaneous SYN burst beyond
-what the `RX_RING_SIZE=1024` / `RX_BURST_SIZE=32` ring absorbs (`1024/32 = 32`
-loop-iterations of slack — `docs/capacity-model.md` §4, §12, §13) before the
-single busy-poll lcore drains it. Measured `cycles_per_packet` (ClientNIC
-≈10,669, ServerNIC ≈12,483 at `tsc_hz=3.0e9`) shows ~40-50× steady-state
-headroom, so this is burst absorption, not per-packet cost — a deeper
-`RX_RING_SIZE` alone only delays the drop (capacity-model.md §4) and is bounded
-by the ENA PMD's hardware descriptor limit anyway.
+Three 100k attempts, none clean, and the original diagnosis no longer fits:
+
+| Run | Plain TCP | 0-RTT |
+| --- | --- | --- |
+| 2026-07-25 (#20, unpaced `asyncio.gather()`) | — | 68,779 / 100,000 |
+| 2026-08-11 (paced, 2000 conn/s) | 100,000 / 100,000 | 84,143 / 100,000 |
+| 2026-08-17 (paced, 2000 conn/s) | 99,728 / 100,000 | 87,073 / 100,000 |
+
+#20's shortfall was attributed to `experiments/utils/loadgen.py` firing all
+100,000 `open_connection()` calls at once, overflowing the `RX_RING_SIZE=1024` /
+`RX_BURST_SIZE=32` ring (`1024/32 = 32` loop-iterations of slack —
+`docs/capacity-model.md` §4, §12, §13) before the single busy-poll lcore drains
+it. Pacing has since landed and the arrival rate is verified per run (2000
+conn/s requested, 2000 achieved), so the instantaneous burst is gone — yet 0-RTT
+still loses 13-16% of connections, so the ceiling is **not** only arrival
+burstiness. Measured `cycles_per_packet` (ClientNIC ≈10,669, ServerNIC ≈12,483
+at `tsc_hz=3.0e9`) still shows ~40-50× steady-state headroom, so it is not
+per-packet cost either.
+
+Both 2026-08-17 runs also failed their endpoint metric check (326 and 171
+unresolvable metric events), and plain TCP's own 99,728/100,000 means the
+endpoints are part of the story — the shortfall cannot be pinned on the data
+plane until the endpoint side is ruled out. Latency at that load is queueing,
+not path (plain TCP p95 blocking reached 64.1 s), so no result in
+`docs/index.html` depends on these runs.
 
 Three candidate approaches, none scoped in detail:
 
@@ -313,7 +284,11 @@ Three candidate approaches, none scoped in detail:
   scale.
 
 ### Success criteria (draft, to refine when proposed)
-- [ ] 100k-connection run establishes ≥95% of connections (up from 68.8%)
+- [ ] Separate endpoint exhaustion from a data-plane limit — plain TCP also
+      fails at 100k (99,728/100,000), so instrument both sides before choosing
+      an approach
+- [ ] 100k-connection run establishes ≥95% of connections (up from 87.1%)
+- [ ] Endpoint metric check passes at 100k (0 unresolvable metric events)
 - [ ] `imissed` at or near zero on both SmartNICs' data-plane ports at 100k
 - [ ] Chosen approach documented against `docs/capacity-model.md` §4/§9/§12/§13
       with before/after measurements
@@ -558,7 +533,7 @@ Today `endpoint.sh` applies the full `NETEM_RTT_MS` on the Server's egress
 inside a single VPC (it was 50 ms on both endpoints until 2026-08-04). That is
 reproducible but synthetic: no real jitter, reordering, or path variance, and
 the 1-RTT saving is measured against a number we chose. It also cannot show an
-FCT gain at all — see [F2](#f2--move-the-emulated-wan-to-the-middle-leg-blocking),
+FCT gain at all — see [F2](#f2--emulated-wan-moved-to-the-middle-leg--resolved-2026-08-08),
 which a real inter-region path would resolve outright.
 
 - [ ] Extend `infra/dpdk/cdk/` to a two-region deployment and decide the
@@ -570,7 +545,7 @@ which a real inter-region path would resolve outright.
       one region's `describe-instances`.
 - [ ] Success measure: a completed run whose baseline-vs-DPDK delta is reported
       against measured inter-region RTT, so the 1-RTT claim rests on a real
-      path. Pairs naturally with [#21](#21--run-experiment-on-both-dpdk-and-baseline-stacks).
+      path. The single-region comparison it extends is done (Done ledger).
 - [ ] Cost check before deploying — cross-region data transfer is billed, and
       100k-connection runs move real volume.
 
@@ -578,6 +553,20 @@ which a real inter-region path would resolve outright.
 
 Evidence lives in the linked artifacts, not here.
 
+- **#21 — DPDK vs. baseline comparison** — closed 2026-08-17. Both stacks run
+  back to back at identical parameters (2000 conns, 500/s, 4 ports, 1 KB, 100 ms
+  modelled RTT), twelve pairs total across three deployments and two orchestration
+  paths — 24,000 flows per stack, every run passing every check. Pooled saving:
+  −101.30 ms of application blocking, −102.05 ms of completion time. Write-up:
+  `docs/index.html`; reports: `experiments/dpdk/reports/integration-test-report-2026-08-{08,11,17-run01..10}.md`
+  and `experiments/baseline-tcp/reports/baseline-report-2026-08-{08,11,17-*}.md`.
+- **Client-side pcap analysis at 100k** — closed. `analyze_metrics.py` was
+  rewritten to stream `tcpdump -r` text one packet at a time (f52a031), keeping
+  memory O(flows); the missing-flow symptom was SSM's 24 KB stdout cap silently
+  truncating the per-flow output, fixed by `--summary` / `--detail-out`. The
+  2026-08-17 100k run analyzed all 87,073 client flows and 85,158 server flows.
+  Remaining 100k *metric-check* failures are load-related, tracked under
+  [the burst-gap idea](#idea-close-the-100k-connection-burst-gap).
 - **#18 — full-DPDK endpoint interfaces** — closed 2026-07-25. Change archived at
   `openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`; both
   SmartNICs run dual-DPDK data-plane ports (3 ENIs each), zero AF_PACKET in
@@ -595,5 +584,6 @@ Evidence lives in the linked artifacts, not here.
   `netdev_max_backlog`, `fs.file-max`), port-space assertion, `NUM_MBUFS`
   derivation, `FT_MAX_BUFFERED_BYTES` shedding ceiling, TX batching. All eight
   `docs/capacity-model.md` §11 constraints individually checked. The
-  security-group scoping question is [closed](#infra-hand-tailoring--closed) —
-  no change needed.
+  security-group scoping question is closed — the narrow `10.1.0.0/16` scope
+  stays, since `conntrack_allowance_exceeded` read 0 on both endpoints after the
+  100k run. Re-open only if a future run reports it above 0 in `ethtool -S eth0`.

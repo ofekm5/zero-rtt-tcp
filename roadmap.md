@@ -7,9 +7,7 @@ Open work only. Completed items are recorded in their reports, PRs, and
 
 | Item | State |
 | --- | --- |
-| [#21 — DPDK vs. baseline comparison](#21--run-experiment-on-both-dpdk-and-baseline-stacks) | Open — not started |
-| [Client-side pcap analysis at 100k](#client-side-pcap-analysis-doesnt-scale-to-100k) | Open — root cause not isolated |
-| [Idea: close the 100k connection-burst gap](#idea-close-the-100k-connection-burst-gap) | Idea — not yet an OpenSpec change |
+| [Scale beyond the measured load](#out-of-scope-scale-beyond-the-measured-load) | Out of scope — acknowledged limitation |
 | [Demo A — BlueField reflector, no NIC VMs](#demo-a--bluefield-reflector-no-nic-vms) | Sketch — not scoped |
 | [Demo B — all-VM 4-chain on Proxmox](#demo-b--all-vm-4-chain-on-proxmox) | Sketch — not scoped |
 | [Demo C — BlueField as ClientNIC, ServerNIC stays a VM](#demo-c--bluefield-as-clientnic-servernic-stays-a-vm) | Sketch — not scoped |
@@ -20,98 +18,43 @@ Open work only. Completed items are recorded in their reports, PRs, and
 | [`bluefield-servernic-hw-offload`](openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Proposed — blocked on the spike |
 | [BlueField lab deployment change](#gap-bluefield-lab-deployment-change-not-yet-proposed) | Gap — no proposal exists yet |
 
-## #21 — Run experiment on both DPDK and baseline stacks
+## Out of scope: scale beyond the measured load
 
-**Goal:** run the integration experiment on both the live DPDK 0-RTT stack
-(`infra/dpdk`) and the plain-TCP baseline (`infra/baseline`), so TTFB/FCT numbers
-are directly comparable.
+**Acknowledged limitation, not planned work.** `docs/index.html` §6 carries the
+same statement; no figure in that report depends on it.
 
-### Scope
-- `experiments/dpdk/run_experiment.sh` — live DPDK 0-RTT data plane
-- `experiments/baseline-tcp/run_experiment.sh` — plain-TCP baseline (kernel-routed NIC VMs)
-- Deploy each stack, run end-to-end, collect both reports.
+The measured claim rests on 2000-flow runs at 500 conn/s. Concurrency there is
+roughly 50-100 flows in flight (arrival rate x mean FCT), well under the 2000 the
+`LOAD_CONCURRENCY=2000` cap allows — at that volume the cap never binds, so 2000
+*concurrent* flows are not demonstrated either. Runs at 100,000 total flows have
+never completed:
 
-### Success criteria
-- [ ] `experiments/dpdk/run_experiment.sh` completes, report under `experiments/dpdk/reports/`
-- [ ] `experiments/baseline-tcp/run_experiment.sh` completes, report under `experiments/baseline-tcp/reports/`
-- [ ] Both reports cover the same connection load for a fair comparison
-- [ ] TTFB/FCT delta documented (expected ~1-RTT / 50-200ms improvement per `CLAUDE.md`)
+| Run | Plain TCP | 0-RTT |
+| --- | --- | --- |
+| 2026-07-25 (unpaced) | — | 68,779 / 100,000 |
+| 2026-08-11 | 100,000 / 100,000 | 84,143 / 100,000 |
+| 2026-08-17 | 99,728 / 100,000 | 87,073 / 100,000 |
 
-### Sequencing note
-Run the comparison at whatever scale currently works (100 connections passes
-clean); a 100k re-run only becomes meaningful once the burst-gap idea below is
-scoped and landed.
+Both 2026-08-17 runs also failed their endpoint metric check (326 and 171
+unresolvable metric events), and latency at that load is queueing rather than
+path (plain TCP p95 blocking reached 64.1 s). The harness is therefore implicated
+alongside the data plane.
 
-## Client-side pcap analysis doesn't scale to 100k
+**What is not established:** that the shortfall is unrelated to the 0-RTT
+mechanism. Under identical conditions baseline lost 0.3% where 0-RTT lost 12.9%,
+an asymmetry shared infrastructure limits would not produce. The defensible
+statement is "not demonstrated at scale", not "limited by infrastructure" — the
+latter is a finding, and the runs do not support it.
 
-Carried over from #20 as a known follow-up, not a blocker.
+Sketched and not pursued: RSS/multi-queue, SYN-cookie-style backpressure, arrival
+pacing (landed, and did not close the gap), and a pre-generated ISN pool in place
+of per-SYN `rte_rand()`.
 
-`analyze_metrics.py --client-pcap` failed against the 112 MB / 100k-connection
-client-side capture — non-zero exit, no `missing=` diagnostic, only ~72 flows
-processed instead of the ~68,779 successful connections. Server-side analysis
-(`server_gap`) against a comparable pcap succeeded cleanly, so the fault is
-likely the tcpdump-text-streaming approach itself, not the DPDK data plane.
-
-- [ ] Isolate the root cause (snaplen / ring buffer / text-streaming parse)
-- [ ] Decide between a larger snaplen+ring buffer and a binary-parsing rewrite
-- [ ] Re-run client-side analysis on a 100k capture and get a full flow set
-
-## Infra hand-tailoring — closed
-
-Everything from this stream landed 2026-07-25 (see the Done ledger). The last
-open item — security-group scoping — is **decided: leave the SG as-is**
-(`10.1.0.0/16`).
-
-The item was never a security question; it was a Nitro-conntrack performance
-one. AWS stops tracking connections only when a rule is wide open in both
-directions, so the narrow scope keeps every connection in the conntrack table,
-and at 100k that could in principle hit the per-instance allowance. It doesn't:
-`conntrack_allowance_exceeded` (and the other four counters) read 0 on both
-endpoints after the 100k run. Widening buys nothing measurable and weakens
-isolation on a lab that only ever talks to its own VMs.
-
-Re-open only if a future run reports `conntrack_allowance_exceeded > 0` in
-`ethtool -S eth0`.
-
-## Idea: close the 100k connection-burst gap
-
-**Not yet an OpenSpec change — candidate for `spec-planning:openspec-propose-change`
-once prioritized.**
-
-#20's live 100k run established 68,779/100,000. The shortfall is diagnosed:
-`experiments/utils/loadgen.py`'s `asyncio.gather()` fires all 100,000
-`open_connection()` calls at once, producing an instantaneous SYN burst beyond
-what the `RX_RING_SIZE=1024` / `RX_BURST_SIZE=32` ring absorbs (`1024/32 = 32`
-loop-iterations of slack — `docs/capacity-model.md` §4, §12, §13) before the
-single busy-poll lcore drains it. Measured `cycles_per_packet` (ClientNIC
-≈10,669, ServerNIC ≈12,483 at `tsc_hz=3.0e9`) shows ~40-50× steady-state
-headroom, so this is burst absorption, not per-packet cost — a deeper
-`RX_RING_SIZE` alone only delays the drop (capacity-model.md §4) and is bounded
-by the ENA PMD's hardware descriptor limit anyway.
-
-Three candidate approaches, none scoped in detail:
-
-- **RSS/multi-queue** — spread the SYN burst across multiple lcores/RX queues so
-  aggregate drain rate scales with burst size instead of being capped by one
-  core's `RX_BURST_SIZE`-per-iteration rate.
-- **SYN-cookie-style backpressure** — signal/shed load before the RX ring
-  overflows rather than dropping silently via `imissed`, so establishment
-  degrades gracefully instead of timing out via Linux's ~127-130s SYN-retry
-  ceiling.
-- **Client-side connection pacing** — stagger the `asyncio.gather()` burst
-  (bounded concurrency / ramp-up) so attempts arrive as a sustained rate,
-  trading test realism for a rate the existing single lcore can absorb.
-- **Dynamic ISN pool** — ClientNIC currently draws each spoofed ISN from
-  `rte_rand()` per SYN (`packet_processor.c`); a pre-generated pool of unique
-  values would remove both the per-packet RNG cost and any (currently
-  theoretical) collision risk in the flow table's V-keyed lookup at burst
-  scale.
-
-### Success criteria (draft, to refine when proposed)
-- [ ] 100k-connection run establishes ≥95% of connections (up from 68.8%)
-- [ ] `imissed` at or near zero on both SmartNICs' data-plane ports at 100k
-- [ ] Chosen approach documented against `docs/capacity-model.md` §4/§9/§12/§13
-      with before/after measurements
+If this is ever re-opened, one measurement defect comes first: `loadgen.py`
+reports achieved arrival rate from coroutine-spawn timing, not from connection
+establishment (`_client_conn` takes the semaphore inside the task, so the spawn
+loop never blocks on it). Every 100k arrival-rate figure recorded so far is
+unreliable on that axis.
 
 ## Demo topologies (lab / Proxmox)
 
@@ -320,7 +263,8 @@ does `write(nbytes)` → `write_eof()` → close, and never reads a response.
 - [ ] Check the metric definitions still hold: `send_unlock` and `server_gap`
       key off the *first* payload segment, so they should be unaffected, but
       FCT now covers 3 round trips and is not comparable to prior runs.
-- [ ] Decide whether 3 rounds becomes the default for the #21 comparison, or an
+- [ ] Decide whether 3 rounds becomes the default for the DPDK-vs-baseline
+      comparison, or an
       opt-in mode so existing numbers stay comparable.
 
 ## DDoS resistance
@@ -339,7 +283,7 @@ if anything, to do about it.
       first and whether the shedding path behaves.
 - [ ] Reflection/amplification: a spoofed source address gets a SYN-ACK sent to
       a third party for free. Note it explicitly even if unmitigated by design.
-- [ ] Overlaps [the burst-gap idea](#idea-close-the-100k-connection-burst-gap) —
+- [ ] Overlaps [the scale limitation](#out-of-scope-scale-beyond-the-measured-load) —
       SYN-cookie-style backpressure appears there as a *performance* fix and
       here as a *defence*. Scope them together or decide they are one change.
 
@@ -347,6 +291,20 @@ if anything, to do about it.
 
 Evidence lives in the linked artifacts, not here.
 
+- **#21 — DPDK vs. baseline comparison** — closed 2026-08-17. Both stacks run
+  back to back at identical parameters (2000 conns, 500/s, 4 ports, 1 KB, 100 ms
+  modelled RTT), twelve pairs total across three deployments and two orchestration
+  paths — 24,000 flows per stack, every run passing every check. Pooled saving:
+  −101.30 ms of application blocking, −102.05 ms of completion time. Write-up:
+  `docs/index.html`; reports: `experiments/dpdk/reports/integration-test-report-2026-08-{08,11,17-run01..10}.md`
+  and `experiments/baseline-tcp/reports/baseline-report-2026-08-{08,11,17-*}.md`.
+- **Client-side pcap analysis at 100k** — closed. `analyze_metrics.py` was
+  rewritten to stream `tcpdump -r` text one packet at a time (f52a031), keeping
+  memory O(flows); the missing-flow symptom was SSM's 24 KB stdout cap silently
+  truncating the per-flow output, fixed by `--summary` / `--detail-out`. The
+  2026-08-17 100k run analyzed all 87,073 client flows and 85,158 server flows.
+  Remaining 100k *metric-check* failures are load-related, tracked under
+  [the scale limitation](#out-of-scope-scale-beyond-the-measured-load).
 - **#18 — full-DPDK endpoint interfaces** — closed 2026-07-25. Change archived at
   `openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`; both
   SmartNICs run dual-DPDK data-plane ports (3 ENIs each), zero AF_PACKET in
@@ -364,5 +322,6 @@ Evidence lives in the linked artifacts, not here.
   `netdev_max_backlog`, `fs.file-max`), port-space assertion, `NUM_MBUFS`
   derivation, `FT_MAX_BUFFERED_BYTES` shedding ceiling, TX batching. All eight
   `docs/capacity-model.md` §11 constraints individually checked. The
-  security-group scoping question is [closed](#infra-hand-tailoring--closed) —
-  no change needed.
+  security-group scoping question is closed — the narrow `10.1.0.0/16` scope
+  stays, since `conntrack_allowance_exceeded` read 0 on both endpoints after the
+  100k run. Re-open only if a future run reports it above 0 in `ethtool -S eth0`.
