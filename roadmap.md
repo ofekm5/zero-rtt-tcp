@@ -1,21 +1,20 @@
 # Roadmap
 
 Open work only. Completed items are recorded in their reports, PRs, and
-`openspec/changes/archive/` — see [Done ledger](#done-ledger) for pointers.
+`docs/openspec/changes/archive/` — see [Done ledger](#done-ledger) for pointers.
 
 ## Status snapshot
 
 | Item | State |
 | --- | --- |
 | [Scale beyond the measured load](#out-of-scope-scale-beyond-the-measured-load) | Out of scope — acknowledged limitation |
-| [Demo A — BlueField reflector, no NIC VMs](#demo-a--bluefield-reflector-no-nic-vms) | Sketch — not scoped |
-| [Demo B — all-VM 4-chain on Proxmox](#demo-b--all-vm-4-chain-on-proxmox) | Sketch — not scoped |
-| [Demo C — BlueField as ClientNIC, ServerNIC stays a VM](#demo-c--bluefield-as-clientnic-servernic-stays-a-vm) | Sketch — not scoped |
+| [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Sketch — not scoped |
+| [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Sketch — not scoped |
 | [Human-readable experiment output](#human-readable-experiment-output) | Idea — not scoped |
 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Idea — not scoped |
 | [DDoS resistance](#ddos-resistance) | Idea — threat model not written |
-| [`verify-eswitch-tcp-seq-offload`](openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | In progress — DPU left mutated, restore first |
-| [`bluefield-servernic-hw-offload`](openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Proposed — blocked on the spike |
+| [`verify-eswitch-tcp-seq-offload`](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | In progress — DPU left mutated, restore first |
+| [`bluefield-servernic-hw-offload`](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Proposed — blocked on the spike |
 | [BlueField lab deployment change](#gap-bluefield-lab-deployment-change-not-yet-proposed) | Gap — no proposal exists yet |
 
 ## Out of scope: scale beyond the measured load
@@ -58,77 +57,50 @@ unreliable on that axis.
 
 ## Demo topologies (lab / Proxmox)
 
-Three candidate demo layouts, sketched in `image.png` (repo root, currently
-untracked — move it under `docs/` and commit it before this section outlives the
-file). None is scoped as an OpenSpec change yet; they are alternatives for how
-the lab demo is wired, not a sequence to build in order.
+Two phases, built in order. Both move the demo off AWS ENIs onto the RUNS lab
+and reuse today's C data plane (`flow_table.c`, `syn_handler.c`, `checksum.c`)
+rather than a rewrite. Endpoint VMs (Client, Server) and the deployment
+plumbing are the same in both — see the [BlueField lab deployment
+change](#gap-bluefield-lab-deployment-change-not-yet-proposed).
 
-The sketch also carries three role labels — *client/server split*, *dev.
-environment*, *benchmarking environment* — and marks the two SmartNIC roles as
-*0-RTT SmartNIC client* and *0-RTT SmartNIC server*. The obvious reading is that
-B is the dev environment (no hardware in the loop) and A or C is the
-benchmarking one, but the sketch does not say which, so the mapping below is
-recorded as a question rather than a decision.
+### Phase 1 — BlueField as ServerNIC
 
-### Demo A — BlueField reflector, no NIC VMs
+Client VM → ClientNIC VM → **BlueField running the ServerNIC app** → Server VM.
+The x86 ClientNIC DPDK forwarder is unchanged; only the ServerNIC role moves
+onto the DPU, reusing the same C code ported to DOCA/DPDK on the ARM cores. One
+DPU (runs3). e-switch hardware offload is optional here — an ARM-only software
+rewrite is the first target, ahead of the `verify-eswitch-tcp-seq-offload`
+spike.
 
-Client VM and Server VM both live on the Proxmox host, joined by a virtual
-switch (OVS is the sketch's own open question). Neither talks to the other
-directly: client traffic leaves the host, hits the BlueField running a
-**reflector app**, and comes back in to the Server VM. The DPU is a
-bump-in-the-wire on a hairpin, so both 0-RTT roles collapse onto one card and
-no ClientNIC/ServerNIC VMs exist at all.
+- Smallest step off the current all-VM stack: one role changes host, the other
+  three nodes stay as they are.
+- Exercises `bluefield-servernic-hw-offload`'s deployment shape directly; the
+  offload backend can land later behind its existing boundary.
+- Open: does the virtual switch between the endpoint VMs and the DPU perturb the
+  latency being measured (OVS vs. Linux bridge vs. SR-IOV passthrough)?
+- Open: DPDK on the lab's virtual NICs for the ClientNIC VM — `virtio`/vhost-user
+  vs. SR-IOV VFs, or an AF_XDP/AF_PACKET fallback.
 
-- Fewest moving parts of the three; closest to the hardware-only end state.
-- Puts both SmartNIC roles on one DPU — needs the e-switch verdict from
-  `verify-eswitch-tcp-seq-offload` before it is known to be buildable.
-- Open: what "reflector app" means concretely — hairpin rules only, or an ARM
-  control plane like `bluefield-servernic-hw-offload` describes.
-- Open: whether the virtual switch is OVS, a Linux bridge, or SR-IOV passthrough,
-  and whether that choice perturbs the latency being measured.
+### Phase 2 — BlueField as ClientNIC and ServerNIC
 
-### Demo B — all-VM 4-chain on Proxmox
+Client VM → **BlueField #1 (ClientNIC app)** → **BlueField #2 (ServerNIC app)**
+→ Server VM. Both 0-RTT roles run on hardware; no ClientNIC/ServerNIC VMs. This
+is the hardware-only end state.
 
-The full AWS chain reproduced in software on one Proxmox host: Client VM ↔
-ClientNIC VM ↔ ServerNIC VM ↔ Server VM, all four as VMs, no BlueField in the
-path. This is the current `src/clientnic/dpdk-forwarder` + `src/servernic/dpdk`
-data plane ported off AWS ENIs onto Proxmox virtual NICs.
-
-- No hardware dependency — the likely **dev environment**, and the fastest of
-  the three to stand up.
-- Directly reuses today's data plane; the work is deployment plumbing, which is
-  the same gap the [BlueField lab deployment
-  change](#gap-bluefield-lab-deployment-change-not-yet-proposed) already covers
-  (`run_core.sh`'s AWS assumptions, endpoint VM provisioning).
-- Open: whether the virtual-NIC path supports DPDK as-is (`virtio`/vhost-user vs.
-  SR-IOV VFs) or the forwarders need an AF_XDP/AF_PACKET fallback on Proxmox.
-- Open: usefulness as a *benchmark* — everything shares one host's cores, so
-  absolute TTFB/FCT numbers are not comparable to the AWS or hardware runs.
-
-### Demo C — BlueField as ClientNIC, ServerNIC stays a VM
-
-Split deployment: Client VM and Server VM on Proxmox with the **ServerNIC as a
-VM** next to the Server, while the **ClientNIC role runs on the BlueField**
-outside the host. Client traffic goes out to the DPU and back into the host
-toward the ServerNIC VM.
-
-- Matches the asymmetry of the existing proposals in reverse:
-  `bluefield-servernic-hw-offload` puts *ServerNIC* on the DPU and keeps
-  ClientNIC on x86; this sketch does the opposite.
-- Worth resolving explicitly — ClientNIC's job (spoof the SYN-ACK, stamp V in
-  the SYN ack-num) is per-handshake and may suit the ARM cores better than
-  ServerNIC's per-packet rewriting, which is exactly what the e-switch offload
-  exists to avoid.
-- Open: does this replace `bluefield-servernic-hw-offload`, or is it a second
-  step once a second BlueField is available (the runs4 DPU needs another
-  student's permission)?
+- Needs a second DPU — the runs4 card, which requires another student's
+  permission. Secure it before scoping this phase.
+- ClientNIC's job (spoof the SYN-ACK, stamp V in the SYN ack-num) is
+  per-handshake and should suit the ARM cores; ServerNIC's per-packet rewriting
+  is the part the e-switch offload exists to avoid, so its verdict matters more
+  here than in Phase 1.
+- Open: whether Phase 2 waits on the `verify-eswitch-tcp-seq-offload` verdict or
+  ships ARM-only first and adds offload after.
 
 ### Next actions
-- [ ] Commit the sketch under `docs/` so this section has a stable reference
-- [ ] Pick which demo is the dev environment and which is the benchmarking one
-- [ ] Decide whether C's ClientNIC-on-DPU direction supersedes or follows
-      `bluefield-servernic-hw-offload`
-- [ ] Promote the chosen topology to an OpenSpec change via
+- [ ] Commit the topology sketch under `docs/` so this section has a stable reference
+- [ ] Stand up Phase 1 once the [BlueField lab deployment
+      change](#gap-bluefield-lab-deployment-change-not-yet-proposed) exists
+- [ ] Promote Phase 1 to an OpenSpec change via
       `spec-planning:openspec-propose-change`
 
 ## BlueField-3 track
@@ -139,9 +111,8 @@ toward the ServerNIC VM.
       to get this far; that's a sign the harness itself is too heavy for
       iterative probing, not only the probe logic.
 - [ ] Prioritize a lightweight ARM-only path (no e-switch hardware offload —
-      see [Demo C](#demo-c--bluefield-as-clientnic-servernic-stays-a-vm)) as
-      the first BlueField experiment, ahead of or independent from the
-      e-switch spike below.
+      see [Phase 1](#phase-1--bluefield-as-servernic)) as the first BlueField
+      experiment, ahead of or independent from the e-switch spike below.
 
 ### `verify-eswitch-tcp-seq-offload` — in progress, DPU left mutated
 
@@ -194,7 +165,7 @@ continue. Full detail, including two known-remaining rough edges
 in `experiments/bluefield/probe/HANDOFF.md` in the worktree (uncommitted).
 
 Full criteria in the
-[proposal](openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md).
+[proposal](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md).
 
 ### `bluefield-servernic-hw-offload` — blocked on the spike
 
@@ -203,7 +174,7 @@ e-switch, keeping the ARM cores out of the data path (handshake only). New
 `src/servernic/bluefield/` target reusing `flow_table.c`, `syn_handler.c`,
 `checksum.c`; offload API stays behind a backend boundary until the spike
 resolves it. Criteria in the
-[proposal](openspec/changes/bluefield-servernic-hw-offload/proposal.md).
+[proposal](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md).
 
 - [ ] Cache installed e-switch flow rules in memory instead of re-querying/
       reinstalling per flow, once the spike picks a backend (`offload.c`)
@@ -214,19 +185,21 @@ resolves it. Criteria in the
 
 ### Gap: BlueField lab deployment change (not yet proposed)
 
-Both BlueField proposals explicitly push this out of scope and assume it exists
-as a separate change — but no proposal has been written. It covers:
+The shared prerequisite for [Phase 1](#phase-1--bluefield-as-servernic) and
+[Phase 2](#phase-2--bluefield-as-clientnic-and-servernic): nothing in either
+phase runs until the demo works off AWS. Both BlueField proposals explicitly
+push this out of scope and assume it exists as a separate change — but no
+proposal has been written. It covers:
 
 - [ ] `run_core.sh`'s AWS assumptions (`ec2-user`, `/usr/local/bin/meson`,
       `aws ec2 describe-instances`) made lab-portable
-- [ ] Endpoint VM provisioning in the RUNS lab (client, server, ClientNIC)
+- [ ] Endpoint VM provisioning in the RUNS lab (Client, Server, and the
+      ClientNIC VM that Phase 1 keeps on x86)
 - [ ] Lab DNS (or a documented decision to keep working around it offline)
 
 `bluefield-servernic-hw-offload`'s Success Criterion 4 (end-to-end TCP through
-the DPU) is not observable until this lands. Migration target for the
-AWS-to-university move: the BlueField DPU replaces the ServerNIC **VM**,
-reusing the same C codebase (`flow_table.c`, `syn_handler.c`, `checksum.c`)
-rather than a rewrite — already how `bluefield-servernic-hw-offload` is scoped.
+the DPU) is not observable until this lands. It is Phase 1's blocker in the
+[Next actions](#next-actions) above — stand up Phase 1 once this exists.
 
 ## Human-readable experiment output
 
@@ -306,7 +279,7 @@ Evidence lives in the linked artifacts, not here.
   Remaining 100k *metric-check* failures are load-related, tracked under
   [the scale limitation](#out-of-scope-scale-beyond-the-measured-load).
 - **#18 — full-DPDK endpoint interfaces** — closed 2026-07-25. Change archived at
-  `openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`; both
+  `docs/openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`; both
   SmartNICs run dual-DPDK data-plane ports (3 ENIs each), zero AF_PACKET in
   non-test source, 100-connection regression clean
   (`experiments/dpdk/reports/integration-test-report-2026-07-25.md`).

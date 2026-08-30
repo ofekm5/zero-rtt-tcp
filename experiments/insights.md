@@ -41,7 +41,7 @@ exact reason: endpoint RAM/socket count is ceiling #1, SmartNIC CPU is #6.
 
 ## 2026-06-27 — The `full-dpdk-endpoint-interfaces` 3rd ENI does not address endpoint (Client/Server) scaling
 
-**Source:** `openspec/changes/full-dpdk-endpoint-interfaces/proposal.md` ("Why" + Non-Goals section), cross-checked against the 10k-run root cause above
+**Source:** `docs/openspec/changes/full-dpdk-endpoint-interfaces/proposal.md` ("Why" + Non-Goals section), cross-checked against the 10k-run root cause above
 
 Each SmartNIC now provisions a 3rd ENI (1 kernel/SSM management + 2 vfio-pci
 data ENIs), which reads like a capacity upgrade but isn't one. It fixes a

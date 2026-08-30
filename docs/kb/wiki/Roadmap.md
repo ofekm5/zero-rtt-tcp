@@ -22,7 +22,7 @@ See also: [[wiki/Measurement Methodology]], [[wiki/Load Generation and Think Tim
 # Roadmap
 
 Open work only. Completed items are recorded in their reports, PRs, and
-`openspec/changes/archive/` — see [Done ledger](#done-ledger) for pointers.
+`docs/openspec/changes/archive/` — see [Done ledger](#done-ledger) for pointers.
 
 ## Status snapshot
 
@@ -37,8 +37,8 @@ Open work only. Completed items are recorded in their reports, PRs, and
 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Idea — not scoped |
 | [DDoS resistance](#ddos-resistance) | Idea — threat model not written |
 | [AWS cross-region deployment](#aws-cross-region-deployment) | Idea — not scoped; **not in `roadmap.md`, see note** |
-| [`verify-eswitch-tcp-seq-offload`](openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | In progress — DPU left mutated, restore first |
-| [`bluefield-servernic-hw-offload`](openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Proposed — blocked on the spike |
+| [`verify-eswitch-tcp-seq-offload`](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | In progress — DPU left mutated, restore first |
+| [`bluefield-servernic-hw-offload`](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Proposed — blocked on the spike |
 | [BlueField lab deployment change](#gap-bluefield-lab-deployment-change-not-yet-proposed) | Gap — no proposal exists yet |
 
 ## Measurement flaws
@@ -431,7 +431,7 @@ continue. Full detail, including two known-remaining rough edges
 in `experiments/bluefield/probe/HANDOFF.md` in the worktree (uncommitted).
 
 Full criteria in the
-[proposal](openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md).
+[proposal](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md).
 
 ### `bluefield-servernic-hw-offload` — blocked on the spike
 
@@ -440,7 +440,7 @@ e-switch, keeping the ARM cores out of the data path (handshake only). New
 `src/servernic/bluefield/` target reusing `flow_table.c`, `syn_handler.c`,
 `checksum.c`; offload API stays behind a backend boundary until the spike
 resolves it. Criteria in the
-[proposal](openspec/changes/bluefield-servernic-hw-offload/proposal.md).
+[proposal](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md).
 
 - [ ] Cache installed e-switch flow rules in memory instead of re-querying/
       reinstalling per flow, once the spike picks a backend (`offload.c`)
@@ -568,7 +568,7 @@ Evidence lives in the linked artifacts, not here.
   Remaining 100k *metric-check* failures are load-related, tracked under
   [the burst-gap idea](#idea-close-the-100k-connection-burst-gap).
 - **#18 — full-DPDK endpoint interfaces** — closed 2026-07-25. Change archived at
-  `openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`; both
+  `docs/openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`; both
   SmartNICs run dual-DPDK data-plane ports (3 ENIs each), zero AF_PACKET in
   non-test source, 100-connection regression clean
   (`experiments/dpdk/reports/integration-test-report-2026-07-25.md`).

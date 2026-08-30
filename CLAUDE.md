@@ -100,23 +100,23 @@ Scapy provides:
 
 ## Key Documentation
 
-- **`llm-wiki/`**: Obsidian vault mirroring the repo's docs for LLM navigation — start at `llm-wiki/index/index.md`; see `llm-wiki/index/index.md`'s "out of scope" note for what's deliberately not mirrored.
+- **`docs/kb/`**: Obsidian vault mirroring the repo's docs for LLM navigation — start at `docs/kb/index/index.md`; see `docs/kb/index/index.md`'s "out of scope" note for what's deliberately not mirrored.
 
 ### Architecture & Design
 - **`roadmap.md`**: Working record of scale/experiment goals (100k-connection load testing, DPDK-vs-baseline comparison) that originated as GitHub issues (#20, #21) and are now tracked here instead — scope, verified infra state, and success criteria.
 - **`src/clientnic/README.md`**: Detailed ClientNIC implementation (0-RTT core logic)
 - **`src/servernic/README.md`**: ServerNIC forwarding implementation
-- **`llm-wiki/wiki/Capacity Model.md`**: Hardware constraints and sizing calculations — mbuf pool, NIC rings/ENA allowances, flow tables, the 2048-byte frame ceiling, port space, CPU and endpoint limits. Read before changing a sizing constant or running a large-scale benchmark.
+- **`docs/kb/wiki/Capacity Model.md`**: Hardware constraints and sizing calculations — mbuf pool, NIC rings/ENA allowances, flow tables, the 2048-byte frame ceiling, port space, CPU and endpoint limits. Read before changing a sizing constant or running a large-scale benchmark.
 - **`experiments/measurement-methodology-review.md`**: How the experiment measures the 0-RTT claim — load shape, the three pcap metrics (`send_unlock`, `fct`, `server_gap`), and **§E: the emulated WAN** (what `netem`/qdisc do, why the delay is egress-only, and why no endpoint-side placement can show an FCT win — it must sit on the ClientNIC↔ServerNIC leg). Read before changing `NETEM_RTT_MS`, moving a `tc` command, or interpreting an FCT number.
 - **`observability/`**: eBPF observability implementation (currently disabled) — packet tracing and performance monitoring
 
 ### OpenSpec Change Tracking
 - **`roadmap.md`**: Source of truth for what is open, queued, or blocked
-- **`openspec/specs/`**: Current-truth capability specs (promoted from archived changes)
-- **`openspec/changes/`**: Experimental spec-driven workflow for tracking development phases
+- **`docs/openspec/specs/`**: Current-truth capability specs (promoted from archived changes)
+- **`docs/openspec/changes/`**: Experimental spec-driven workflow for tracking development phases
   - **`verify-eswitch-tcp-seq-offload/`**: Spike — can the BlueField-3 e-switch rewrite TCP seq/ack in hardware?
   - **`bluefield-servernic-hw-offload/`**: DPU-side ServerNIC offloading seq/ack rewrite to the e-switch (blocked on the spike)
-  - Archived changes in `openspec/changes/archive/` (includes the completed ISN-ack-num translation shift, phase-1b iperf3 stress testing, full-DPDK endpoint interfaces, and endpoint-pcap-measurement — the latter's spec was promoted to `openspec/specs/`)
+  - Archived changes in `docs/openspec/changes/archive/` (includes the completed ISN-ack-num translation shift, phase-1b iperf3 stress testing, full-DPDK endpoint interfaces, and endpoint-pcap-measurement — the latter's spec was promoted to `docs/openspec/specs/`)
 
 ### Reference
 - **`.claude/skills/run-experiment/SKILL.md`**: Run-experiment skill (pick mode, run orchestrator, diagnose failures across scapy/dpdk/proxmox/baseline)
@@ -144,8 +144,8 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 
 **Active Work Streams (OpenSpec):**
 - [x] **ISN-ack-num translation**: DONE — `src/clientnic/dpdk-forwarder/` + `src/servernic/dpdk/` implement the full data plane
-- [x] **Endpoint-based pcap measurement**: DONE — spec promoted to `openspec/specs/endpoint-pcap-measurement/`
-- [ ] **Full-DPDK endpoint interfaces**: move both SmartNICs' remaining AF_PACKET endpoint ports to the DPDK ENA PMD (`openspec/changes/full-dpdk-endpoint-interfaces/`)
+- [x] **Endpoint-based pcap measurement**: DONE — spec promoted to `docs/openspec/specs/endpoint-pcap-measurement/`
+- [ ] **Full-DPDK endpoint interfaces**: move both SmartNICs' remaining AF_PACKET endpoint ports to the DPDK ENA PMD (`docs/openspec/changes/full-dpdk-endpoint-interfaces/`)
 - [ ] **AWS-to-OnPrem migration**: Full DPDK on Bluefield-3 DPU
 
 **BlueField-3 DPU Platform:**
@@ -168,7 +168,7 @@ edit `.claude/skills/deploy-infra/request.json`, commit, push; results come back
 4. Reports are written automatically to `experiments/<mode>/reports/`
 
 **Change Management (OpenSpec Workflow):**
-- Active changes tracked in `openspec/changes/` with spec-driven proposals, designs, and task lists; `roadmap.md` records what is open, queued, or blocked
+- Active changes tracked in `docs/openspec/changes/` with spec-driven proposals, designs, and task lists; `roadmap.md` records what is open, queued, or blocked
 - Use the `spec-planning:openspec-propose-change`, `spec-planning:openspec-explore-idea`, `spec-planning:openspec-sync-change`, and `spec-planning:openspec-archive-change` skills; `task-runner:launch-task-runner` implements an approved change
 - Completed changes archived with full context preserved
 
@@ -300,13 +300,20 @@ infra/
 observability/                # eBPF observability implementation (currently disabled)
 ├── ...                        # Packet tracing and performance monitoring
 
-openspec/
-├── config.yaml           # OpenSpec workflow config
-├── specs/                # Current-truth capability specs
-├── changes/              # Experimental spec-driven change tracking
-│   ├── verify-eswitch-tcp-seq-offload/      # Spike: can the BF-3 e-switch rewrite TCP seq/ack in HW?
-│   ├── bluefield-servernic-hw-offload/      # DPU ServerNIC via e-switch offload (blocked on the spike)
-│   └── archive/          # Completed changes (DPDK port, SSM tests, ISN-ack-num translation shift, phase-1b iperf3, full-DPDK endpoint interfaces, endpoint-pcap-measurement, …)
+docs/
+├── index.html            # Experiment write-up (0-RTT vs. baseline)
+├── kb/                   # Obsidian vault mirroring the repo's docs for LLM navigation (was llm-wiki/)
+│   ├── index/index.md    # Master table of contents — start here
+│   ├── wiki/             # Distilled living docs (components, infra, BlueField, Capacity Model)
+│   ├── raw/              # Verbatim dated experiment reports
+│   └── log/log.md        # Append-only vault mutation log
+└── openspec/             # OpenSpec workflow (was openspec/ at repo root)
+    ├── config.yaml           # OpenSpec workflow config
+    ├── specs/                # Current-truth capability specs
+    └── changes/              # Experimental spec-driven change tracking
+        ├── verify-eswitch-tcp-seq-offload/      # Spike: can the BF-3 e-switch rewrite TCP seq/ack in HW?
+        ├── bluefield-servernic-hw-offload/      # DPU ServerNIC via e-switch offload (blocked on the spike)
+        └── archive/          # Completed changes (DPDK port, SSM tests, ISN-ack-num translation shift, phase-1b iperf3, full-DPDK endpoint interfaces, endpoint-pcap-measurement, …)
 
 .claude/skills/deploy-infra/    # Deploy skill + mobile/remote ops (AWS deploy/experiment/destroy via GitHub Actions)
 ├── SKILL.md             # Local + remote deploy instructions

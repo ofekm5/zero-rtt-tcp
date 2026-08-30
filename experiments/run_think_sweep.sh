@@ -7,7 +7,7 @@
 # the result is a curve rather than a single number.
 #
 # WHY A SWEEP AND NOT A VALUE (roadmap.md F2, measurement-methodology-review.md
-# §E, llm-wiki "Load Generation and Think Time"):
+# §E, docs/kb "Load Generation and Think Time"):
 #
 #   T=0 is NOT an unrealistic corner — it is the workload 0-RTT targets. HTTP
 #   connects and sends its request immediately, and that is the hard case. A

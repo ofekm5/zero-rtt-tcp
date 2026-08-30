@@ -28,7 +28,7 @@ now empty.
 ## Project Overview
 
 - [[wiki/Zero-RTT TCP Overview]] — what 0-RTT TCP is and why the ClientNIC/ServerNIC pair exists.
-- [[wiki/Roadmap]] — open scale/experiment goals; completed work lives in `openspec/changes/archive/`.
+- [[wiki/Roadmap]] — open scale/experiment goals; completed work lives in `docs/openspec/changes/archive/`.
 - [[wiki/Capacity Model]] — hardware sizing ceilings (mbuf pool, NIC rings, flow tables, CPU) for the DPDK data plane.
 
 ## Experiments & Measurement
@@ -115,7 +115,7 @@ now empty.
 ## Explicitly out of scope for this vault
 
 Kept in the repo, not mirrored here, because other tooling reads them by exact
-path: `.claude/skills/**` (Claude Code's skill loader), `openspec/**` (its own
+path: `.claude/skills/**` (Claude Code's skill loader), `docs/openspec/**` (its own
 spec-driven change-tracking system with dedicated propose/archive/sync
 skills), `hermes/*/SOUL.md` (live agent configs), and `CLAUDE.md` (session-start
 import).
