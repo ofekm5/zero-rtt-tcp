@@ -47,7 +47,6 @@ now empty.
 - [[wiki/components/ServerNIC]] — sole stateful translator in the live DPDK implementation; reads V, computes delta, rewrites packets.
 - [[wiki/components/ServerNIC DPDK]] — DPDK implementation of the ServerNIC translator.
 - [[wiki/components/Server App]] — unmodified TCP server, driven by `loadgen.py`.
-- [[wiki/components/eBPF Observability]] — bpftrace scripts for tracing TCP events on any of the 4 VMs (currently disabled).
 
 ## AWS Infra
 

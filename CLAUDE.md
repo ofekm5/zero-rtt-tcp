@@ -35,12 +35,12 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 
 ### Component Responsibilities
 
-1. **Client VM** (`src/client-app/`): Standard unmodified TCP client application
+1. **Client VM** (`experiments/utils/loadgen.py --mode client`): Standard unmodified TCP client application
 2. **ClientNIC VM** (`src/clientnic/`): **Core 0-RTT logic** — intercepts SYN packets, sends spoofed SYN-ACK, forwards SYN toward Server. DPDK implementation:
    - `src/clientnic/dpdk-forwarder/` — **DPDK forwarder** (live implementation): spoof SYN-ACK + stamp V in SYN ack-num + transparent forward (translation shifted to ServerNIC)
    - `src/clientnic/scapy/` — **deprecated**: proved the idea works; not used in the live path
 3. **ServerNIC VM** (`src/servernic/`): In the live DPDK implementation — **sole stateful translator**: reads V from SYN ack-num, computes delta, drops real SYN-ACK, rewrites all packets. `src/servernic/scapy/` is the matching **deprecated** stateless forwarder from the same feasibility phase.
-4. **Server VM** (`src/server-app/`): Standard unmodified TCP server application
+4. **Server VM** (`experiments/utils/loadgen.py --mode server`): Standard unmodified TCP server application
 
 ### Key Technical Concepts
 
@@ -108,7 +108,6 @@ Scapy provides:
 - **`src/servernic/README.md`**: ServerNIC forwarding implementation
 - **`docs/kb/wiki/Capacity Model.md`**: Hardware constraints and sizing calculations — mbuf pool, NIC rings/ENA allowances, flow tables, the 2048-byte frame ceiling, port space, CPU and endpoint limits. Read before changing a sizing constant or running a large-scale benchmark.
 - **`experiments/measurement-methodology-review.md`**: How the experiment measures the 0-RTT claim — load shape, the three pcap metrics (`send_unlock`, `fct`, `server_gap`), and **§E: the emulated WAN** (what `netem`/qdisc do, why the delay is egress-only, and why no endpoint-side placement can show an FCT win — it must sit on the ClientNIC↔ServerNIC leg). Read before changing `NETEM_RTT_MS`, moving a `tc` command, or interpreting an FCT number.
-- **`observability/`**: eBPF observability implementation (currently disabled) — packet tracing and performance monitoring
 
 ### OpenSpec Change Tracking
 - **`roadmap.md`**: Source of truth for what is open, queued, or blocked
@@ -216,9 +215,6 @@ See `.claude/skills/run-experiment/references/troubleshooting.md` ("LOAD_TIMEOUT
 
 ```
 src/
-├── client-app/
-│   └── README.md           # client side: driven by experiments/utils/loadgen.py
-│
 ├── clientnic/
 │   ├── validate_0rtt_capture.py  # pcap analysis: spoofed SYN-ACK, ISN delta, checksums
 │   ├── README.md
@@ -267,16 +263,16 @@ src/
 │       ├── README.md
 │       └── tests/                # Python unit tests (no DPDK required)
 │
-└── server-app/
-    └── README.md           # server side: driven by experiments/utils/loadgen.py
+└── (client/server apps have no source — they are experiments/utils/loadgen.py)
 
 experiments/
+├── README.md           # client/server endpoints: loadgen.py modes, usage, why not iperf
 ├── scapy/              # Deprecated Scapy stack: run_experiment.sh + clientnic.sh/servernic.sh node scripts
 ├── dpdk/               # Live DPDK stack: run_experiment.sh, node scripts, probes/, reports/
 ├── baseline-tcp/       # Plain-TCP baseline: run_experiment.sh + reports/
 ├── proxmox/            # RUNS lab (Proxmox) orchestrator
-├── nodes/              # Shared node scripts: server.sh, client.sh, ebpf-trace.sh
-├── utils/              # run_core.sh, measure.sh, analyze_metrics.py, ssm.sh, ssh_lab.sh + tests/
+├── nodes/              # Shared node scripts: server.sh, client.sh
+├── utils/              # run_core.sh, measure.sh, analyze_metrics.py, ssm.sh, ssh_lab.sh + loadgen.py + tests/
 └── archive/            # Historical test reports
 
 infra/
@@ -297,8 +293,6 @@ infra/
     ├── deployment/     # Docker and BFB image setup
     └── setup/          # DPU mode configuration and scripts
 
-observability/                # eBPF observability implementation (currently disabled)
-├── ...                        # Packet tracing and performance monitoring
 
 docs/
 ├── index.html            # Experiment write-up (0-RTT vs. baseline)

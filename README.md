@@ -23,11 +23,9 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 
 | Component | Role |
 |-----------|------|
-| `src/client-app/` | Standard unmodified TCP client |
 | `src/clientnic/` | Core 0-RTT logic — intercepts SYN, sends spoofed SYN-ACK, stamps ISN in live DPDK mode |
 | `src/servernic/` | Live DPDK mode: sole stateful translator (rewrites sequence numbers). Legacy Scapy mode: stateless forwarder |
-| `experiments/` | Experiment scripts and test reports |
-| `src/server-app/` | Standard unmodified TCP server |
+| `experiments/` | Experiment scripts, test reports, and the client/server endpoints (`utils/loadgen.py` — see `experiments/README.md`) |
 | `infra/` | AWS CDK stacks that provision the 4-VM topology |
 
 ## Packet Flow
@@ -186,31 +184,6 @@ setsid python3 src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&
 | ISN delta | Non-zero, consistent across all packets |
 | Checksums | Zero bad checksums on eth0 and eth1 |
 | Flow table | delta logged for every connection |
-
-## eBPF Observability
-
-TCP handshake state transitions happen inside the kernel and are invisible to the client/server applications. The `observability/ebpf/` directory provides bpftrace scripts that attach to kernel tracepoints and emit structured JSON-line events.
-
-**Files:**
-- `tcp_state_trace.bt` — attaches to `tracepoint:sock:inet_sock_set_state`, emits one JSON line per TCP state transition (with `ts_ns`, `src`, `dst`, `sport`, `dport`, `old_state`, `new_state`)
-- `tcp_retransmit_trace.bt` — attaches to `tracepoint:tcp:tcp_retransmit_skb`, emits one JSON line per retransmit
-- `run_trace.sh` — bash wrapper for SSM deployment; accepts `--duration`, `--port`, `--output`, `--retransmits`; installs bpftrace automatically if missing
-
-**How it works:**
-
-```
-tcp_state_trace.bt   ← bpftrace DSL (the eBPF logic, compiled to bytecode at runtime)
-       ↑
-bpftrace runtime     ← compiles .bt → eBPF bytecode, loads into kernel
-       ↑
-run_trace.sh         ← bash wrapper (install check, flags, timeout, background)
-       ↑
-run_experiment.sh    ← orchestrator (SSM deploy, collect output, append to report)
-```
-
-**Scope:** Client and Server VMs only. ClientNIC's eth1 is DPDK-bound (kernel TCP bypassed); ServerNIC is a stateless forwarder with no application TCP state.
-
-The experiment orchestrators start `run_trace.sh` before each test, collect `/tmp/tcp_trace.jsonl` afterwards, and append a TCP state transition summary to the report. Trace failure is non-fatal — the experiment continues with a warning.
 
 ## Constraints
 
