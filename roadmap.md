@@ -9,6 +9,7 @@ Open work only. Completed items are recorded in their reports, PRs, and
 | --- | --- |
 | [Human-readable experiment output](#human-readable-experiment-output) | Idea — not scoped |
 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Idea — not scoped |
+| [EC2 → BlueField porting guidelines](#ec2--bluefield-porting-guidelines) | Decided — deployment shape settled, applies to Phases 1-2 |
 | [`verify-eswitch-tcp-seq-offload`](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | Preemptive, off the Phase 1 path — in progress, DPU left mutated |
 | [`bluefield-servernic-hw-offload`](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Preemptive, off the Phase 1 path — blocked on the spike |
 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — sketch, not scoped |
@@ -81,6 +82,48 @@ does `write(nbytes)` → `write_eof()` → close, and never reads a response.
 - [ ] Decide whether 3 rounds becomes the default for the DPDK-vs-baseline
       comparison, or an
       opt-in mode so existing numbers stay comparable.
+
+## EC2 → BlueField porting guidelines
+
+**Decision, not open work.** How today's data plane moves onto the DPU, settled
+so Phases 1-2 don't re-litigate it. The
+[port model](#the-port-model-both-phases-use) states *what* is bound; this
+states *how the app is packaged and what changes in the code*.
+
+**Stay a vanilla executable.** No containers on either platform. DPDK on the
+DPU needs hugepages, vfio and version-matched DOCA/DPDK from the host
+regardless, so a container keeps every constraint and adds an image build to
+the loop. `systemd` unit + binary built natively on the ARM cores — the spike's
+`build_probe.sh` already proved that toolchain (DOCA 3.0.0058 / DPDK 22.11 on
+runs3), and there is no docker daemon running on the DPU anyway. The one case
+that would justify a container is a DOCA workload deployed the platform's way
+(`doca_container_deploy` YAML + BFB), which the offload track may need later
+and neither phase needs now.
+
+**No scalable functions.** SFs exist to give a *separate* function its own
+queues and netdev — several isolated apps on the DPU, or handing a container a
+netdev without exposing the whole PF. One dataplane process binding the
+physical ports needs neither.
+
+What actually changes, moving `src/servernic/dpdk/` to the DPU:
+
+- [ ] **PMD: ENA → mlx5.** Port setup differs (devargs, and `dv_flow_en=1` only
+      if e-switch rules are ever used); the parse/rewrite/transmit path in
+      `pipeline.c`, `translator.c`, `checksum.c` does not.
+- [ ] **Peer MACs.** `--client-mac` / `--server-mac` / `--gw-mac` still work as
+      explicit peering. If the second uplink turns out uncabled and the topology
+      falls back to `p0`↔`pf0hpf`, the host side becomes a representor and the
+      peer MAC is the server host's — see the open cabling question under the
+      port model.
+- [ ] **Inline by placement, not by routing.** DPU mode puts the ARM on the path
+      by construction; there is no CDK route-table equivalent to build. Confirm
+      the card is in DPU/embedded mode first —
+      `mlxconfig -d <dev> q INTERNAL_CPU_MODEL` — or the ARM never sees host
+      traffic and nothing else in this section applies.
+- [ ] **Keep management off the data ports.** Binding an uplink to DPDK takes it
+      from the ARM kernel. SSH stays on the OOB 1GbE port (`oob_net0` /
+      `tmfifo_net0`) — the same rule as the dedicated management ENI on EC2, and
+      the same failure mode as the mid-run VPN drop that left the DPU mutated.
 
 ## BlueField-3 hardware-offload track (preemptive, not on the Phase 1 path)
 
