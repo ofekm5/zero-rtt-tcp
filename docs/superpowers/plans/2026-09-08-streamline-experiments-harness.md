@@ -1,0 +1,85 @@
+# Streamline the experiments harness
+
+**Goal:** Collapse `experiments/` from six entrypoints across four stack folders to a
+single `experiments/run.sh` parameterised on `STACK` (`0rtt` | `baseline`) and
+`TRANSPORT` (`ssm` | `ssh`), with every shared helper defined exactly once and each
+directory meaning one thing.
+
+**Architecture:** `experiments/run.sh` sources one transport shim
+(`lib/transport/{ssm,ssh_lab}.sh`) and the shared `lib/core.sh`, then dispatches on
+`STACK`. Laptop-side code lives in `lib/`; VM-side code lives in `nodes/`; multi-run
+wrappers in `sweeps/`; outputs in `reports/{0rtt,baseline}/`; offline checks in
+`tests/`.
+
+**Tech Stack:** Bash (POSIX-ish, `set -uo pipefail`), Python 3 + pytest.
+
+**Spec:** `docs/superpowers/specs/2026-09-08-streamline-experiments-harness-design.md`
+
+**Global Constraints:**
+- No change to `src/` — the data plane is untouched.
+- No change to measurement semantics: `measure.sh`, `endpoint.sh`,
+  `analyze_metrics.py` and `loadgen.py` move and are re-sourced, but their logic,
+  metric definitions and emitted formats stay byte-identical.
+- Every `verify:` command runs offline — no AWS, no live VMs, no Docker daemon.
+- Historical reports under `experiments/dpdk/reports/` and
+  `experiments/baseline-tcp/reports/` are never moved, renamed, or deleted; nothing
+  under `docs/openspec/changes/archive/` or `docs/kb/raw/` is edited.
+- `STACK=baseline` has no data plane: the shared core must *skip* the NIC build,
+  start and log-collection steps for it, not fail them.
+- `REPO_PATH` differs per transport (`/home/ec2-user/zero-rtt-tcp` for SSM,
+  `/home/user/zero-rtt-tcp` for the lab) and must be derived from the transport shim.
+
+---
+
+- [ ] 1 Hoist the duplicated output helpers into a single shared file — verify: `[ "$(grep -rl '^log()' experiments/ | wc -l)" -eq 1 ]`
+    - File: `experiments/lib/output.sh` (new); callers `experiments/dpdk/run_experiment.sh`, `experiments/baseline-tcp/run_experiment.sh`, `experiments/proxmox/run_experiment.sh`, `experiments/scapy/run_experiment.sh`
+    - Outcome: `log()`, `pass()`, `fail()`, `warn()` and the `RED`/`GREEN`/`YELLOW`/`NC` colour variables are defined in exactly one place and sourced by every runner. The four byte-identical copies (`dpdk:55-58`, `baseline-tcp:52-55`, `proxmox:51-54`, `scapy:54-57`) are gone. `FAILURES` accounting behaves exactly as before. All four runners still execute end to end.
+    - Commit: `refactor(experiments): extract shared output helpers to lib/output.sh`
+
+- [ ] 2 Merge the two duplicated report writers into one parameterised writer — verify: `[ "$(grep -rl 'Integration Test Report' experiments/lib/ | wc -l)" -eq 1 ] && bash -n experiments/lib/report.sh`
+    - File: `experiments/lib/report.sh` (new); sources replaced in `experiments/dpdk/run_experiment.sh:201-286` and the equivalent block in `experiments/baseline-tcp/run_experiment.sh`
+    - Outcome: one function emits the run report for either stack, taking the stack identity and the `CORE_*` result variables as inputs. The DPDK report keeps its implementation stanza, its `LOAD_RATE=0` capacity-run warning, its Load Parameters table and all five body sections; the baseline report keeps its own equivalents. Reports produced for a given stack are textually equivalent to what that stack produced before.
+    - Commit: `refactor(experiments): unify the DPDK and baseline report writers`
+
+- [ ] 3 Rehome laptop-side code to `lib/` and split the transports out — verify: `test -f experiments/lib/core.sh -a -f experiments/lib/transport/ssm.sh -a -f experiments/lib/transport/ssh_lab.sh -a ! -d experiments/utils`
+    - File/area: `experiments/utils/` → `experiments/lib/` (`run_core.sh` → `core.sh`, plus `endpoint.sh`, `measure.sh`); `ssm.sh` and `ssh_lab.sh` → `experiments/lib/transport/`; `experiments/utils/tests/` → `experiments/tests/`
+    - Outcome: `experiments/utils/` no longer exists. Every `source` path in the runners and in the moved files resolves. The moved pytest files import their targets at the new paths and still pass. `endpoint_mock_harness.sh` moves with the tests and still works.
+    - Commit: `refactor(experiments): move laptop-side code to lib/ with transports split out`
+
+- [ ] 4 Rehome every VM-executed script to `nodes/` — verify: `test -f experiments/nodes/client.sh -a -f experiments/nodes/server.sh -a -f experiments/nodes/clientnic.sh -a -f experiments/nodes/servernic.sh -a -f experiments/nodes/loadgen.py -a -f experiments/nodes/analyze_metrics.py && test -z "$(ls experiments/lib/*.py 2>/dev/null)"`
+    - File/area: `experiments/dpdk/{clientnic,servernic}.sh`, `experiments/lib/{loadgen,analyze_metrics}.py` → `experiments/nodes/`
+    - Outcome: all six scripts that execute on a remote VM live in `experiments/nodes/` alongside the existing `client.sh` and `server.sh`. Every remote command string that names one of them (in `lib/core.sh`, `lib/endpoint.sh`, `lib/measure.sh`, `nodes/client.sh`, `nodes/server.sh`) uses the new path. `analyze_metrics.py` remains directly invocable on a downloaded pcap, since the `offline-analysis` skill runs it locally.
+    - Commit: `refactor(experiments): move all VM-executed scripts into nodes/`
+
+- [ ] 5 Write the single entrypoint with `STACK`/`TRANSPORT` dispatch — verify: `bash -n experiments/run.sh && test -x experiments/run.sh && grep -qE '\bSTACK\b' experiments/run.sh && grep -qE '\bTRANSPORT\b' experiments/run.sh`
+    - File: `experiments/run.sh` (new); shared flow absorbed into `experiments/lib/core.sh`
+    - Outcome: `./experiments/run.sh` runs the 0-RTT stack over SSM by default. `TRANSPORT=ssh` selects the lab shim and its `REPO_PATH`; `STACK=baseline` runs the plain-TCP flow, skipping the two NIC builds, the two NIC start steps, and NIC log collection. Node discovery and MAC resolution stay transport-specific. An unrecognised `STACK` or `TRANSPORT` exits non-zero with a message naming the accepted values. The exit code is still the failure count.
+    - Commit: `feat(experiments): add single run.sh entrypoint with STACK/TRANSPORT dispatch`
+
+- [ ] 6 Add the mock-transport test that pins the remote-call sequence — verify: `pytest experiments/tests/test_run_sh.py -q`
+    - File: `experiments/tests/test_run_sh.py` (new), following the stubbing pattern in `experiments/tests/endpoint_mock_harness.sh` and `experiments/tests/test_endpoint_sh.py`
+    - Outcome: the test stubs `remote_run`, `remote_bg` and `remote_stdout` to record their invocations, runs `run.sh` for `0rtt`+`ssm`, `0rtt`+`ssh` and `baseline`+`ssm`, and asserts the ordered call sequence for each. The 0-RTT sequences match what `dpdk/run_experiment.sh` and `proxmox/run_experiment.sh` produced before this change and differ from each other only in the transport shim and `REPO_PATH`. The baseline sequence contains no NIC build or NIC start call. The test fails if a step is dropped, added, or reordered.
+    - Commit: `test(experiments): pin run.sh remote-call sequence with a mock transport`
+
+- [ ] 7 Delete the four runners and the Scapy stack; move the sweeps — verify: `test -z "$(find experiments -name run_experiment.sh)" && test ! -d experiments/scapy && test -f experiments/sweeps/think.sh -a -f experiments/sweeps/stress.sh`
+    - File/area: delete `experiments/{dpdk,baseline-tcp,proxmox,scapy}/run_experiment.sh` and `experiments/scapy/`; move `experiments/run_think_sweep.sh` → `experiments/sweeps/think.sh` and `experiments/dpdk/run_stress.sh` → `experiments/sweeps/stress.sh`
+    - Outcome: `run.sh` is the only orchestrator. `sweeps/think.sh` selects its stack via `STACK` instead of the `case` at `run_think_sweep.sh:40-41`; `sweeps/stress.sh` still sets `LOAD_RATE=0`, still prints its capacity-run caveat, and execs `run.sh`. `experiments/dpdk/probes/` is retained at its current path. Both sweeps run to the point of node discovery without a "no such file" error.
+    - Commit: `refactor(experiments): delete the four runners and the deprecated Scapy stack`
+
+- [ ] 8 Point new report output at `reports/{0rtt,baseline}/` — verify: `pytest experiments/tests/test_report_path.py -q && test -d experiments/reports/0rtt -a -d experiments/reports/baseline`
+    - File: `experiments/lib/report.sh`, `experiments/reports/{0rtt,baseline}/` (new, each with a `.gitkeep`), `experiments/tests/test_report_path.py` (new)
+    - Test outcome: the new test invokes the report writer for each stack with stubbed `CORE_*` values in a temp tree and asserts the file lands under `experiments/reports/<stack>/` with that stack's filename convention. It fails if either stack writes outside its directory.
+    - Outcome: a completed run writes its report under `experiments/reports/<stack>/` with the filename convention that stack already used. `experiments/dpdk/reports/` and `experiments/baseline-tcp/reports/` are left untouched with all their existing files, and a short note in `experiments/README.md` records that they are frozen historical output.
+    - Commit: `refactor(experiments): write new reports under reports/<stack>/`
+
+- [ ] 9 Update every caller of the old entrypoints — verify: `! grep -rn 'run_experiment\.sh' .github/workflows/ .claude/skills/ CLAUDE.md experiments/README.md experiments/run.sh experiments/lib/ experiments/nodes/ experiments/sweeps/ --include='*.yml' --include='*.md' --include='*.sh'`
+    - File/area: `.github/workflows/run-experiment.yml`, `.claude/skills/run-experiment/SKILL.md`, `.claude/skills/run-experiment/references/test-scripts.md`, `.claude/skills/run-experiment/references/troubleshooting.md`, `.claude/skills/offline-analysis/SKILL.md`, `CLAUDE.md`, `experiments/README.md`
+    - Out of scope for this task: `experiments/*/reports/`, `experiments/ci-results/`, `experiments/insights.md` and `experiments/measurement-methodology-review.md` keep their historical references and are not edited.
+    - Outcome: the workflow invokes `experiments/run.sh` with `STACK`/`TRANSPORT` derived from its existing `infra` input, and the `EXP_DIR` variable is gone from all nine sites (`:113-115, 210, 213, 215, 255, 275, 298-301, 346, 360, 367`); its report-collection and commit steps target `experiments/reports/`. Both skills describe the one entrypoint and its two variables. `CLAUDE.md`'s module tree matches the new layout, including the removal of the stale `experiments/archive/` entry it still lists. Files under `docs/openspec/changes/archive/` and `docs/kb/raw/` are not edited.
+    - Commit: `docs(experiments): retarget workflow, skills and CLAUDE.md at run.sh`
+
+- [ ] 10 Rewrite the roadmap section to match the corrected ordering — verify: `grep -q 'streamline-experiments-harness' roadmap.md && grep -q 'run.sh' roadmap.md`
+    - File: `roadmap.md`
+    - Outcome: the "Human-readable experiment output" section records that harness consolidation landed first and links this change; its "Refine `experiments/` while doing it" subsection is replaced by what remains open (report-artifact pruning). The claim that the run stream is parsed by the skill and `analyze_metrics.py` is corrected — `analyze_metrics.py` parses `tcpdump -r` output on the capture host and the workflow only `tee`s the stream to a file, so no machine contract constrains the format. The status-snapshot table row is updated.
+    - Commit: `docs(roadmap): correct the experiment-output section and its ordering`
+triage-verdict: ok
