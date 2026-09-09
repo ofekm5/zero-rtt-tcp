@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{color-scheme:light}
+body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#faf9f5;color:#141413}
+img{max-width:100%}
+[hidden]:not([hidden=until-found]){display:none!important}
+</style>
+<title>Zero-RTT TCP Results Review</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+</head>
+<body>
+<style>
+/* One light look, every text colour pure black. */
+:root{
+  color-scheme:light;
+  --ground:#EFF1ED; --stage:#FBFCFA; --panel:#E7EAE4;
+  --rule:#C9CFC6; --rule-soft:#DDE2D9;
+  --accent:#1F5A7A; --accent-soft:#1F5A7A14;
+  --green:#2E6B4F; --good-soft:#2E6B4F12;
+  --crit:#9A3B2F; --crit-soft:#9A3B2F12;
+  --sans:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --serif:"IBM Plex Serif",Georgia,serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:#000;font-family:var(--sans);
+     min-height:100vh;display:flex;flex-direction:column;align-items:center;
+     justify-content:center;gap:14px;padding:18px 18px 10px}
+
+#stage{width:min(1240px,96vw);aspect-ratio:16/9;background:var(--stage);
+       border:1px solid var(--rule);border-radius:4px;position:relative;
+       overflow:hidden;container-type:size}
+.slide{position:absolute;inset:0;padding:3.6cqw 4.4cqw 3.2cqw;display:none;
+       flex-direction:column;gap:1.6cqh}
+.slide.on{display:flex}
+h1,h2{margin:0;font-weight:600;letter-spacing:-.015em;text-wrap:balance;color:#000}
+h1{font-size:5.2cqw;line-height:1.04;font-weight:700}
+h2{font-size:2.8cqw;line-height:1.12}
+p{margin:0;color:#000}
+.eyebrow{font-family:var(--mono);font-size:1.15cqw;letter-spacing:.16em;
+         text-transform:uppercase;color:#000}
+.sub{font-family:var(--serif);font-size:2cqw;line-height:1.5;color:#000;max-width:52ch}
+.hd{display:flex;justify-content:space-between;align-items:baseline;gap:2cqw;
+    border-bottom:1px solid var(--rule);padding-bottom:1cqh;flex:0 0 auto}
+.hd .tag{font-family:var(--mono);font-size:1cqw;color:#000;opacity:.6;
+         letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:1.5cqh;
+      justify-content:center;overflow:hidden}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:2.6cqw;align-items:start}
+.two.w{grid-template-columns:1.1fr 1fr}
+.two.f{grid-template-columns:1fr 1.05fr;align-items:center}
+ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:1.1cqh}
+li{position:relative;padding-left:1.7cqw;font-size:1.5cqw;line-height:1.45;color:#000}
+li::before{content:"";position:absolute;left:0;top:.6em;width:.38cqw;height:.38cqw;
+           border-radius:50%;background:#000}
+li b,li strong{font-weight:600}
+code,.mono{font-family:var(--mono);font-size:.9em}
+.note{font-family:var(--serif);font-size:1.28cqw;line-height:1.48;color:#000}
+
+/* numbered walkthrough list */
+ol.steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:.75cqh;
+         counter-reset:s}
+ol.steps li{counter-increment:s;padding-left:2.4cqw;font-size:1.18cqw;line-height:1.4}
+ol.steps li::before{content:counter(s);background:none;color:#000;font-family:var(--mono);
+                    font-size:1.05cqw;font-weight:600;width:auto;height:auto;
+                    border-radius:0;top:.05em;left:0}
+
+/* slides carrying more text than the rest */
+.tight li{font-size:1.3cqw;line-height:1.4}
+.tight ul{gap:.9cqh}
+.tight .call{font-size:1.28cqw;padding:1cqh 1.1cqw}
+
+table{border-collapse:collapse;width:100%;font-size:1.36cqw}
+th,td{padding:.95cqh .8cqw;text-align:right;border-bottom:1px solid var(--rule-soft);color:#000}
+th:first-child,td:first-child{text-align:left}
+thead th{font-family:var(--mono);font-size:.94cqw;letter-spacing:.08em;text-transform:uppercase;
+         font-weight:500;border-bottom:1px solid var(--rule)}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{font-family:var(--sans);white-space:normal}
+tbody tr:last-child td{border-bottom:0}
+td.win{font-weight:600}
+tr.hl td{background:var(--good-soft)}
+tr.net td:first-child{padding-left:1.5cqw;font-size:.94em}
+
+svg{display:block;width:100%;height:auto;overflow:visible}
+svg text{fill:#000;font-family:var(--sans);font-size:13px}
+svg .m{font-family:var(--mono);font-size:12px}
+svg .sm{font-size:11px}
+svg .hdr{font-family:var(--mono);font-size:13px}
+svg .num{font-family:var(--mono);font-size:12px;font-weight:600}
+.box{fill:var(--panel);stroke:var(--rule)}
+.box.a{fill:var(--accent-soft);stroke:var(--accent)}
+.wire{stroke:#444;stroke-width:1.3;fill:none}
+.wire.a{stroke:var(--accent);stroke-width:2}
+.wire.g{stroke:var(--green);stroke-width:2}
+.wire.x{stroke:var(--crit);stroke-width:1.6;stroke-dasharray:5 3}
+.lane{stroke:var(--rule-soft);stroke-width:1}
+.bar{fill:var(--accent-soft);stroke:var(--accent)}
+.bar.q{stroke-dasharray:4 3}
+
+.call{border-left:2px solid var(--accent);background:var(--accent-soft);
+      padding:1.3cqh 1.2cqw;font-family:var(--serif);font-size:1.38cqw;line-height:1.45;color:#000}
+.call b{font-weight:600;font-family:var(--sans)}
+.call.warn{border-color:var(--crit);background:var(--crit-soft)}
+.stack{display:flex;flex-direction:column;gap:1.1cqh}
+.rowlab{font-family:var(--mono);font-size:.98cqw;letter-spacing:.1em;
+        text-transform:uppercase;color:#000;opacity:.6}
+
+.figpage .body{justify-content:center;gap:1.6cqh}
+.figpage svg{max-height:58cqh;margin:0 auto}
+.figpage .note{max-width:100ch;margin:0 auto}
+
+.title-slide{justify-content:center;gap:0}
+.title-slide .meta{display:flex;flex-wrap:wrap;gap:.6cqh 2.2cqw;font-family:var(--mono);
+                   font-size:1.12cqw;color:#000;margin-top:3.4cqh;
+                   padding-top:2cqh;border-top:1px solid var(--rule)}
+
+#bar{width:min(1240px,96vw);display:flex;align-items:center;gap:14px;
+     font-family:var(--mono);font-size:11.5px;color:#000}
+#rail{flex:1;display:flex;gap:3px}
+#rail button{flex:1;height:4px;border:0;padding:0;background:var(--rule);cursor:pointer;
+             border-radius:2px;transition:background .15s}
+#rail button[aria-current="true"]{background:var(--accent)}
+#rail button:hover{background:#000}
+.nav{display:flex;gap:6px}
+.nav button{font:inherit;background:var(--stage);color:#000;border:1px solid var(--rule);
+            border-radius:3px;padding:3px 9px;cursor:pointer}
+.nav button:hover{border-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#count{font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:640px){ #bar{font-size:10px} }
+</style>
+
+<div id="stage">
+
+<!-- 1 -->
+<section class="slide on title-slide">
+  <p class="eyebrow">Results review · zero-rtt-tcp</p>
+  <h1>One round trip, removed and measured</h1>
+  <p class="sub" style="margin-top:2.4cqh">The ClientNIC answers the client's SYN itself. The ServerNIC repairs the sequence numbers afterwards. Twelve runs per stack, 24,000 flows a side, timed from endpoint packet captures.</p>
+  <div class="meta">
+    <span>4 × AWS EC2, DPDK 23.11</span>
+    <span>2000 conns, 500/s, 1 KB</span>
+    <span>100 ms emulated RTT on the middle leg</span>
+    <span>Control: instrumented plain TCP</span>
+    <span>2026-08-08 / 08-11 / 08-17</span>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="slide figpage">
+  <div class="hd"><h2>The four VMs</h2><span class="tag">same hosts, two data planes</span></div>
+  <div class="body">
+    <svg viewBox="0 0 1000 290" role="img" aria-label="Four VMs in series: Client, ClientNIC, ServerNIC, Server, with 50 ms of netem on each direction of the middle leg">
+      <rect class="box" x="0" y="86" width="190" height="66" rx="4"></rect>
+      <text class="hdr" x="95" y="125" text-anchor="middle">Client</text>
+      <rect class="box a" x="270" y="86" width="190" height="66" rx="4"></rect>
+      <text class="hdr" x="365" y="125" text-anchor="middle">ClientNIC</text>
+      <rect class="box a" x="540" y="86" width="190" height="66" rx="4"></rect>
+      <text class="hdr" x="635" y="125" text-anchor="middle">ServerNIC</text>
+      <rect class="box" x="810" y="86" width="190" height="66" rx="4"></rect>
+      <text class="hdr" x="905" y="125" text-anchor="middle">Server</text>
+
+      <line class="wire" x1="190" y1="119" x2="270" y2="119"></line>
+      <line class="wire a" x1="460" y1="119" x2="540" y2="119"></line>
+      <line class="wire" x1="730" y1="119" x2="810" y2="119"></line>
+
+      <line class="wire a" x1="500" y1="52" x2="500" y2="86"></line>
+      <text class="m" x="500" y="42" text-anchor="middle">50 ms of netem each way</text>
+
+      <text class="sm" x="95" y="180" text-anchor="middle">clean qdisc</text>
+      <text class="sm" x="500" y="180" text-anchor="middle">all of the emulated distance sits here</text>
+      <text class="sm" x="905" y="180" text-anchor="middle">clean qdisc</text>
+
+      <line class="lane" x1="0" y1="212" x2="1000" y2="212"></line>
+      <text x="0" y="240">plain TCP: both NIC VMs route in the kernel</text>
+      <text x="0" y="268">0-RTT: DPDK forwarder on the ClientNIC, DPDK translator on the ServerNIC</text>
+    </svg>
+    <p class="note">netem is the Linux kernel's network emulator, attached to an interface with <span class="mono">tc</span> as a queueing discipline: it holds every outgoing packet for a fixed time, and that held time is the distance. Client and server run the same application in both stacks and neither knows the middleboxes are there. The three test rounds each ran on their own set of four EC2 instances, created and torn down around the runs.</p>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <div class="hd"><h2>One connection, end to end</h2><span class="tag">0-RTT stack, single 1 KB request</span></div>
+  <div class="body two f">
+    <svg viewBox="0 0 560 610" role="img" aria-label="Ladder diagram of one 0-RTT connection from SYN to close across Client, ClientNIC, ServerNIC and Server">
+      <g class="hdr">
+        <text x="50" y="16" text-anchor="middle">Client</text>
+        <text x="215" y="16" text-anchor="middle">ClientNIC</text>
+        <text x="380" y="16" text-anchor="middle">ServerNIC</text>
+        <text x="530" y="16" text-anchor="middle">Server</text>
+      </g>
+      <line class="lane" x1="50" y1="28" x2="50" y2="596"></line>
+      <line class="lane" x1="215" y1="28" x2="215" y2="596"></line>
+      <line class="lane" x1="380" y1="28" x2="380" y2="596"></line>
+      <line class="lane" x1="530" y1="28" x2="530" y2="596"></line>
+
+      <line class="wire" x1="50" y1="60" x2="215" y2="60"></line>
+      <path class="wire" d="M215 60 l-7 -3.5 M215 60 l-7 3.5"></path>
+      <text class="num" x="130" y="52" text-anchor="middle">1</text>
+
+      <line class="wire g" x1="215" y1="100" x2="50" y2="100"></line>
+      <path class="wire g" d="M50 100 l7 -3.5 M50 100 l7 3.5"></path>
+      <text class="num" x="130" y="92" text-anchor="middle">2</text>
+
+      <line class="wire a" x1="215" y1="136" x2="380" y2="180"></line>
+      <path class="wire a" d="M380 180 l-7 -0.5 M380 180 l-4 -6"></path>
+      <text class="num" x="290" y="146" text-anchor="middle">3</text>
+
+      <line class="wire a" x1="50" y1="212" x2="215" y2="212"></line>
+      <line class="wire a" x1="215" y1="216" x2="380" y2="262"></line>
+      <path class="wire a" d="M380 262 l-7 -0.5 M380 262 l-4 -6"></path>
+      <text class="num" x="130" y="204" text-anchor="middle">4</text>
+
+      <line class="wire" x1="392" y1="300" x2="530" y2="300"></line>
+      <path class="wire" d="M530 300 l-7 -3.5 M530 300 l-7 3.5"></path>
+      <text class="num" x="460" y="292" text-anchor="middle">5</text>
+
+      <rect class="bar q" x="356" y="250" width="48" height="92" rx="3"></rect>
+      <text class="num" x="380" y="360" text-anchor="middle">6</text>
+
+      <line class="wire" x1="530" y1="392" x2="392" y2="392"></line>
+      <path class="wire" d="M392 392 l7 -3.5 M392 392 l7 3.5"></path>
+      <line class="wire x" x1="366" y1="380" x2="394" y2="404"></line>
+      <line class="wire x" x1="394" y1="380" x2="366" y2="404"></line>
+      <text class="num" x="460" y="384" text-anchor="middle">7</text>
+
+      <line class="wire g" x1="392" y1="436" x2="530" y2="436"></line>
+      <path class="wire g" d="M530 436 l-7 -3.5 M530 436 l-7 3.5"></path>
+      <text class="num" x="460" y="428" text-anchor="middle">8</text>
+
+      <line class="wire" x1="530" y1="480" x2="50" y2="480"></line>
+      <path class="wire" d="M50 480 l7 -3.5 M50 480 l7 3.5"></path>
+      <text class="num" x="290" y="472" text-anchor="middle">9</text>
+
+      <line class="wire" x1="50" y1="528" x2="530" y2="528"></line>
+      <path class="wire" d="M530 528 l-7 -3.5 M530 528 l-7 3.5"></path>
+      <line class="wire" x1="530" y1="562" x2="50" y2="562"></line>
+      <path class="wire" d="M50 562 l7 -3.5 M50 562 l7 3.5"></path>
+      <text class="num" x="290" y="520" text-anchor="middle">10</text>
+    </svg>
+    <ol class="steps">
+      <li>Client sends the SYN.</li>
+      <li>ClientNIC answers with a SYN-ACK of its own, using a made-up ISN. <span class="mono">connect()</span> returns here.</li>
+      <li>ClientNIC forwards the SYN across the 50 ms leg, with the client's ISN stamped into the unused ack field.</li>
+      <li>Client sends its ACK and the 1 KB request straight away, so the data crosses the leg behind the SYN rather than after a round trip.</li>
+      <li>ServerNIC reads the stamp, records the flow, and hands the server a clean SYN.</li>
+      <li>The request data arrives while the server is still handshaking, so ServerNIC holds it. The offset is not known yet.</li>
+      <li>The server's real SYN-ACK comes back. ServerNIC works out offset = made-up ISN minus real ISN, then drops the SYN-ACK, because the client already had one.</li>
+      <li>The held data goes to the server with its sequence numbers shifted by the offset.</li>
+      <li>The server's reply travels back with its sequence numbers shifted the other way, and the client acks it.</li>
+      <li>FIN and ACK in both directions get the same shift, then both NICs drop the flow entry.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="slide figpage">
+  <div class="hd"><h2>How a run is produced</h2><span class="tag">nine steps, then the same nine for the other stack</span></div>
+  <div class="body">
+    <svg viewBox="0 0 1000 380" role="img" aria-label="Nine run steps in a grid, each with a one-line description of what it does">
+      <g>
+        <rect class="box" x="0" y="0" width="310" height="112" rx="4"></rect>
+        <text x="16" y="30">1. Sync and build</text>
+        <text class="sm" x="16" y="56">Pull the same commit onto all four VMs,</text>
+        <text class="sm" x="16" y="76">then compile both DPDK binaries there.</text>
+
+        <rect class="box" x="345" y="0" width="310" height="112" rx="4"></rect>
+        <text x="361" y="30">2. Apply the emulated WAN</text>
+        <text class="sm" x="361" y="56">tc netem, 50 ms on each NIC's egress</text>
+        <text class="sm" x="361" y="76">towards the other NIC.</text>
+
+        <rect class="box" x="690" y="0" width="310" height="112" rx="4"></rect>
+        <text x="706" y="30">3. Check the endpoints</text>
+        <text class="sm" x="706" y="56">Read the qdiscs back and abort if the</text>
+        <text class="sm" x="706" y="76">client or server carries any delay.</text>
+
+        <rect class="box a" x="0" y="134" width="310" height="112" rx="4"></rect>
+        <text x="16" y="164">4. Start the chain</text>
+        <text class="sm" x="16" y="190">Server, then ServerNIC, then ClientNIC,</text>
+        <text class="sm" x="16" y="210">so nothing sends into a dead hop.</text>
+
+        <rect class="box a" x="345" y="134" width="310" height="112" rx="4"></rect>
+        <text x="361" y="164">5. Start the captures</text>
+        <text class="sm" x="361" y="190">tcpdump on the client and the server.</text>
+        <text class="sm" x="361" y="210">These files are the only clock used.</text>
+
+        <rect class="box a" x="690" y="134" width="310" height="112" rx="4"></rect>
+        <text x="706" y="164">6. Generate the load</text>
+        <text class="sm" x="706" y="190">2000 connections at 500 a second,</text>
+        <text class="sm" x="706" y="210">1 KB each, arrivals paced on a clock.</text>
+
+        <rect class="box" x="0" y="268" width="310" height="112" rx="4"></rect>
+        <text x="16" y="298">7. Stop and collect</text>
+        <text class="sm" x="16" y="324">Kill the captures and binaries, pull the</text>
+        <text class="sm" x="16" y="344">pcaps and logs off each VM.</text>
+
+        <rect class="box" x="345" y="268" width="310" height="112" rx="4"></rect>
+        <text x="361" y="298">8. Analyse on each host</text>
+        <text class="sm" x="361" y="324">Each pcap is parsed where it was taken,</text>
+        <text class="sm" x="361" y="344">so no two clocks are ever compared.</text>
+
+        <rect class="box" x="690" y="268" width="310" height="112" rx="4"></rect>
+        <text x="706" y="298">9. Aggregate</text>
+        <text class="sm" x="706" y="324">Join the two sides by 4-tuple, emit</text>
+        <text class="sm" x="706" y="344">TTFB, FCT and flows completed.</text>
+      </g>
+    </svg>
+    <p class="note">The orchestrator drives all four VMs over SSM. Both stacks run back to back on the same set of instances, and the load parameters are recorded per run and checked equal before the two are compared.</p>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="slide">
+  <div class="hd"><h2>The load generator, and why not iperf</h2><span class="tag">step 6</span></div>
+  <div class="body two w">
+    <div class="stack">
+      <p class="rowlab">What iperf could not give us</p>
+      <ul>
+        <li>One throughput figure per stream, and no per-connection timeline. The claim is about when a single connection unblocks, which iperf never reports.</li>
+        <li>A thread per connection, which cannot reach 500 arrivals a second on these endpoints.</li>
+        <li>All connections starting at once, so every flow's latency included queueing behind all the others. That measures the forwarder's SYN service rate, not the round trip.</li>
+        <li>A 1 MB default payload. With window scaling off that costs about sixteen round trips of transfer, which left the one saved RTT at a few percent of flow time, under the run-to-run noise.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <p class="rowlab">What the Python generator does instead</p>
+      <ul>
+        <li>asyncio, one coroutine per connection, so 500 arrivals a second costs no threads.</li>
+        <li>Connection <span class="mono">i</span> is scheduled at <span class="mono">t0 + i/rate</span> on an absolute timeline, so per-sleep overhead cannot drift over a long run.</li>
+        <li>It reports the arrival rate it actually achieved. A run that collapses into a burst shows up as a burst instead of passing for a latency result.</li>
+        <li>1 KB per connection, one segment, so flow time is handshake plus one round trip and the saved RTT is the dominant term.</li>
+        <li>A concurrency ceiling bounds endpoint memory and file descriptors independently of the pacing.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <div class="hd"><h2>Who measures, and how</h2><span class="tag">steps 5, 8 and 9</span></div>
+  <div class="body two w">
+    <div class="stack">
+      <table>
+        <thead><tr><th>Metric</th><th>Measured from</th><th>Read it as</th></tr></thead>
+        <tbody>
+          <tr><td>TTFB</td><td>client SYN out to first request byte out</td><td>how long the app waits</td></tr>
+          <tr><td>FCT</td><td>first SYN to last packet</td><td>whole-flow cost</td></tr>
+          <tr><td>Flows completed</td><td>full exchange seen at both ends</td><td>correctness gate</td></tr>
+        </tbody>
+      </table>
+      <div class="call"><b>Nothing is timed inside the load generator.</b> The Python code never records a start or stop time that reaches a result. Every reported number is the difference between two <span class="mono">tcpdump</span> timestamps, and the generator's only job is to open connections. This is separate from the 100 ms of netem, which is delay we inject, not a measurement.</div>
+    </div>
+    <div class="stack">
+      <ul>
+        <li>TTFB and FCT are both intervals inside the client's own capture, so a single clock produces both and no host-to-host time synchronisation is needed.</li>
+        <li>The server capture is used to confirm each flow completed, matched by 4-tuple. That is a count, not a timing, so the two clocks never have to agree.</li>
+        <li>Each pcap is parsed on the host that recorded it, then only the summary rows travel.</li>
+        <li>The captures cover the whole run and both stacks are captured the same way, so an artefact of the tooling would land on both sides.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="slide">
+  <div class="hd"><h2>Results</h2><span class="tag">pooled, 12 runs per stack, 24,000 flows</span></div>
+  <div class="body two w">
+    <div class="stack">
+      <table>
+        <thead><tr><th>Mean, ms</th><th>Plain TCP</th><th>0-RTT</th><th>Difference</th></tr></thead>
+        <tbody>
+          <tr class="hl"><td>TTFB, as measured</td><td>101.559</td><td>0.262</td><td class="win">−101.30</td></tr>
+          <tr class="net"><td>with the 100 ms removed</td><td>1.559</td><td>0.262</td><td class="win">−1.30</td></tr>
+          <tr class="hl"><td>FCT, as measured</td><td>202.816</td><td>100.762</td><td class="win">−102.05</td></tr>
+          <tr class="net"><td>with the 100 ms removed</td><td>2.816</td><td>0.762</td><td class="win">−2.05</td></tr>
+          <tr><td>Flows completed</td><td>24,000</td><td>24,000</td><td>0</td></tr>
+        </tbody>
+      </table>
+      <div class="call warn"><b>The rows marked "as measured" contain the 100 ms we injected.</b> It is netem on the ClientNIC to ServerNIC leg, not a real internet path, and it accounts for 100 of the 101.30 ms and 100 of the 102.05 ms. Plain TCP pays it twice on FCT and 0-RTT pays it once, which is the whole result. The claim is that one round trip is gone. What that is worth in milliseconds depends on the path this runs over.</div>
+    </div>
+    <div class="stack">
+      <p class="rowlab">Three sets of instances, twelve runs per stack</p>
+      <table>
+        <thead><tr><th>Mean, ms</th><th>08-08</th><th>08-17 (n=10)</th><th>Pooled</th></tr></thead>
+        <tbody>
+          <tr><td>TTFB, plain</td><td>101.532</td><td>101.528 ±0.388</td><td>101.559</td></tr>
+          <tr><td>TTFB, 0-RTT</td><td>0.263</td><td>0.244 ±0.031</td><td>0.262</td></tr>
+          <tr><td>FCT, plain</td><td>202.919</td><td>202.769 ±0.588</td><td>202.816</td></tr>
+          <tr><td>FCT, 0-RTT</td><td>101.067</td><td>100.650 ±0.030</td><td>100.762</td></tr>
+          <tr><td>Flows</td><td>2000</td><td>20,000</td><td>24,000</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Pooled is the equally weighted mean of run means, and every run carries 2000 flows. The ± figure is the spread of the ten run means, not of individual connections. The 0-RTT side varies less, 0.031 against 0.388 ms, because it no longer inherits the path's jitter. Across all twelve runs the two TTFB ranges are 0.228 to 0.443 ms and 101.277 to 102.549 ms, and they do not overlap. Worst-case FCT on 08-08 was 215.6 ms plain against 102.9 ms.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="slide">
+  <div class="hd"><h2>Cloud condition</h2><span class="tag">where the distance has to sit</span></div>
+  <div class="body">
+    <div class="call"><b>The gain survives only if the ServerNIC learns the sequence offset before the client's data would have arrived anyway.</b> The buffer releases on the real SYN-ACK, so anything that delays that SYN-ACK comes straight out of the saving.</div>
+    <ul>
+      <li>Each NIC has to sit next to its own endpoint. A distance <span class="mono">d</span> between the ServerNIC and the server costs <span class="mono">2 × d</span> out of the saving.</li>
+      <li>Putting the emulated delay on either endpoint fails as arithmetic, not as tuning. Charging the server's SYN-ACK the modelled distance delays the release by exactly what the spoof saved, whatever numbers you pick.</li>
+      <li>So the delay goes on each NIC's middle-leg egress, 50 ms per side, with both endpoints on a clean qdisc. The harness reads the qdiscs back before every run and refuses to continue if they are wrong.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="slide figpage">
+  <div class="hd"><h2>The same 100 ms, moved one link</h2><span class="tag">cloud condition</span></div>
+  <div class="body">
+    <svg viewBox="0 0 1000 360" role="img" aria-label="The same chain twice. With the 100 ms on the ServerNIC to server link the held data waits a full round trip; with it between the two NICs the offset arrives with the data.">
+      <text class="m" x="0" y="20">(a) the 100 ms sits between the ServerNIC and the server</text>
+      <rect class="box" x="0" y="44" width="92" height="42" rx="4"></rect>
+      <text class="sm" x="46" y="70" text-anchor="middle">Client</text>
+      <rect class="box" x="110" y="44" width="92" height="42" rx="4"></rect>
+      <text class="sm" x="156" y="70" text-anchor="middle">ClientNIC</text>
+      <rect class="box" x="220" y="44" width="92" height="42" rx="4"></rect>
+      <text class="sm" x="266" y="70" text-anchor="middle">ServerNIC</text>
+      <rect class="box" x="330" y="44" width="92" height="42" rx="4"></rect>
+      <text class="sm" x="376" y="70" text-anchor="middle">Server</text>
+      <line class="wire" x1="92" y1="65" x2="110" y2="65"></line>
+      <line class="wire" x1="202" y1="65" x2="220" y2="65"></line>
+      <line class="wire a" x1="312" y1="65" x2="330" y2="65"></line>
+      <text class="sm" x="321" y="108" text-anchor="middle">100 ms</text>
+
+      <line class="wire" x1="500" y1="100" x2="980" y2="100"></line>
+      <line class="lane" x1="500" y1="44" x2="500" y2="100"></line>
+      <line class="lane" x1="980" y1="44" x2="980" y2="100"></line>
+      <text class="sm" x="500" y="36">request data reaches the ServerNIC</text>
+      <text class="sm" x="980" y="36" text-anchor="end">offset known</text>
+      <line class="wire a" x1="500" y1="76" x2="980" y2="76"></line>
+      <path class="wire a" d="M500 76 l8 -4 M500 76 l8 4 M980 76 l-8 -4 M980 76 l-8 4"></path>
+      <text class="m" x="740" y="68" text-anchor="middle">the data waits 100 ms</text>
+      <text class="sm" x="500" y="118">0</text>
+      <text class="sm" x="980" y="118" text-anchor="end">100 ms</text>
+      <text class="m" x="980" y="142" text-anchor="end">the wait equals the saving, so nothing is gained</text>
+
+      <line class="lane" x1="0" y1="176" x2="1000" y2="176"></line>
+
+      <text class="m" x="0" y="220">(b) the 100 ms sits between the two NICs</text>
+      <rect class="box" x="0" y="244" width="92" height="42" rx="4"></rect>
+      <text class="sm" x="46" y="270" text-anchor="middle">Client</text>
+      <rect class="box" x="110" y="244" width="92" height="42" rx="4"></rect>
+      <text class="sm" x="156" y="270" text-anchor="middle">ClientNIC</text>
+      <rect class="box" x="220" y="244" width="92" height="42" rx="4"></rect>
+      <text class="sm" x="266" y="270" text-anchor="middle">ServerNIC</text>
+      <rect class="box" x="330" y="244" width="92" height="42" rx="4"></rect>
+      <text class="sm" x="376" y="270" text-anchor="middle">Server</text>
+      <line class="wire" x1="92" y1="265" x2="110" y2="265"></line>
+      <line class="wire a" x1="202" y1="265" x2="220" y2="265"></line>
+      <line class="wire" x1="312" y1="265" x2="330" y2="265"></line>
+      <text class="sm" x="211" y="308" text-anchor="middle">100 ms</text>
+
+      <line class="wire" x1="500" y1="300" x2="980" y2="300"></line>
+      <line class="lane" x1="500" y1="244" x2="500" y2="300"></line>
+      <line class="lane" x1="514" y1="244" x2="514" y2="300"></line>
+      <text class="sm" x="500" y="236">request data and offset reach the ServerNIC together</text>
+      <text class="m" x="536" y="270">no wait</text>
+      <text class="sm" x="500" y="318">0</text>
+      <text class="sm" x="980" y="318" text-anchor="end">100 ms</text>
+      <text class="m" x="980" y="342" text-anchor="end">the buffer costs nothing, so the saving survives</text>
+    </svg>
+    <p class="note">Both rows are the same four VMs carrying the same connection with the same 100 ms of netem. The only change is which link holds it. Read each row's timeline as one question: how long does the held data sit at the ServerNIC between arriving and becoming releasable? In (a) the ServerNIC has to fetch the server's SYN-ACK across the delayed link, so the offset lands a round trip after the data and the wait cancels the saving exactly. In (b) the SYN crosses the delayed link alongside the data and the server is a local hop away, so the offset is ready as the data arrives. Placement (a) stands for every arrangement that charges the server side of the chain, which is why the delay lives on the middle leg.</p>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="slide tight">
+  <div class="hd"><h2>What is not demonstrated</h2><span class="tag">limitations</span></div>
+  <div class="body">
+    <div class="two">
+      <ul>
+        <li>The distance is emulated: constant delay, with no jitter, reordering or loss. One region, one instance type, one RTT value.</li>
+        <li>TCP options are off, because the translator does not rewrite them. Without SACK a lost segment waits for an RTO, so this models production TCP loosely.</li>
+        <li>Throughput is unmeasured. 1 KB per flow makes a clean latency probe and says nothing about sustained transfer. An earlier run suggested per-connection throughput sits below the kernel's.</li>
+        <li>Concurrency is roughly 50 to 100 open flows, not 2000: arrivals at 500/s with flows lasting 100 to 200 ms. Sustained high concurrency is untested.</li>
+      </ul>
+      <ul>
+        <li>100k flows fails on both stacks. Plain TCP completed 99,728 and 0-RTT 87,073, and both failed their metric check. Blocking p95 reached 64 s, which is queueing rather than path.</li>
+        <li>The ceiling is in the SmartNICs. One busy-poll lcore drives both ports, and a 1024-deep RX ring drained 32 packets an iteration absorbs about 32 iterations of burst. A 100k burst overruns that: <span class="mono">imissed</span> hit 16,891 on the ServerNIC and 2,236 on the ClientNIC, while cycles per packet stayed 40 to 50 times under budget. A SYN dropped after the ClientNIC has already spoofed leaves the client believing it is connected and its data discarded. The fix is more RX queues or paced arrivals, not a faster loop.</li>
+      </ul>
+    </div>
+    <div class="call warn">Nothing in this deck depends on the 100k attempts. Behaviour at that scale is not demonstrated in either direction. The 12.9 % 0-RTT shortfall against 0.3 % on the baseline, under the same conditions, is still unexplained.</div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <div class="hd"><h2>For discussion: what a paper needs</h2><span class="tag">open decisions</span></div>
+  <div class="body two">
+    <div class="stack">
+      <p class="rowlab">Claim and framing</p>
+      <ul>
+        <li>Is the contribution the mechanism or the placement condition? The placement result predicts where a middlebox like this can and cannot pay off, which may travel further than the implementation does.</li>
+        <li>How to position this against TCP Fast Open and QUIC 0-RTT. Both of those need endpoint changes and this does not. Is that the axis to argue on?</li>
+        <li>What is owed beyond measurement: an invariant on the offset translation, the RST, FIN and retransmission paths, and what happens when the real SYN-ACK never arrives.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <p class="rowlab">Evidence still to gather</p>
+      <ul>
+        <li>A real wide-area path, cross-region, with genuine jitter and loss instead of a constant emulated delay.</li>
+        <li>TCP options, at least SACK and window scaling. A reviewer will read their absence as modelling a TCP nobody runs.</li>
+        <li>Throughput and sustained concurrency as a second axis. A round trip saved at the cost of bandwidth is not obviously a win.</li>
+        <li>A root cause for the 12.9 % 0-RTT loss at 100k: endpoint exhaustion or the data plane. Either answer is publishable.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<nav id="bar" aria-label="Slide navigation">
+  <span id="count">01 / 11</span>
+  <div id="rail" role="tablist" aria-label="Slides"></div>
+  <div class="nav">
+    <button id="prev" aria-label="Previous slide">←</button>
+    <button id="next" aria-label="Next slide">→</button>
+  </div>
+</nav>
+
+<script>
+(function(){
+  var slides = [].slice.call(document.querySelectorAll('.slide'));
+  var rail = document.getElementById('rail');
+  var count = document.getElementById('count');
+  var i = 0;
+  var dots = slides.map(function(s, n){
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role','tab');
+    b.setAttribute('aria-label','Slide ' + (n+1));
+    b.addEventListener('click', function(){ go(n); });
+    rail.appendChild(b);
+    return b;
+  });
+  function pad(n){ return (n<10?'0':'') + n; }
+  function go(n){
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function(s,k){ s.classList.toggle('on', k===i); });
+    dots.forEach(function(d,k){ d.setAttribute('aria-current', k===i ? 'true':'false'); });
+    count.textContent = pad(i+1) + ' / ' + pad(slides.length);
+    try{ location.hash = String(i+1); }catch(e){}
+  }
+  document.getElementById('prev').addEventListener('click', function(){ go(i-1); });
+  document.getElementById('next').addEventListener('click', function(){ go(i+1); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ go(i+1); e.preventDefault(); }
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){ go(i-1); e.preventDefault(); }
+    else if(e.key==='Home'){ go(0); }
+    else if(e.key==='End'){ go(slides.length-1); }
+  });
+  var start = parseInt((location.hash||'').replace('#',''), 10);
+  go(isNaN(start) ? 0 : start - 1);
+})();
+</script>
+</body>
+</html>

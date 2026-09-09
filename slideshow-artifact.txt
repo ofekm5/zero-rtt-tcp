@@ -1,4 +1,0 @@
-https://claude.ai/code/artifact/c8ce618a-bb51-443e-b3ec-5cf457feaafc
-
-multi-round spec-planning session
-claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba
