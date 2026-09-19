@@ -8,7 +8,7 @@ Open work only. Completed items are recorded in their reports, PRs, and
 | Item | State |
 | --- | --- |
 | [Human-readable experiment output](#human-readable-experiment-output) | Idea — not scoped |
-| [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Idea — not scoped |
+| [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress — resume: `claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba` |
 | [EC2 → BlueField porting guidelines](#ec2--bluefield-porting-guidelines) | Decided — deployment shape settled, applies to Phases 1-2 |
 | [`verify-eswitch-tcp-seq-offload`](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | Preemptive, off the Phase 1 path — in progress, DPU left mutated |
 | [`bluefield-servernic-hw-offload`](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Preemptive, off the Phase 1 path — blocked on the spike |
@@ -63,6 +63,9 @@ the same legibility problem.
       lost `ebpf-trace.sh`.
 
 ## Multi-round send in the load generator
+
+**Status:** spec in progress. Fast way to keep iterating:
+`claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba`
 
 **Goal:** each connection currently does one write and closes. Extend it to
 **three sequential sends** so the run exercises steady-state translation, not
