@@ -617,6 +617,6 @@ not "too slow" in any absolute sense — cycles/packet is nowhere near the
 budget. It cannot absorb a 100,000-connection burst landing in one instant
 without a deeper ring, multiple RX queues (RSS across cores), or the client
 pacing its connection attempts instead of firing them all at once. That is new
-scope (tracked in roadmap.md, not this document) — capacity-model.md's job was
+scope (declared out of scope — see [[wiki/Known Limitations]]) — capacity-model.md's job was
 to predict where the real ceiling would be and let you measure it instead of
 guessing, and per the table above, it did.

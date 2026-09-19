@@ -28,7 +28,8 @@ now empty.
 ## Project Overview
 
 - [[wiki/Zero-RTT TCP Overview]] — what 0-RTT TCP is and why the ClientNIC/ServerNIC pair exists.
-- [[wiki/Roadmap]] — open scale/experiment goals; completed work lives in `docs/openspec/changes/archive/`.
+- [[wiki/Roadmap]] — open work ranked easiest win first; completed work lives in `docs/openspec/changes/archive/`.
+- [[wiki/Known Limitations]] — acknowledged out-of-scope limits (scale beyond 2000 flows, spoofing amplifier); read before re-opening either.
 - [[wiki/Capacity Model]] — hardware sizing ceilings (mbuf pool, NIC rings, flow tables, CPU) for the DPDK data plane.
 
 ## Experiments & Measurement

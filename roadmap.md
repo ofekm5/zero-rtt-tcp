@@ -5,17 +5,22 @@ Open work only. Completed items are recorded in their reports, PRs, and
 
 ## Status snapshot
 
-| Item | State |
-| --- | --- |
-| [Human-readable experiment output](#human-readable-experiment-output) | Idea — not scoped |
-| [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress — resume: `claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba` |
-| [EC2 → BlueField porting guidelines](#ec2--bluefield-porting-guidelines) | Decided — deployment shape settled, applies to Phases 1-2 |
-| [`verify-eswitch-tcp-seq-offload`](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | Preemptive, off the Phase 1 path — in progress, DPU left mutated |
-| [`bluefield-servernic-hw-offload`](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Preemptive, off the Phase 1 path — blocked on the spike |
-| [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — sketch, not scoped |
-| [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped |
-| [Scale beyond the measured load](#out-of-scope-scale-beyond-the-measured-load) | Out of scope — acknowledged limitation |
-| [Backlog: experiment & robustness ideas](#backlog-experiment--robustness-ideas) | Ideas — not scoped |
+Ranked easiest win first — least infra, fewest blockers, smallest change.
+
+| # | Item | State | Why this rank |
+| --- | --- | --- | --- |
+| 1 | [Human-readable experiment output](#human-readable-experiment-output) | Idea — not scoped | Local only: output + `experiments/` cleanup, no infra |
+| 2 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress — resume: `claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba` | One function in `loadgen.py`, already being specced |
+| 3 | [QUIC comparison](#quic-comparison) | Idea — not scoped | New experiment arm, no data-plane change |
+| 4 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — porting decided, phase not scoped | Needs lab + runs3, but no external blocker |
+| 5 | [DDoS: purge delta rows](#ddos-purge-delta-rows) | Idea — not scoped | ServerNIC flow table only, unit-testable without a stack |
+| 6 | [`verify-eswitch-tcp-seq-offload`](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | Preemptive, off the Phase 1 path — in progress, DPU left mutated | 2/5 done; blocked on a sudo password + DPU restore |
+| 7 | [Cross-region split](#cross-region-split) | Idea — not scoped | Two-region CDK + orchestration rework, billed transfer |
+| 8 | [Packet-loss handling](#packet-loss-handling) | Idea — not scoped | Correctness design in the translator |
+| 9 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped | Needs runs4 permission |
+| 10 | [`bluefield-servernic-hw-offload`](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Preemptive, off the Phase 1 path — blocked on the spike | Waits on #6 |
+| 11 | [Scale up experiments on BlueField](#scale-up-experiments-on-bluefield) | Idea — not scoped | Needs Phase 1/2; re-opens an out-of-scope limitation |
+| 12 | [CDN comparison](#cdn-comparison) | Idea — not scoped | Undefined — needs framing before effort is knowable |
 
 ## Human-readable experiment output
 
@@ -87,17 +92,66 @@ does `write(nbytes)` → `write_eof()` → close, and never reads a response.
       comparison, or an
       opt-in mode so existing numbers stay comparable.
 
-## EC2 → BlueField porting guidelines
+## Demo topologies (lab / Proxmox) — the main line
 
-**Decision, not open work.** How today's data plane moves onto the DPU, settled
-so Phases 1-2 don't re-litigate it. The
-[port model](#the-port-model-both-phases-use) states *what* is bound; this
-states *how the app is packaged and what changes in the code*.
+Two phases, built in order. Both move
+the demo off AWS ENIs onto the RUNS lab and **run today's C data plane
+(`flow_table.c`, `syn_handler.c`, `checksum.c`) as a plain DPDK application on
+the DPU's ARM cores** — a rebuild against DOCA/DPDK, not a rewrite. Endpoint
+VMs (Client, Server) and the deployment plumbing are the same in both.
 
-**Stay a vanilla executable.** No containers on either platform. DPDK on the
-DPU needs hugepages, vfio and version-matched DOCA/DPDK from the host
-regardless, so a container keeps every constraint and adds an image build to
-the loop. `systemd` unit + binary built natively on the ARM cores — the spike's
+The two BlueField OpenSpec changes — [`verify-eswitch-tcp-seq-offload`](#verify-eswitch-tcp-seq-offload--in-progress-dpu-left-mutated)
+and [`bluefield-servernic-hw-offload`](#bluefield-servernic-hw-offload--blocked-on-the-spike)
+— were started **before** these phases and explore an optimisation on top of
+them. Neither phase depends on either one; see [the hardware-offload
+track](#bluefield-3-hardware-offload-track-preemptive-not-on-the-phase-1-path).
+
+### The port model both phases use
+
+The app binds the DPU's **physical ports directly** as DPDK ports — `p0` and
+`p1` on the ARM side, the two PF uplinks — and nothing else. No scalable
+functions, no VFs, no OVS representor bridging, no e-switch rules. The DPU is a
+physical bump in the wire and the seq/ack rewrite stays in software on ARM,
+which makes the port model identical to what `src/servernic/dpdk/io.c` already
+does with two ENIs: two ports, poll one, rewrite, transmit on the other. The
+change is the build target and the port names, not the data plane.
+
+- Open: whether both uplinks on the runs3 card are cabled and usable. If only
+  one is, the second leg has to come back through the host PF representor
+  (`pf0hpf`), which changes the topology from `p0`↔`p1` to `p0`↔`pf0hpf` and
+  drags the host's OVS bridge back into the path.
+
+### Phase 1 — BlueField as ServerNIC
+
+Client VM → ClientNIC VM → **BlueField running the ServerNIC app** → Server VM.
+The x86 ClientNIC DPDK forwarder is unchanged; only the ServerNIC role moves
+onto the DPU, reusing the same C code rebuilt for the ARM cores with `p0`/`p1`
+bound into the app. One DPU (runs3).
+
+- Smallest step off the current all-VM stack: one role changes host, the other
+  three nodes stay as they are.
+- No e-switch involvement at all, so Phase 1 does **not** wait on the
+  `verify-eswitch-tcp-seq-offload` verdict. It does exercise
+  `bluefield-servernic-hw-offload`'s deployment shape, so that change's offload
+  backend can land later behind its existing boundary.
+- Open: does the virtual switching on the *endpoint VMs'* hosts perturb the
+  latency being measured (OVS vs. Linux bridge vs. SR-IOV passthrough)? The DPU
+  side is direct-bound and out of that question.
+- Open: DPDK on the lab's virtual NICs for the x86 ClientNIC VM — `virtio`/
+  vhost-user vs. SR-IOV VFs, or an AF_XDP/AF_PACKET fallback.
+
+#### Porting guidelines (decided — Phase 2 inherits them)
+
+How today's data plane moves onto the DPU, settled so neither phase
+re-litigates it. The [port model](#the-port-model-both-phases-use) states *what*
+is bound; this states *how the app is packaged and what changes in the code*.
+
+**Stay a vanilla executable.** No containers on either platform. A DPU-native
+DPDK binary bound to `p0`/`p1` has no AMI, no vfio-pci-on-ENI and no CDK stack
+behind it, so the ServerNIC node deploys by building on the DPU. DPDK there
+needs hugepages, vfio and version-matched DOCA/DPDK from the host regardless,
+so a container keeps every constraint and adds an image build to the loop.
+`systemd` unit + binary built natively on the ARM cores — the spike's
 `build_probe.sh` already proved that toolchain (DOCA 3.0.0058 / DPDK 22.11 on
 runs3), and there is no docker daemon running on the DPU anyway. The one case
 that would justify a container is a DOCA workload deployed the platform's way
@@ -109,7 +163,9 @@ queues and netdev — several isolated apps on the DPU, or handing a container a
 netdev without exposing the whole PF. One dataplane process binding the
 physical ports needs neither.
 
-What actually changes, moving `src/servernic/dpdk/` to the DPU:
+#### Phase 1 tasks
+
+Porting `src/servernic/dpdk/` to the DPU:
 
 - [ ] **PMD: ENA → mlx5.** Port setup differs (devargs, and `dv_flow_en=1` only
       if e-switch rules are ever used); the parse/rewrite/transmit path in
@@ -128,6 +184,39 @@ What actually changes, moving `src/servernic/dpdk/` to the DPU:
       from the ARM kernel. SSH stays on the OOB 1GbE port (`oob_net0` /
       `tmfifo_net0`) — the same rule as the dedicated management ENI on EC2, and
       the same failure mode as the mid-run VPN drop that left the DPU mutated.
+
+What the port does *not* carry, and Phase 1 still owns:
+
+- [ ] `run_core.sh`'s AWS assumptions — the repo-sync step hardcodes
+      `sudo -u ec2-user` and `aws secretsmanager get-secret-value
+      --region eu-central-1`, and `experiments/proxmox/run_experiment.sh`
+      sources it, so every lab run hits that path today
+- [ ] Endpoint VM provisioning in the RUNS lab (Client, Server, and the x86
+      ClientNIC VM Phase 1 keeps)
+- Already done, not a task: the transport half —
+  `experiments/proxmox/run_experiment.sh` + `experiments/utils/ssh_lab.sh`
+  reach the 4-VM chain at `10.13.37.10-13` over the RUNS gateway.
+
+### Phase 2 — BlueField as ClientNIC and ServerNIC
+
+Client VM → **BlueField #1 (ClientNIC app)** → **BlueField #2 (ServerNIC app)**
+→ Server VM. Both 0-RTT roles run on hardware, each app direct-bound to its
+DPU's `p0`/`p1`; no ClientNIC/ServerNIC VMs. This is the hardware-only end
+state.
+
+- Needs a second DPU — the runs4 card, which requires another student's
+  permission. Secure it before scoping this phase.
+- ClientNIC's job (spoof the SYN-ACK, stamp V in the SYN ack-num) is
+  per-handshake and should suit the ARM cores; ServerNIC's per-packet rewriting
+  is the part the e-switch offload exists to avoid, so if ARM-only throughput
+  is going to bind anywhere it binds here — that is what makes the offload
+  track worth having later, not a reason to block on it now.
+
+### Next actions
+- [ ] Commit the topology sketch under `docs/` so this section has a stable reference
+- [ ] Stand up Phase 1, lab-portability tasks included
+- [ ] Promote Phase 1 to an OpenSpec change via
+      `spec-planning:openspec-propose-change`
 
 ## BlueField-3 hardware-offload track (preemptive, not on the Phase 1 path)
 
@@ -215,151 +304,47 @@ resolves it. Criteria in the
       rewriting or sheds) rather than failing open or dropping silently —
       pairs with the rule-count-leak mitigation already noted above (SC5)
 
-## Out of scope: scale beyond the measured load
+## Ideas — not scoped
 
-**Acknowledged limitation, not planned work.** `docs/index.html` §6 carries the
-same statement; no figure in that report depends on it.
+Each needs a proposal before work starts. Ordered as in the status snapshot. Two of them (DDoS, scale on BlueField) re-open limitations
+the project has declared out of scope — see [`docs/kb/wiki/Known Limitations.md`](docs/kb/wiki/Known%20Limitations.md).
 
-The measured claim rests on 2000-flow runs at 500 conn/s. Concurrency there is
-roughly 50-100 flows in flight (arrival rate x mean FCT), well under the 2000 the
-`LOAD_CONCURRENCY=2000` cap allows — at that volume the cap never binds, so 2000
-*concurrent* flows are not demonstrated either. Runs at 100,000 total flows have
-never completed:
+### QUIC comparison
 
-| Run | Plain TCP | 0-RTT |
-| --- | --- | --- |
-| 2026-07-25 (unpaced) | — | 68,779 / 100,000 |
-| 2026-08-11 | 100,000 / 100,000 | 84,143 / 100,000 |
-| 2026-08-17 | 99,728 / 100,000 | 87,073 / 100,000 |
+Add QUIC as a third arm in `experiments/` next to the plain-TCP baseline and
+the DPDK 0-RTT stack.
 
-Both 2026-08-17 runs also failed their endpoint metric check (326 and 171
-unresolvable metric events), and latency at that load is queueing rather than
-path (plain TCP p95 blocking reached 64.1 s). The harness is therefore implicated
-alongside the data plane.
+### DDoS: purge delta rows
 
-**What is not established:** that the shortfall is unrelated to the 0-RTT
-mechanism. Under identical conditions baseline lost 0.3% where 0-RTT lost 12.9%,
-an asymmetry shared infrastructure limits would not produce. The defensible
-statement is "not demonstrated at scale", not "limited by infrastructure" — the
-latter is a finding, and the runs do not support it.
+Add an eviction/purge mechanism for the per-flow delta table on ServerNIC so
+SYN floods can't exhaust it. Nothing evicts today: every SYN holds an entry in
+`FT_SIZE=262144` plus buffer memory under the 1 GiB `FT_MAX_BUFFERED_BYTES`
+ceiling until the flow closes.
 
-Sketched and not pursued: RSS/multi-queue, SYN-cookie-style backpressure, arrival
-pacing (landed, and did not close the gap), and a pre-generated ISN pool in place
-of per-SYN `rte_rand()`.
+### Cross-region split
 
-Same status, second limitation: the design is structurally a spoofing amplifier
-— ClientNIC answers every SYN before the server has agreed to anything, so a
-spoofed source gets a SYN-ACK sent to a third party and every SYN costs
-flow-table state on both SmartNICs. Stated, not defended: this is an isolated
-lab with no untrusted clients, and any real mitigation (SYN cookies, admission
-control) is more machinery than the result needs.
+Put the client side and server side in different AWS regions — a real WAN
+instead of the emulated middle-leg delay.
 
-If this is ever re-opened, one measurement defect comes first: `loadgen.py`
-reports achieved arrival rate from coroutine-spawn timing, not from connection
-establishment (`_client_conn` takes the semaphore inside the task, so the spawn
-loop never blocks on it). Every 100k arrival-rate figure recorded so far is
-unreliable on that axis.
+- [ ] Extend `infra/dpdk/cdk/` to two regions and pick the inter-region path:
+      VPC peering, Transit Gateway, or public IPs.
+- [ ] Rework orchestration: `ssm.sh` and the node scripts assume one region's
+      `describe-instances`.
+- [ ] Cost check before deploying — cross-region data transfer is billed.
 
-## Demo topologies (lab / Proxmox) — the main line
+### Packet-loss handling
 
-Two phases, built in order. Both move
-the demo off AWS ENIs onto the RUNS lab and **run today's C data plane
-(`flow_table.c`, `syn_handler.c`, `checksum.c`) as a plain DPDK application on
-the DPU's ARM cores** — a rebuild against DOCA/DPDK, not a rewrite. Endpoint
-VMs (Client, Server) and the deployment plumbing are the same in both.
+Make the system tolerate loss on either side (lost SYN-ACK, data, or ACK around
+the translation point) and test it.
 
-The two BlueField OpenSpec changes — [`verify-eswitch-tcp-seq-offload`](#verify-eswitch-tcp-seq-offload--in-progress-dpu-left-mutated)
-and [`bluefield-servernic-hw-offload`](#bluefield-servernic-hw-offload--blocked-on-the-spike)
-— were started **before** these phases and explore an optimisation on top of
-them. Neither phase depends on either one; see [the hardware-offload
-track](#bluefield-3-hardware-offload-track-preemptive-not-on-the-phase-1-path).
+### Scale up experiments on BlueField
 
-### The port model both phases use
+Run the larger-load experiments on the BF-3 side. Depends on Phase 1/2.
 
-The app binds the DPU's **physical ports directly** as DPDK ports — `p0` and
-`p1` on the ARM side, the two PF uplinks — and nothing else. No scalable
-functions, no VFs, no OVS representor bridging, no e-switch rules. The DPU is a
-physical bump in the wire and the seq/ack rewrite stays in software on ARM,
-which makes the port model identical to what `src/servernic/dpdk/io.c` already
-does with two ENIs: two ports, poll one, rewrite, transmit on the other. The
-change is the build target and the port names, not the data plane.
+### CDN comparison
 
-- Open: whether both uplinks on the runs3 card are cabled and usable. If only
-  one is, the second leg has to come back through the host PF representor
-  (`pf0hpf`), which changes the topology from `p0`↔`p1` to `p0`↔`pf0hpf` and
-  drags the host's OVS bridge back into the path.
-
-### Phase 1 — BlueField as ServerNIC
-
-Client VM → ClientNIC VM → **BlueField running the ServerNIC app** → Server VM.
-The x86 ClientNIC DPDK forwarder is unchanged; only the ServerNIC role moves
-onto the DPU, reusing the same C code rebuilt for the ARM cores with `p0`/`p1`
-bound into the app. One DPU (runs3).
-
-- Smallest step off the current all-VM stack: one role changes host, the other
-  three nodes stay as they are.
-- Deployment comes with the port: a DPU-native DPDK binary bound to `p0`/`p1`
-  has no AMI, no vfio-pci-on-ENI and no CDK stack behind it, so the ServerNIC
-  node deploys by building on the DPU. Build it natively on the ARM cores
-  against the installed DOCA/DPDK (3.0.0058 / DPDK 22.11 on runs3) — the spike
-  already proved that toolchain works via `build_probe.sh`, no container.
-- What the port does *not* carry, and Phase 1 still owns:
-  - [ ] `run_core.sh`'s AWS assumptions — the repo-sync step hardcodes
-        `sudo -u ec2-user` and `aws secretsmanager get-secret-value
-        --region eu-central-1`, and `experiments/proxmox/run_experiment.sh`
-        sources it, so every lab run hits that path today
-  - [ ] Endpoint VM provisioning in the RUNS lab (Client, Server, and the x86
-        ClientNIC VM Phase 1 keeps)
-  - Already done, not a task: the transport half —
-    `experiments/proxmox/run_experiment.sh` + `experiments/utils/ssh_lab.sh`
-    reach the 4-VM chain at `10.13.37.10-13` over the RUNS gateway.
-- No e-switch involvement at all, so Phase 1 does **not** wait on the
-  `verify-eswitch-tcp-seq-offload` verdict. It does exercise
-  `bluefield-servernic-hw-offload`'s deployment shape, so that change's offload
-  backend can land later behind its existing boundary.
-- Open: does the virtual switching on the *endpoint VMs'* hosts perturb the
-  latency being measured (OVS vs. Linux bridge vs. SR-IOV passthrough)? The DPU
-  side is direct-bound and out of that question.
-- Open: DPDK on the lab's virtual NICs for the x86 ClientNIC VM — `virtio`/
-  vhost-user vs. SR-IOV VFs, or an AF_XDP/AF_PACKET fallback.
-
-### Phase 2 — BlueField as ClientNIC and ServerNIC
-
-Client VM → **BlueField #1 (ClientNIC app)** → **BlueField #2 (ServerNIC app)**
-→ Server VM. Both 0-RTT roles run on hardware, each app direct-bound to its
-DPU's `p0`/`p1`; no ClientNIC/ServerNIC VMs. This is the hardware-only end
-state.
-
-- Needs a second DPU — the runs4 card, which requires another student's
-  permission. Secure it before scoping this phase.
-- ClientNIC's job (spoof the SYN-ACK, stamp V in the SYN ack-num) is
-  per-handshake and should suit the ARM cores; ServerNIC's per-packet rewriting
-  is the part the e-switch offload exists to avoid, so if ARM-only throughput
-  is going to bind anywhere it binds here — that is what makes the offload
-  track worth having later, not a reason to block on it now.
-
-### Next actions
-- [ ] Commit the topology sketch under `docs/` so this section has a stable reference
-- [ ] Stand up Phase 1, lab-portability tasks included
-- [ ] Promote Phase 1 to an OpenSpec change via
-      `spec-planning:openspec-propose-change`
-
-## Backlog: experiment & robustness ideas
-
-Not scoped; each needs a proposal before work starts.
-
-- [ ] **QUIC comparison** — add QUIC as a third arm in `experiments/` next to
-      the plain-TCP baseline and the DPDK 0-RTT stack.
-- [ ] **Cross-region split** — put the client side and server side in
-      different AWS regions (real WAN instead of `netem`).
-- [ ] **DDoS: purge delta rows** — add an eviction/purge mechanism for the
-      per-flow delta table on ServerNIC so SYN floods can't exhaust it.
-- [ ] **Scale up experiments on BlueField** — run the larger-load experiments
-      on the BF-3 side.
-- [ ] **Packet-loss handling** — make the system tolerate loss on either side
-      (lost SYN-ACK, data, or ACK around the translation point) and test it.
-- [ ] **CDN comparison** — compare against a CDN, or use a CDN as the actual
-      replacement for the client/server endpoints.
+Compare against a CDN, or use a CDN as the actual replacement for the
+client/server endpoints.
 
 ## Done ledger
 
@@ -378,7 +363,7 @@ Evidence lives in the linked artifacts, not here.
   truncating the per-flow output, fixed by `--summary` / `--detail-out`. The
   2026-08-17 100k run analyzed all 87,073 client flows and 85,158 server flows.
   Remaining 100k *metric-check* failures are load-related, tracked under
-  [the scale limitation](#out-of-scope-scale-beyond-the-measured-load).
+  the scale limitation in [`docs/kb/wiki/Known Limitations.md`](docs/kb/wiki/Known%20Limitations.md).
 - **#18 — full-DPDK endpoint interfaces** — closed 2026-07-25. Change archived at
   `docs/openspec/changes/archive/2026-07-14-full-dpdk-endpoint-interfaces/`; both
   SmartNICs run dual-DPDK data-plane ports (3 ENIs each), zero AF_PACKET in
