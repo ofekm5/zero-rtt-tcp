@@ -15,6 +15,7 @@ Open work only. Completed items are recorded in their reports, PRs, and
 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — sketch, not scoped |
 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped |
 | [Scale beyond the measured load](#out-of-scope-scale-beyond-the-measured-load) | Out of scope — acknowledged limitation |
+| [Backlog: experiment & robustness ideas](#backlog-experiment--robustness-ideas) | Ideas — not scoped |
 
 ## Human-readable experiment output
 
@@ -339,6 +340,23 @@ state.
 - [ ] Stand up Phase 1, lab-portability tasks included
 - [ ] Promote Phase 1 to an OpenSpec change via
       `spec-planning:openspec-propose-change`
+
+## Backlog: experiment & robustness ideas
+
+Not scoped; each needs a proposal before work starts.
+
+- [ ] **QUIC comparison** — add QUIC as a third arm in `experiments/` next to
+      the plain-TCP baseline and the DPDK 0-RTT stack.
+- [ ] **Cross-region split** — put the client side and server side in
+      different AWS regions (real WAN instead of `netem`).
+- [ ] **DDoS: purge delta rows** — add an eviction/purge mechanism for the
+      per-flow delta table on ServerNIC so SYN floods can't exhaust it.
+- [ ] **Scale up experiments on BlueField** — run the larger-load experiments
+      on the BF-3 side.
+- [ ] **Packet-loss handling** — make the system tolerate loss on either side
+      (lost SYN-ACK, data, or ACK around the translation point) and test it.
+- [ ] **CDN comparison** — compare against a CDN, or use a CDN as the actual
+      replacement for the client/server endpoints.
 
 ## Done ledger
 
