@@ -9,9 +9,9 @@ Ranked easiest win first — least infra, fewest blockers, smallest change.
 
 | # | Item | State | Why this rank |
 | --- | --- | --- | --- |
-| 1 | [Human-readable experiment output](#human-readable-experiment-output) | Idea — not scoped | Local only: output + `experiments/` cleanup, no infra |
+| 1 | [Human-readable experiment output](#human-readable-experiment-output) | Scoped — needs task-runner to implement | Local only: output + `experiments/` cleanup, no infra |
 | 2 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress — resume: `claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba` | One function in `loadgen.py`, already being specced |
-| 3 | [QUIC comparison](#quic-comparison) | Idea — not scoped | New experiment arm, no data-plane change |
+| 3 | [QUIC comparison](#quic-comparison) | Scoped, validation is in progress — resume: `claude --resume 25d15f2d-0439-4a70-b4db-945b03dbfe9d` | New experiment arm, no data-plane change |
 | 4 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — porting decided, phase not scoped | Needs lab + runs3, but no external blocker |
 | 5 | [DDoS: purge delta rows](#ddos-purge-delta-rows) | Idea — not scoped | ServerNIC flow table only, unit-testable without a stack |
 | 6 | [`verify-eswitch-tcp-seq-offload`](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | Preemptive, off the Phase 1 path — in progress, DPU left mutated | 2/5 done; blocked on a sudo password + DPU restore |
@@ -21,8 +21,12 @@ Ranked easiest win first — least infra, fewest blockers, smallest change.
 | 10 | [`bluefield-servernic-hw-offload`](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Preemptive, off the Phase 1 path — blocked on the spike | Waits on #6 |
 | 11 | [Scale up experiments on BlueField](#scale-up-experiments-on-bluefield) | Idea — not scoped | Needs Phase 1/2; re-opens an out-of-scope limitation |
 | 12 | [CDN comparison](#cdn-comparison) | Idea — not scoped | Undefined — needs framing before effort is knowable |
+| 13 | [Read the XFir paper](#read-the-xfir-paper) | Idea — not scoped | Reading task; brief over it for relevant table-eviction details |
+| 14 | [Claude Code on uni VM](#claude-code-on-uni-vm) | Idea — not scoped | One-host setup; enables autonomous goal loops with direct validation |
 
 ## Human-readable experiment output
+
+**Status:** scoped already — needs task-runner to implement.
 
 **Goal:** `run_experiment.sh` output is tuned for the Claude agent driving
 `/run-experiment` — dense, log-shaped, easy to grep. A human reading the same
@@ -38,6 +42,14 @@ taking the structure the agent relies on away.
       `oerrors`, `truncated_frames`) — not every line of node output.
 - [ ] Keep the final report under `experiments/<mode>/reports/` as the durable
       artifact; this is about the live run, not the report.
+- [ ] Refine the metric names themselves, not just the output framing —
+      `send_unlock`, `server_gap`, and FCT are internal shorthand from
+      `experiments/measurement-methodology-review.md` with no meaning on
+      sight. Either rename them in the code/output to say what they measure
+      (e.g. "time blocked in connect()", "flow completion time"), or keep the
+      short names but always pair them with a one-line definition wherever
+      they're printed or reported — decide one convention and apply it
+      everywhere (live output, `analyze_metrics.py`, reports, README).
 
 ### Refine `experiments/` while doing it
 
@@ -311,6 +323,9 @@ the project has declared out of scope — see [`docs/kb/wiki/Known Limitations.m
 
 ### QUIC comparison
 
+**Status:** scoped, validation is in progress — resume:
+`claude --resume 25d15f2d-0439-4a70-b4db-945b03dbfe9d`
+
 Add QUIC as a third arm in `experiments/` next to the plain-TCP baseline and
 the DPDK 0-RTT stack.
 
@@ -345,6 +360,22 @@ Run the larger-load experiments on the BF-3 side. Depends on Phase 1/2.
 
 Compare against a CDN, or use a CDN as the actual replacement for the
 client/server endpoints.
+
+### Read the XFir paper
+
+Professor-sent SIGCOMM paper. Not directly about 0-RTT — it accelerates flow
+setup via optimized table lookups and custom hardware — but its flow-table
+handling may be relevant: entries are kept until a flow is set up/offloaded,
+with details on how entries are removed. Brief over it and check whether
+anything is worth mimicking, particularly for
+[DDoS: purge delta rows](#ddos-purge-delta-rows).
+
+### Claude Code on uni VM
+
+Install Claude Code on the university VM so goal loops (`/task-runner --goal`)
+can run there directly, with the VM itself as the validation mechanism
+(compile/run/test in place) instead of routing through local sessions or lab
+SSH plumbing.
 
 ## Done ledger
 

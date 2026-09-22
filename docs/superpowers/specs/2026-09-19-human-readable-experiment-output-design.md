@@ -20,8 +20,14 @@ Two facts from the codebase shape the fix:
   is what the agent reads, so whatever is on stdout is what the agent sees — a compact
   stdout would starve it unless the full log is kept separately.
 
-This change depends on `streamline-experiments-harness`: it hooks in at
-`experiments/lib/output.sh` and `experiments/run.sh`, which that plan creates.
+This change does *not* depend on `streamline-experiments-harness`. An earlier
+revision said it hooked in at `experiments/lib/output.sh` and `experiments/run.sh`,
+which that plan creates — neither exists yet, so nothing could have been verified
+against them. It hooks in at the four runners as they stand today, each carrying its
+own byte-identical copy of the four helpers (`dpdk:55-58`, `baseline-tcp:52-55`,
+`proxmox:51-54`, `scapy:54-57`). Creating `experiments/lib/output.sh` as the one
+definition of those helpers *is* `streamline-experiments-harness` task 1, so the two
+changes do not collide in either order.
 
 ## Non-Goals
 
@@ -52,15 +58,16 @@ workflow bot commits to GitHub, so the agent reads the full record.
 
 - [ ] Nothing is lost: with the compact view on, every `log`, `pass`, `fail`, `warn`
       line and all other stdout/stderr of a mocked run still lands in the full log
-      file — measured by: `pytest experiments/tests/test_output.py -q`
+      file — measured by: `pytest experiments/utils/tests/test_output.py -q`
 - [ ] Stdout is compact: for a mocked 0-RTT run, stdout carries exactly one line per
       `Step N`, every PASS/FAIL/WARN, and a final scorecard (pass/fail counts plus
       paths to the report and full log); ordinary `log` chatter and raw node output are
       absent, and NIC counter names do not appear — measured by:
-      `pytest experiments/tests/test_output.py -q`
-- [ ] Behaviour preserved: the exit code still equals the failure count and the
-      remote-call sequence is unchanged — measured by:
-      `pytest experiments/tests/test_run_sh.py experiments/tests/test_output.py -q`
+      `pytest experiments/utils/tests/test_output.py -q`
+- [ ] Behaviour preserved: `FAILURES` still counts exactly the `fail` calls, each
+      runner still exits with that count, and all four runners still parse — measured
+      by: `pytest experiments/utils/tests/test_output.py -q` plus the runner-drive
+      check in task 2 of the plan
 - [ ] The agent can read the full log from GitHub: the workflow copies it into the
       bundle as `experiment-full.log` (committed by the existing bot step) and the
       `offline-analysis` skill names it as the file to read first — measured by:
@@ -68,32 +75,32 @@ workflow bot commits to GitHub, so the agent reads the full record.
 
 ## Architecture Impact
 
-Current shape (after `streamline-experiments-harness`):
+Current shape (today's repo):
 
 ```
-run.sh
-├─ lib/output.sh   log / pass / fail / warn → stdout (log → stderr)
-└─ lib/core.sh     Step 1…7, calls the four functions
+<stack>/run_experiment.sh   log / pass / fail / warn defined inline, ×4 runners
+└─ utils/run_core.sh        Step 1…7, calls the four functions
 ```
 
 ```diff
- run.sh
-+├─ opens $RUN_LOG; exec >>"$RUN_LOG" 2>&1 with the terminal kept on fd 3   # modified
-+└─ prints print_scorecard on exit
- ├─ lib/output.sh
--│   log() writes every line to stderr
-+│   every function appends to $RUN_LOG; only "Step N" log lines, PASS/FAIL/WARN
-+│   and print_scorecard() also write to fd 3                               # modified
- └─ lib/core.sh   (unchanged)
+ <stack>/run_experiment.sh
+-│   defines log/pass/fail/warn inline; log() writes every line to stderr
++├─ sources lib/output.sh; calls output_init; traps print_scorecard EXIT    # modified
++experiments/lib/output.sh                                                  # new
++│   the one definition of log/pass/fail/warn; every function appends to
++│   $RUN_LOG; only "Step N" log lines, PASS/FAIL/WARN and print_scorecard()
++│   also write to fd 3; output_init opens $RUN_LOG and redirects fd 1/2
+ └─ utils/run_core.sh   (unchanged)
  .github/workflows/run-experiment.yml
++  export RUN_LOG=/tmp/experiment-full.log
 +  cp "$RUN_LOG" "$OUT/experiment-full.log"                                  # modified
 ```
 
 | Component | Path | Change | Responsibility after |
 | --- | --- | --- | --- |
-| Output helpers | `experiments/lib/output.sh` | modified | Dual sink: full to `$RUN_LOG`, compact to fd 3; adds `print_scorecard` |
-| Entrypoint | `experiments/run.sh` | modified | Creates `$RUN_LOG`, redirects all output, prints the scorecard at exit |
-| Output test | `experiments/tests/test_output.py` | new | Pins the two sinks and the exit code |
+| Output helpers | `experiments/lib/output.sh` | new | The one definition of the four helpers; dual sink: full to `$RUN_LOG`, compact to fd 3; adds `output_init` and `print_scorecard` |
+| Runners (×4) | `experiments/{dpdk,baseline-tcp,proxmox,scapy}/run_experiment.sh` | modified | Source the module, call `output_init` before any output, trap `print_scorecard` on EXIT |
+| Output test | `experiments/utils/tests/test_output.py` | new | Pins the two sinks and the exit code |
 | Workflow | `.github/workflows/run-experiment.yml` | modified | Copies `$RUN_LOG` into the bundle; `tee` now captures the compact view |
 | Offline skill | `.claude/skills/offline-analysis/SKILL.md` | modified | Points at `experiment-full.log` |
 | Run skill | `.claude/skills/run-experiment/SKILL.md` | modified | Same pointer |
@@ -130,13 +137,14 @@ code. Verdict: rejected.
 
 ## Key Constraints
 
-- **Depends on `streamline-experiments-harness`** tasks 1, 5 and 9 (shared
-  `lib/output.sh`, `run.sh`, updated workflow lines). Do not start before they land.
+- **No prerequisite change.** This lands against today's four runners. `output_init`
+  carries the redirect because there is no `experiments/run.sh` to hold it; when
+  `streamline-experiments-harness` task 5 creates one, the call moves there unchanged.
 - **Exit code stays the failure count**; `FAILURES` accounting in `pass`/`fail` must
   not change.
 - **Every `verify:` runs offline** — no AWS, no live VMs, no Docker.
 - **The `Step N` prefix is the phase marker.** Compact lines are selected by that
-  prefix, so renaming a step in `lib/core.sh` changes the compact view.
+  prefix, so renaming a step in `utils/run_core.sh` changes the compact view.
 
 ## Not yet specified
 
