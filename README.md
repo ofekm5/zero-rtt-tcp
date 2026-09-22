@@ -13,6 +13,22 @@ Pages on `docs/` to serve it).
 — interactive explorer of all 15 components across 5 tracks (live data plane, harness, outputs,
 deprecated code, BlueField), traced from the repo via `graphify`.
 
+## Key Results
+
+Pooled across twelve runs per stack (24,000 flows/side, 3 separately deployed stacks, 2026-08-08/08-11/08-17). 2000 connections, 500/s, 1 KB, 100 ms modelled RTT on the ClientNIC↔ServerNIC leg only.
+
+| Mean | Plain TCP | 0-RTT | Difference |
+|------|-----------|-------|------------|
+| Time app is blocked in `connect()` before it can send data | 101.559 ms | 0.262 ms | **−101.30 ms** |
+| Time until the connection fully completes (flow completion time) | 202.816 ms | 100.762 ms | **−102.05 ms** |
+| Flows completed | 24,000/24,000 | 24,000/24,000 | — |
+
+- Saving holds through median, 99th percentile, and worst case — not just the mean.
+- **Condition**: each NIC must sit beside its own endpoint, with the modelled distance on the ClientNIC↔ServerNIC leg. Delay charged to either endpoint's link cancels the completion-time gain exactly, because the ServerNIC's buffer only releases when the real SYN-ACK arrives.
+- **Not demonstrated**: 100k-connection scale — both stacks fail (plain TCP 99,728/100k, 0-RTT 87,073/100k, both fail their metric check), root cause unresolved. Throughput, TCP options (SACK/timestamps/window scaling), sustained concurrency (>~100 in-flight), and jitter/loss are all untested — see the full report for details.
+
+Full write-up: [`docs/index.html`](docs/index.html) · methodology walkthrough: [`docs/results-review.html`](docs/results-review.html)
+
 ## Architecture
 
 ```
@@ -135,7 +151,7 @@ pacing, so per-connection latency measured queueing rather than the network path
 | `LOAD_PARALLEL` | 100000 | Total TCP connections per round |
 | `LOAD_PORTS` | 4 | Contiguous server ports the load is spread across |
 | `LOAD_RATE` | 2000 conn/s | **Arrival pacing** — spreads SYNs so latency is measurable |
-| `LOAD_BYTES` | 1024 | One segment, so FCT ≈ handshake + 1 RTT |
+| `LOAD_BYTES` | 1024 | One segment, so flow completion time ≈ handshake + 1 RTT |
 | `LOAD_CONCURRENCY` | 2000 | In-flight connection ceiling |
 | `LOAD_TIMEOUT` | 1800 s | Must exceed `LOAD_PARALLEL / LOAD_RATE` |
 | `NETEM_RTT_MS` | 100 | Emulated WAN RTT, applied on the **Server** egress only |
@@ -144,7 +160,7 @@ pacing, so per-connection latency measured queueing rather than the network path
 
 | Script | Question | Reads as |
 |--------|----------|----------|
-| `experiments/dpdk/run_experiment.sh` | Does 0-RTT remove one RTT? | Latency — `Send unlock` is the headline metric |
+| `experiments/dpdk/run_experiment.sh` | Does 0-RTT remove one RTT? | Latency — time the app is blocked in `connect()` before it can send data is the headline metric |
 | `experiments/dpdk/run_stress.sh` | Where does the data plane break? | Capacity — establishment success rate and throughput only |
 | `experiments/baseline-tcp/run_experiment.sh` | What does plain TCP cost? | The comparison point; same knobs, same endpoint setup |
 
