@@ -43,7 +43,10 @@ source "$(dirname "$0")/../utils/measure.sh"
 REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+# shellcheck source=../lib/output.sh
+source "$(dirname "$0")/../lib/output.sh"
+# shellcheck source=../lib/report.sh
+source "$(dirname "$0")/../lib/report.sh"
 
 # Number of measurement ROUNDS (each round opens LOAD_PARALLEL connections across
 # LOAD_PORTS ports — see experiments/utils/measure.sh). Default 1 round of 100000.
@@ -51,11 +54,6 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 CONNECTIONS="${CONNECTIONS:-1}"
 
 FAILURES=0
-
-log()  { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}" >&2; }
-pass() { echo -e "${GREEN}[PASS]${NC} $*"; }
-fail() { echo -e "${RED}[FAIL]${NC} $*"; FAILURES=$((FAILURES + 1)); }
-warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 
 # ─── Transport shims: map run_core.sh primitives to SSM helpers ───────────────
 remote_run()    { ssm_run    "$@"; }
@@ -209,16 +207,15 @@ else
     OVERALL_RESULT="$FAILURES FAILURE(S)"
 fi
 
-{
-    echo "# Integration Test Report — $(date +%Y-%m-%d)"
-    echo ""
+IMPL_INFO=$(
     echo "**Implementation**: DPDK (ISN ack-num translation shift)"
     echo "**ClientNIC binary**: \`src/clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
     echo "**ServerNIC binary**: \`src/servernic/dpdk/\` (full translator)"
     echo "**Experiment script**: \`experiments/dpdk/run_experiment.sh\`"
     echo "**Node scripts**: \`experiments/dpdk/\` (clientnic/servernic), \`experiments/nodes/\` (client/server)"
-    echo "**Overall result**: $OVERALL_RESULT"
-    echo ""
+)
+
+EXTRA_BODY=$(
     if [[ "${LOAD_RATE:-2000}" == "0" ]]; then
         echo "> **CAPACITY RUN — \`LOAD_RATE=0\`.** Connections arrived as a single"
         echo "> burst, so every flow's latency includes queueing behind the rest of"
@@ -251,36 +248,19 @@ fi
     echo '```'
     echo "${CORE_METRICS_SUMMARY:-}"
     echo '```'
-    echo ""
-    echo "## Client Output"
-    echo ""
-    echo '```'
-    echo "${CLIENT_STDOUT:-}"
-    echo '```'
-    echo ""
-    echo "## ClientNIC Log (0-RTT activity)"
-    echo ""
-    echo '```'
-    echo "${CORE_CLIENTNIC_LOG:-}" | tail -50
-    echo '```'
-    echo ""
-    echo "## ServerNIC Log"
-    echo ""
-    echo '```'
-    echo "${CORE_SERVERNIC_LOG:-}" | tail -30
-    echo '```'
-    echo ""
-    echo "## Server Log"
-    echo ""
-    echo '```'
-    echo "${CORE_SERVER_LOG:-}" | tail -20
-    echo '```'
-    echo ""
-    echo "## Packet Analysis"
-    echo ""
-    echo '```'
-    echo "${CORE_ENDPOINT_METRICS:-}"
-    echo '```'
+)
+
+{
+    report_header "" "$IMPL_INFO" "$OVERALL_RESULT"
+    if [[ -n "$EXTRA_BODY" ]]; then
+        printf '%s\n' "$EXTRA_BODY"
+        echo ""
+    fi
+    report_section "Client Output" "${CLIENT_STDOUT:-}"
+    report_section "ClientNIC Log (0-RTT activity)" "${CORE_CLIENTNIC_LOG:-}" 50
+    report_section "ServerNIC Log" "${CORE_SERVERNIC_LOG:-}" 30
+    report_section "Server Log" "${CORE_SERVER_LOG:-}" 20
+    report_section "Packet Analysis" "${CORE_ENDPOINT_METRICS:-}" "" 1
 } > "$REPORT_FILE"
 
 log "Report saved to $REPORT_FILE"
