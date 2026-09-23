@@ -23,11 +23,13 @@ report_header() {
     echo ""
 }
 
-# report_section HEADING CONTENT [TAIL_N]
+# report_section HEADING CONTENT [TAIL_N] [NO_TRAILING_BLANK]
 #   Prints "## HEADING", a fenced code block of CONTENT (optionally piped
-#   through `tail -N`), and a trailing blank line.
+#   through `tail -N`), and a trailing blank line — unless NO_TRAILING_BLANK
+#   is non-empty, for the last section in a report (matches the pre-refactor
+#   writers, which ended right after the closing fence with no blank line).
 report_section() {
-    local heading="$1" content="$2" tail_n="${3:-}"
+    local heading="$1" content="$2" tail_n="${3:-}" no_trailing_blank="${4:-}"
     echo "## $heading"
     echo ""
     echo '```'
@@ -37,5 +39,7 @@ report_section() {
         echo "$content"
     fi
     echo '```'
-    echo ""
+    if [[ -z "$no_trailing_blank" ]]; then
+        echo ""
+    fi
 }

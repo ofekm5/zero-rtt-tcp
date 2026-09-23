@@ -334,7 +334,7 @@ SERVERNIC_LOG=$(ssm_stdout "$SERVERNIC_ID" "cat /tmp/servernic.log 2>/dev/null |
     report_section "ClientNIC Log (0-RTT activity)" "$CLIENTNIC_LOG" 50
     report_section "ServerNIC Log" "$SERVERNIC_LOG" 30
     report_section "Server Log" "$SERVER_LOG" 20
-    report_section "Packet Analysis" "$ANALYSIS_STDOUT"
+    report_section "Packet Analysis" "$ANALYSIS_STDOUT" "" 1
 } > "$REPORT_FILE"
 
 log "Report saved to $REPORT_FILE"

@@ -260,7 +260,7 @@ EXTRA_BODY=$(
     report_section "ClientNIC Log (0-RTT activity)" "${CORE_CLIENTNIC_LOG:-}" 50
     report_section "ServerNIC Log" "${CORE_SERVERNIC_LOG:-}" 30
     report_section "Server Log" "${CORE_SERVER_LOG:-}" 20
-    report_section "Packet Analysis" "${CORE_ENDPOINT_METRICS:-}"
+    report_section "Packet Analysis" "${CORE_ENDPOINT_METRICS:-}" "" 1
 } > "$REPORT_FILE"
 
 log "Report saved to $REPORT_FILE"
