@@ -250,8 +250,18 @@ EXTRA_BODY=$(
     echo '```'
 )
 
-write_integration_report "$REPORT_FILE" "$IMPL_INFO" "$OVERALL_RESULT" "$EXTRA_BODY" \
-    "${CLIENT_STDOUT:-}" "${CORE_CLIENTNIC_LOG:-}" "${CORE_SERVERNIC_LOG:-}" "${CORE_SERVER_LOG:-}" "${CORE_ENDPOINT_METRICS:-}"
+{
+    report_header "" "$IMPL_INFO" "$OVERALL_RESULT"
+    if [[ -n "$EXTRA_BODY" ]]; then
+        printf '%s\n' "$EXTRA_BODY"
+        echo ""
+    fi
+    report_section "Client Output" "${CLIENT_STDOUT:-}"
+    report_section "ClientNIC Log (0-RTT activity)" "${CORE_CLIENTNIC_LOG:-}" 50
+    report_section "ServerNIC Log" "${CORE_SERVERNIC_LOG:-}" 30
+    report_section "Server Log" "${CORE_SERVER_LOG:-}" 20
+    report_section "Packet Analysis" "${CORE_ENDPOINT_METRICS:-}"
+} > "$REPORT_FILE"
 
 log "Report saved to $REPORT_FILE"
 

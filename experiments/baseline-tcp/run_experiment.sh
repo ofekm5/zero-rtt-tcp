@@ -47,6 +47,8 @@ BASELINE_CONNECTIONS="${CONNECTIONS:-1}"
 
 # shellcheck source=../lib/output.sh
 source "$(dirname "$0")/../lib/output.sh"
+# shellcheck source=../lib/report.sh
+source "$(dirname "$0")/../lib/report.sh"
 
 FAILURES=0
 
@@ -244,13 +246,12 @@ REPORT_FILE="$REPORT_DIR/baseline-report-$(date +%Y-%m-%d-%H%M%S).md"
 
 if [[ $FAILURES -eq 0 ]]; then OVERALL_RESULT="ALL PASSED ✅"; else OVERALL_RESULT="$FAILURES FAILURE(S) ❌"; fi
 
-{
-    echo "# Baseline TCP Report — $(date +%Y-%m-%d-%H%M%S)"
-    echo ""
+IMPL_INFO=$(
     echo "**Mode**: Plain TCP (no 0-RTT middleware)"
     echo "**Infra**: \`infra/baseline\` CDK stack (BaselineStack) — 4× t3.micro, kernel forwarding"
-    echo "**Overall result**: $OVERALL_RESULT"
-    echo ""
+)
+
+EXTRA_BODY=$(
     echo "## Load Parameters"
     echo ""
     echo "These must match the 0-RTT run being compared against, or the comparison"
@@ -266,31 +267,16 @@ if [[ $FAILURES -eq 0 ]]; then OVERALL_RESULT="ALL PASSED ✅"; else OVERALL_RES
     echo "| \`LOAD_RATE\` | $LOAD_RATE conn/s |"
     echo "| \`LOAD_CONCURRENCY\` | $LOAD_CONCURRENCY |"
     echo "| \`NETEM_RTT_MS\` | $NETEM_RTT_MS (Server egress only) |"
+)
+
+{
+    report_header "Baseline TCP Report" "$IMPL_INFO" "$OVERALL_RESULT" "%Y-%m-%d-%H%M%S"
+    printf '%s\n' "$EXTRA_BODY"
     echo ""
-    echo "## Latency Summary"
-    echo ""
-    echo '```'
-    echo "$METRICS_SUMMARY"
-    echo '```'
-    echo ""
-    echo "## Client Output"
-    echo ""
-    echo '```'
-    echo "$CLIENT_STDOUT"
-    echo '```'
-    echo ""
-    echo "## Endpoint Packet Analysis"
-    echo ""
-    echo '```'
-    echo "${ENDPOINT_METRICS:-}"
-    echo '```'
-    echo ""
-    echo "## Server Log"
-    echo ""
-    echo '```'
-    echo "$SERVER_LOG" | tail -20
-    echo '```'
-    echo ""
+    report_section "Latency Summary" "$METRICS_SUMMARY"
+    report_section "Client Output" "$CLIENT_STDOUT"
+    report_section "Endpoint Packet Analysis" "${ENDPOINT_METRICS:-}"
+    report_section "Server Log" "$SERVER_LOG" 20
     echo "## Notes"
     echo ""
     echo "- Traffic path: Client → ClientNIC (kernel forward) → ServerNIC (kernel forward) → Server"

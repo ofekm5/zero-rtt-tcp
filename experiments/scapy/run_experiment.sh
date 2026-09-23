@@ -328,8 +328,14 @@ IMPL_INFO=$(
 
 SERVERNIC_LOG=$(ssm_stdout "$SERVERNIC_ID" "cat /tmp/servernic.log 2>/dev/null || echo '(no log)'" 30)
 
-write_integration_report "$REPORT_FILE" "$IMPL_INFO" "$OVERALL_RESULT" "" \
-    "$CLIENT_STDOUT" "$CLIENTNIC_LOG" "$SERVERNIC_LOG" "$SERVER_LOG" "$ANALYSIS_STDOUT"
+{
+    report_header "" "$IMPL_INFO" "$OVERALL_RESULT"
+    report_section "Client Output" "$CLIENT_STDOUT"
+    report_section "ClientNIC Log (0-RTT activity)" "$CLIENTNIC_LOG" 50
+    report_section "ServerNIC Log" "$SERVERNIC_LOG" 30
+    report_section "Server Log" "$SERVER_LOG" 20
+    report_section "Packet Analysis" "$ANALYSIS_STDOUT"
+} > "$REPORT_FILE"
 
 log "Report saved to $REPORT_FILE"
 
