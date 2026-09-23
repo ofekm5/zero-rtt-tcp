@@ -252,10 +252,8 @@ EXTRA_BODY=$(
 
 {
     report_header "" "$IMPL_INFO" "$OVERALL_RESULT"
-    if [[ -n "$EXTRA_BODY" ]]; then
-        printf '%s\n' "$EXTRA_BODY"
-        echo ""
-    fi
+    printf '%s\n' "$EXTRA_BODY"
+    echo ""
     report_section "Client Output" "${CLIENT_STDOUT:-}"
     report_section "ClientNIC Log (0-RTT activity)" "${CORE_CLIENTNIC_LOG:-}" 50
     report_section "ServerNIC Log" "${CORE_SERVERNIC_LOG:-}" 30

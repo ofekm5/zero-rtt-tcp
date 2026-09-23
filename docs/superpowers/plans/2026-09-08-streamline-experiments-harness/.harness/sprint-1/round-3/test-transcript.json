@@ -1,0 +1,27 @@
+{
+  "sprint": 1,
+  "round": 3,
+  "startedAt": "2026-09-23T00:00:00Z",
+  "criteria": [
+    {
+      "id": "C1",
+      "command": "test -f experiments/lib/output.sh && ! grep -qE '^log\(\)' experiments/dpdk/run_experiment.sh experiments/baseline-tcp/run_experiment.sh experiments/proxmox/run_experiment.sh experiments/scapy/run_experiment.sh",
+      "exitCode": 0,
+      "stdout": "",
+      "stdoutTruncated": false,
+      "stderr": "",
+      "stderrTruncated": false,
+      "durationMs": 74
+    },
+    {
+      "id": "C2",
+      "command": "[ \"$(grep -rl 'Integration Test Report' experiments/lib/ | wc -l)\" -eq 1 ] && ! grep -q 'Integration Test Report' experiments/dpdk/run_experiment.sh && ! grep -q 'Integration Test Report' experiments/baseline-tcp/run_experiment.sh",
+      "exitCode": 0,
+      "stdout": "",
+      "stdoutTruncated": false,
+      "stderr": "",
+      "stderrTruncated": false,
+      "durationMs": 172
+    }
+  ]
+}
