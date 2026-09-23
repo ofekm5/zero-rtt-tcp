@@ -137,6 +137,12 @@ to the crypto stack. Verdict: rejected for this change.
   loopback.
 - **State the asymmetry in the report.** The TCP and 0-RTT arms are plaintext; QUIC
   always encrypts.
+- **The four arms do not all run on the same infrastructure.** TCP baseline, QUIC cold
+  and QUIC resumed run on the baseline stack (kernel-routed NIC VMs); the 0-RTT TCP arm
+  needs the DPDK stack. Same topology, same endpoint VM types and the same `netem` leg,
+  but a different NIC data plane, so any NIC-side processing difference lands inside the
+  0-RTT arm's `send_unlock`. Stated in the report alongside the plaintext-vs-encrypted
+  caveat.
 - **Same `NETEM_RTT_MS`, connection count and arrival rate** across all four runs, or
   the comparison is meaningless.
 - **Lower arrival rate.** `aioquic` is pure Python and does a TLS handshake per
