@@ -33,10 +33,10 @@
 
 set -uo pipefail
 
-# shellcheck source=../utils/ssm.sh
-source "$(dirname "$0")/../utils/ssm.sh"
-# shellcheck source=../utils/measure.sh
-source "$(dirname "$0")/../utils/measure.sh"
+# shellcheck source=../lib/transport/ssm.sh
+source "$(dirname "$0")/../lib/transport/ssm.sh"
+# shellcheck source=../lib/measure.sh
+source "$(dirname "$0")/../lib/measure.sh"
 # shellcheck source=../lib/report.sh
 source "$(dirname "$0")/../lib/report.sh"
 

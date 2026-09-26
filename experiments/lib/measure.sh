@@ -115,7 +115,7 @@ report_nic_ttfb() {
 # Runs <count> sequential rounds on the client VM via SSM. Each round opens
 # LOAD_PARALLEL total parallel TCP connections, spread across LOAD_PORTS
 # contiguous server ports ([port .. port+LOAD_PORTS-1]), via
-# experiments/utils/loadgen.py — an asyncio (epoll-driven, single-thread)
+# experiments/nodes/loadgen.py — an asyncio (epoll-driven, single-thread)
 # event-driven load generator. Replaces iperf2's -P N, which spawns N OS
 # threads inside one process (25000 pthreads at 100k/4-ports is not viable at
 # any instance size — see roadmap.md #20 scope item A / capacity-model.md).
@@ -158,7 +158,7 @@ run_ttfb_measurement() {
          success=0
          for i in \$(seq 1 $count); do
              echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections, $nbytes bytes/conn, ${rate} conn/s arrival, ${think}ms think, max $conc in flight ---\"
-             python3 $repo/experiments/utils/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --think-ms $think --concurrency-limit $conc && success=\$((success + 1))
+             python3 $repo/experiments/nodes/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --think-ms $think --concurrency-limit $conc && success=\$((success + 1))
          done
          echo \"Success: \${success}/$count\"" \
         "$timeout")

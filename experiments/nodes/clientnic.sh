@@ -9,7 +9,7 @@
 # Run this after servernic.sh is ready.
 #
 # Usage (on the ClientNIC VM via SSM or SSH):
-#   cd /home/ec2-user/zero-rtt-tcp/experiments/dpdk
+#   cd /home/ec2-user/zero-rtt-tcp/experiments/nodes
 #
 #   Full build + run (first time or after source changes):
 #     ./clientnic.sh <gw-mac>

@@ -23,7 +23,7 @@
 #   ./experiments/dpdk/run_stress.sh                 # 100k conns, unpaced
 #   LOAD_PARALLEL=250000 ./experiments/dpdk/run_stress.sh
 #
-# All experiments/utils/measure.sh knobs still apply; only the arrival shape and
+# All experiments/lib/measure.sh knobs still apply; only the arrival shape and
 # the concurrency ceiling are forced here.
 
 set -uo pipefail

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mock harness for testing experiments/utils/endpoint.sh without live VMs.
+# Mock harness for testing experiments/lib/endpoint.sh without live VMs.
 #
 # Substitutes the transport (remote_run/remote_bg/remote_stdout) and logging
 # shims endpoint.sh expects, then sources it and invokes one of its functions.

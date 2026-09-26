@@ -15,7 +15,7 @@
 #   - python3 in PATH (local)
 #   - Lab VMs running with DPDK 23.11 built and vfio-pci bound on ClientNIC/ServerNIC eth1
 #
-# VM IP configuration (override via env vars; see experiments/utils/ssh_lab.sh):
+# VM IP configuration (override via env vars; see experiments/lib/transport/ssh_lab.sh):
 #   LAB_CLIENT_IP    (default: 10.13.37.10)
 #   LAB_CLIENTNIC_IP (default: 10.13.37.11)
 #   LAB_SERVERNIC_IP (default: 10.13.37.12)
@@ -32,17 +32,17 @@ set -uo pipefail
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-# shellcheck source=../utils/ssh_lab.sh
-source "$(dirname "$0")/../utils/ssh_lab.sh"
-# shellcheck source=../utils/measure.sh
-source "$(dirname "$0")/../utils/measure.sh"
-# shellcheck source=../utils/run_core.sh
-source "$(dirname "$0")/../utils/run_core.sh"
+# shellcheck source=../lib/transport/ssh_lab.sh
+source "$(dirname "$0")/../lib/transport/ssh_lab.sh"
+# shellcheck source=../lib/measure.sh
+source "$(dirname "$0")/../lib/measure.sh"
+# shellcheck source=../lib/core.sh
+source "$(dirname "$0")/../lib/core.sh"
 
 REPO_PATH="/home/user/zero-rtt-tcp"
 SERVER_PORT=8080
 # Measurement ROUNDS (each round opens LOAD_PARALLEL conns across LOAD_PORTS
-# ports — see experiments/utils/measure.sh). Default 1 round of 100000.
+# ports — see experiments/lib/measure.sh). Default 1 round of 100000.
 CONNECTIONS="${CONNECTIONS:-1}"
 
 # shellcheck source=../lib/output.sh
@@ -130,7 +130,7 @@ fi
     echo "**ClientNIC binary**: \`src/clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
     echo "**ServerNIC binary**: \`src/servernic/dpdk/\` (full translator)"
     echo "**Experiment script**: \`experiments/proxmox/run_experiment.sh\`"
-    echo "**Transport**: SSH jump host via \`experiments/utils/ssh_lab.sh\`"
+    echo "**Transport**: SSH jump host via \`experiments/lib/transport/ssh_lab.sh\`"
     echo "**Overall result**: $OVERALL_RESULT"
     echo ""
     echo "## Latency Summary (TTFB @ 3 points + FCT)"

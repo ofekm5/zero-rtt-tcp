@@ -1,5 +1,5 @@
 """
-Smoke tests for the summarize_metric() Python inline in experiments/utils/measure.sh.
+Smoke tests for the summarize_metric() Python inline in experiments/lib/measure.sh.
 
 Feeds lines in the actual analyzer emit() format:
   metric=<name> value_ms=<v> node=<n> flow=<f>
@@ -16,7 +16,7 @@ from pathlib import Path
 # The inline Python from measure.sh, extracted verbatim so we test the real logic.
 # We run it via subprocess with METRIC_DATA set, mimicking how measure.sh calls it.
 
-_UTILS_DIR = Path(__file__).parent.parent
+_UTILS_DIR = Path(__file__).parent.parent / "lib"
 _MEASURE_SH = str(_UTILS_DIR / "measure.sh")
 
 # Extract the Python inline from the shell script at test time so any future

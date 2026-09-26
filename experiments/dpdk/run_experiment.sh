@@ -35,10 +35,10 @@ set -uo pipefail
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-# shellcheck source=../utils/ssm.sh
-source "$(dirname "$0")/../utils/ssm.sh"
-# shellcheck source=../utils/measure.sh
-source "$(dirname "$0")/../utils/measure.sh"
+# shellcheck source=../lib/transport/ssm.sh
+source "$(dirname "$0")/../lib/transport/ssm.sh"
+# shellcheck source=../lib/measure.sh
+source "$(dirname "$0")/../lib/measure.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
@@ -49,7 +49,7 @@ source "$(dirname "$0")/../lib/output.sh"
 source "$(dirname "$0")/../lib/report.sh"
 
 # Number of measurement ROUNDS (each round opens LOAD_PARALLEL connections across
-# LOAD_PORTS ports — see experiments/utils/measure.sh). Default 1 round of 100000.
+# LOAD_PORTS ports — see experiments/lib/measure.sh). Default 1 round of 100000.
 # Override via env: CONNECTIONS=3 ./run_experiment.sh
 CONNECTIONS="${CONNECTIONS:-1}"
 
@@ -77,8 +77,8 @@ discover_nodes() {
     SERVER_IP=$(get_ip "smartnics-server")
 }
 
-# shellcheck source=../utils/run_core.sh
-source "$(dirname "$0")/../utils/run_core.sh"
+# shellcheck source=../lib/core.sh
+source "$(dirname "$0")/../lib/core.sh"
 
 
 # ─── Step 0: Discover instances ───────────────────────────────────────────────
