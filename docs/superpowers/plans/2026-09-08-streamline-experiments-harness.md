@@ -17,9 +17,14 @@ wrappers in `sweeps/`; outputs in `reports/{0rtt,baseline}/`; offline checks in
 
 **Global Constraints:**
 - No change to `src/` — the data plane is untouched.
-- No change to measurement semantics: `measure.sh`, `endpoint.sh`,
+- No change to measurement semantics: `run_core.sh`, `measure.sh`, `endpoint.sh`,
   `analyze_metrics.py` and `loadgen.py` move and are re-sourced, but their logic,
-  metric definitions and emitted formats stay byte-identical.
+  metric definitions and emitted formats stay byte-identical. **Byte-identity covers
+  behaviour, not the whole file:** repointing a path string — a `source` line, or a
+  remote command string naming a moved script — is explicitly exempt and is *required*
+  wherever a move invalidates it (see Task 3 and Task 4). A "moves byte-identical"
+  contract that forbids those edits is wrong and leaves the harness unable to find its
+  scripts on the VMs.
 - Every `verify:` command runs offline — no AWS, no live VMs, no Docker daemon.
 - Historical reports under `experiments/dpdk/reports/` and
   `experiments/baseline-tcp/reports/` are never moved, renamed, or deleted; nothing
@@ -31,9 +36,9 @@ wrappers in `sweeps/`; outputs in `reports/{0rtt,baseline}/`; offline checks in
 
 ---
 
-- [ ] 1 Hoist the duplicated output helpers into a single shared file — verify: `[ "$(grep -rl '^log()' experiments/ | wc -l)" -eq 1 ]`
+- [ ] 1 Hoist the duplicated output helpers into a single shared file — verify: `test -f experiments/lib/output.sh && grep -q '^log()' experiments/lib/output.sh && [ "$(grep -l '^log()' experiments/dpdk/run_experiment.sh experiments/baseline-tcp/run_experiment.sh experiments/proxmox/run_experiment.sh experiments/scapy/run_experiment.sh | wc -l)" -eq 0 ]`
     - File: `experiments/lib/output.sh` (new); callers `experiments/dpdk/run_experiment.sh`, `experiments/baseline-tcp/run_experiment.sh`, `experiments/proxmox/run_experiment.sh`, `experiments/scapy/run_experiment.sh`
-    - Outcome: `log()`, `pass()`, `fail()`, `warn()` and the `RED`/`GREEN`/`YELLOW`/`NC` colour variables are defined in exactly one place and sourced by every runner. The four byte-identical copies (`dpdk:55-58`, `baseline-tcp:52-55`, `proxmox:51-54`, `scapy:54-57`) are gone. `FAILURES` accounting behaves exactly as before. All four runners still execute end to end.
+    - Outcome: `log()`, `pass()`, `fail()`, `warn()` and the `RED`/`GREEN`/`YELLOW`/`NC` colour variables are defined in exactly one place and sourced by every runner. The four byte-identical copies (`dpdk:55-58`, `baseline-tcp:52-55`, `proxmox:51-54`, `scapy:54-57`) are gone. Scope is the four runners only: the VM-executed scripts (`dpdk/{clientnic,servernic}.sh`, `nodes/{client,server}.sh`, `scapy/{clientnic,servernic}.sh`, `run_think_sweep.sh`, `utils/tests/endpoint_mock_harness.sh`) each keep their own `log()` — they run on a remote VM or in a stub harness and cannot source a laptop-side lib. A repo-wide `log()` count is therefore not a valid criterion for this task. `FAILURES` accounting behaves exactly as before. All four runners still execute end to end.
     - Commit: `refactor(experiments): extract shared output helpers to lib/output.sh`
 
 - [ ] 2 Merge the two duplicated report writers into one parameterised writer — verify: `[ "$(grep -rl 'Integration Test Report' experiments/lib/ | wc -l)" -eq 1 ] && bash -n experiments/lib/report.sh`
@@ -43,7 +48,7 @@ wrappers in `sweeps/`; outputs in `reports/{0rtt,baseline}/`; offline checks in
 
 - [ ] 3 Rehome laptop-side code to `lib/` and split the transports out — verify: `test -f experiments/lib/core.sh -a -f experiments/lib/transport/ssm.sh -a -f experiments/lib/transport/ssh_lab.sh -a ! -d experiments/utils`
     - File/area: `experiments/utils/` → `experiments/lib/` (`run_core.sh` → `core.sh`, plus `endpoint.sh`, `measure.sh`); `ssm.sh` and `ssh_lab.sh` → `experiments/lib/transport/`; `experiments/utils/tests/` → `experiments/tests/`
-    - Outcome: `experiments/utils/` no longer exists. Every `source` path in the runners and in the moved files resolves. The moved pytest files import their targets at the new paths and still pass. `endpoint_mock_harness.sh` moves with the tests and still works.
+    - Outcome: `experiments/utils/` no longer exists. Every `source` path resolves in all four runners — `experiments/dpdk/run_experiment.sh`, `experiments/baseline-tcp/run_experiment.sh`, `experiments/proxmox/run_experiment.sh`, `experiments/scapy/run_experiment.sh` — and in the moved files. All four are touched by this task: every one of them sources `experiments/utils/*`, so moving that directory breaks all four, not just `experiments/dpdk`. The moved pytest files import their targets at the new paths and still pass. `endpoint_mock_harness.sh` moves with the tests and still works.
     - Commit: `refactor(experiments): move laptop-side code to lib/ with transports split out`
 
 - [ ] 4 Rehome every VM-executed script to `nodes/` — verify: `test -f experiments/nodes/client.sh -a -f experiments/nodes/server.sh -a -f experiments/nodes/clientnic.sh -a -f experiments/nodes/servernic.sh -a -f experiments/nodes/loadgen.py -a -f experiments/nodes/analyze_metrics.py && test -z "$(ls experiments/lib/*.py 2>/dev/null)"`
