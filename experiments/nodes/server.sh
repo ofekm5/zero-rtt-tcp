@@ -54,8 +54,8 @@ echo ""
 
 # ─── Start the load-generator server (single asyncio process, all ports) ─────
 # One event-driven process handles every port — no thread-per-connection, no
-# thread-per-port either (see experiments/utils/loadgen.py).
+# thread-per-port either (see experiments/nodes/loadgen.py).
 log "Starting load-generator server on ports ${SERVER_PORT}-${SERVER_PORT_HI} — press Ctrl+C to stop."
 echo ""
-exec python3 "$REPO_PATH/experiments/utils/loadgen.py" --mode server \
+exec python3 "$REPO_PATH/experiments/nodes/loadgen.py" --mode server \
     --port "$SERVER_PORT" --port-count "$LOAD_PORTS"

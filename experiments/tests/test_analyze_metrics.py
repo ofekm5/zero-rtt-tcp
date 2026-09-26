@@ -1,5 +1,5 @@
 """
-Unit tests for experiments/utils/analyze_metrics.py
+Unit tests for experiments/nodes/analyze_metrics.py
 
 The analyzer parses `tcpdump -r <pcap> -nn -tt` text output. These tests feed
 synthetic tcpdump-format text directly via the --client-text / --server-text
@@ -20,8 +20,8 @@ from typing import List
 import pytest
 
 # Locate the analyzer script relative to this test file:
-# tests/ -> utils/ -> analyze_metrics.py
-_UTILS_DIR = Path(__file__).parent.parent
+# tests/ -> experiments/ -> nodes/analyze_metrics.py
+_UTILS_DIR = Path(__file__).parent.parent / "nodes"
 _ANALYZER = str(_UTILS_DIR / "analyze_metrics.py")
 
 # Allow importing the analyzer module directly for unit-level tests.

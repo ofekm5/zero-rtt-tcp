@@ -24,12 +24,12 @@ set -uo pipefail
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-# shellcheck source=../utils/ssm.sh
-source "$(dirname "$0")/../utils/ssm.sh"
-# shellcheck source=../utils/measure.sh
-source "$(dirname "$0")/../utils/measure.sh"
-# shellcheck source=../utils/endpoint.sh
-source "$(dirname "$0")/../utils/endpoint.sh"
+# shellcheck source=../lib/transport/ssm.sh
+source "$(dirname "$0")/../lib/transport/ssm.sh"
+# shellcheck source=../lib/measure.sh
+source "$(dirname "$0")/../lib/measure.sh"
+# shellcheck source=../lib/endpoint.sh
+source "$(dirname "$0")/../lib/endpoint.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
@@ -255,8 +255,8 @@ EXTRA_BODY=$(
     echo "## Load Parameters"
     echo ""
     echo "These must match the 0-RTT run being compared against, or the comparison"
-    echo "is confounded. Both stacks read them from \`experiments/utils/measure.sh\`"
-    echo "and configure endpoints via \`experiments/utils/endpoint.sh\`."
+    echo "is confounded. Both stacks read them from \`experiments/lib/measure.sh\`"
+    echo "and configure endpoints via \`experiments/lib/endpoint.sh\`."
     echo ""
     echo "| Parameter | Value |"
     echo "|---|---|"
