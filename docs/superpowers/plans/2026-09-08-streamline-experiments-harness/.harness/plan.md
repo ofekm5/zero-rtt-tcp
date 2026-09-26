@@ -13,6 +13,22 @@ Collapse experiments/ from six entrypoints across four stack folders to a single
 ## Triage notes
 Triage skipped: `triage-verdict: ok` found in the plan file. All 10 tasks are automatable; no manual tasks identified. taskCount = 10 exceeds the <=8 threshold for compact-collapse rules, so rules C1 and C2 are not applied. The design doc's SC2 verify command (`grep -rl '^log()' experiments/ | wc -l` = 1) is unachievable as written because node scripts (nodes/client.sh, nodes/server.sh, dpdk/clientnic.sh, dpdk/servernic.sh) and test harnesses each define their own `log()` and are not mentioned as callers in task 1. The Sprint 1 C1 criterion covers the intent of SC2 with a scoped check that verifies exactly the four runner files have their inline definition removed and experiments/lib/output.sh exists.
 
+## Re-plan — sprint 2
+Sprint 2's first attempt ended in `scope-violation`. Its `touches[]` named only
+`experiments/dpdk` among the runner directories, but moving `experiments/utils/*`
+breaks the `source` lines in all four `run_experiment.sh` runners, so leaving the
+tree working required editing `baseline-tcp`, `proxmox` and `scapy` too. `touches[]`
+now lists all four; sprint 2 `dependsOn: [1]` and runs alone, so the overlap with
+sprint 1's touch list cannot race.
+
+A second defect was in the contract, not the graph: "the moved files move
+byte-identical" forbade repointing the remote command strings inside
+`run_core.sh`, `endpoint.sh` and `measure.sh`, which Task 4's Outcome requires.
+Obeying it shipped a harness that could not find `clientnic.sh`, `servernic.sh`,
+`loadgen.py` or `analyze_metrics.py` on the VMs. The rewritten
+`sprint-2/contract.md` narrows byte-identity to semantics and adds C3 (no
+pre-move path survives under `experiments/`) plus C4 (the pytest suite) to catch it.
+
 ## Already done
 (none)
 
@@ -33,7 +49,7 @@ Triage skipped: `triage-verdict: ok` found in the plan file. All 10 tasks are au
       "id": 2,
       "name": "Rehome laptop-side and VM-side code",
       "dependsOn": [1],
-      "touches": ["experiments/lib", "experiments/nodes", "experiments/tests", "experiments/utils", "experiments/dpdk"]
+      "touches": ["experiments/lib", "experiments/nodes", "experiments/tests", "experiments/utils", "experiments/dpdk", "experiments/baseline-tcp", "experiments/proxmox", "experiments/scapy"]
     },
     {
       "id": 3,
