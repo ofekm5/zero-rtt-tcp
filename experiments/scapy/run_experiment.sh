@@ -37,6 +37,8 @@ set -uo pipefail
 source "$(dirname "$0")/../utils/ssm.sh"
 # shellcheck source=../utils/measure.sh
 source "$(dirname "$0")/../utils/measure.sh"
+# shellcheck source=../lib/report.sh
+source "$(dirname "$0")/../lib/report.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
@@ -47,14 +49,10 @@ SERVER_PORT=8080
 export LOAD_PORTS=1
 export LOAD_PARALLEL="${LOAD_PARALLEL:-1}"
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+# shellcheck source=../lib/output.sh
+source "$(dirname "$0")/../lib/output.sh"
 
 FAILURES=0
-
-log()  { echo -e "${YELLOW}[$(date '+%H:%M:%S')] $*${NC}" >&2; }
-pass() { echo -e "${GREEN}[PASS]${NC} $*"; }
-fail() { echo -e "${RED}[FAIL]${NC} $*"; FAILURES=$((FAILURES + 1)); }
-warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 
 
 # ─── Step 0: Discover instances ───────────────────────────────────────────────
@@ -322,43 +320,21 @@ else
     OVERALL_RESULT="$FAILURES FAILURE(S) ❌"
 fi
 
-{
-    echo "# Integration Test Report — $(date +%Y-%m-%d)"
-    echo ""
+IMPL_INFO=$(
     echo "**Implementation**: Scapy"
     echo "**Experiment script**: \`experiments/scapy/run_experiment.sh\`"
     echo "**Node scripts**: \`experiments/scapy/\` (clientnic/servernic), \`experiments/nodes/\` (client/server)"
-    echo "**Overall result**: $OVERALL_RESULT"
-    echo ""
-    echo "## Client Output"
-    echo ""
-    echo '```'
-    echo "$CLIENT_STDOUT"
-    echo '```'
-    echo ""
-    echo "## ClientNIC Log (0-RTT activity)"
-    echo ""
-    echo '```'
-    echo "$CLIENTNIC_LOG" | tail -50
-    echo '```'
-    echo ""
-    echo "## ServerNIC Log"
-    echo ""
-    echo '```'
-    echo "$(ssm_stdout "$SERVERNIC_ID" "cat /tmp/servernic.log 2>/dev/null || echo '(no log)'" 30)" | tail -30
-    echo '```'
-    echo ""
-    echo "## Server Log"
-    echo ""
-    echo '```'
-    echo "$SERVER_LOG" | tail -20
-    echo '```'
-    echo ""
-    echo "## Packet Analysis"
-    echo ""
-    echo '```'
-    echo "$ANALYSIS_STDOUT"
-    echo '```'
+)
+
+SERVERNIC_LOG=$(ssm_stdout "$SERVERNIC_ID" "cat /tmp/servernic.log 2>/dev/null || echo '(no log)'" 30)
+
+{
+    report_header "" "$IMPL_INFO" "$OVERALL_RESULT"
+    report_section "Client Output" "$CLIENT_STDOUT"
+    report_section "ClientNIC Log (0-RTT activity)" "$CLIENTNIC_LOG" 50
+    report_section "ServerNIC Log" "$SERVERNIC_LOG" 30
+    report_section "Server Log" "$SERVER_LOG" 20
+    report_section "Packet Analysis" "$ANALYSIS_STDOUT" "" 1
 } > "$REPORT_FILE"
 
 log "Report saved to $REPORT_FILE"
