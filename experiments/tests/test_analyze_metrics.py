@@ -21,11 +21,11 @@ import pytest
 
 # Locate the analyzer script relative to this test file:
 # tests/ -> experiments/ -> nodes/analyze_metrics.py
-_UTILS_DIR = Path(__file__).parent.parent / "nodes"
-_ANALYZER = str(_UTILS_DIR / "analyze_metrics.py")
+_NODES_DIR = Path(__file__).parent.parent / "nodes"
+_ANALYZER = str(_NODES_DIR / "analyze_metrics.py")
 
 # Allow importing the analyzer module directly for unit-level tests.
-sys.path.insert(0, str(_UTILS_DIR))
+sys.path.insert(0, str(_NODES_DIR))
 import analyze_metrics  # noqa: E402
 
 _ENV = os.environ.copy()

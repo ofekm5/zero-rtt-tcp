@@ -35,12 +35,12 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 
 ### Component Responsibilities
 
-1. **Client VM** (`experiments/utils/loadgen.py --mode client`): Standard unmodified TCP client application
+1. **Client VM** (`experiments/nodes/loadgen.py --mode client`): Standard unmodified TCP client application
 2. **ClientNIC VM** (`src/clientnic/`): **Core 0-RTT logic** — intercepts SYN packets, sends spoofed SYN-ACK, forwards SYN toward Server. DPDK implementation:
    - `src/clientnic/dpdk-forwarder/` — **DPDK forwarder** (live implementation): spoof SYN-ACK + stamp V in SYN ack-num + transparent forward (translation shifted to ServerNIC)
    - `src/clientnic/scapy/` — **deprecated**: proved the idea works; not used in the live path
 3. **ServerNIC VM** (`src/servernic/`): In the live DPDK implementation — **sole stateful translator**: reads V from SYN ack-num, computes delta, drops real SYN-ACK, rewrites all packets. `src/servernic/scapy/` is the matching **deprecated** stateless forwarder from the same feasibility phase.
-4. **Server VM** (`experiments/utils/loadgen.py --mode server`): Standard unmodified TCP server application
+4. **Server VM** (`experiments/nodes/loadgen.py --mode server`): Standard unmodified TCP server application
 
 ### Key Technical Concepts
 
@@ -120,7 +120,7 @@ Scapy provides:
 ### Reference
 - **`.claude/skills/run-experiment/SKILL.md`**: Run-experiment skill (pick mode, run orchestrator, diagnose failures across scapy/dpdk/proxmox/baseline)
 - **`.claude/skills/run-experiment/references/troubleshooting.md`**: Known issues and debugging tips
-- **`.claude/skills/run-experiment/references/test-scripts.md`**: All four runners + run_core.sh, validate_0rtt_capture.py, and analyze_metrics.py reference
+- **`.claude/skills/run-experiment/references/test-scripts.md`**: All four runners + core.sh, validate_0rtt_capture.py, and analyze_metrics.py reference
 - **`.claude/skills/deploy-infra/SKILL.md`**: Deploy/destroy the AWS CDK stacks and BlueField-3 DPU setup pointers
 
 ### Integration Testing
@@ -135,7 +135,7 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 
 **AWS EC2 Platform:**
 - [x] ServerNIC stateless forwarder (`src/servernic/scapy/main.py`) — deprecated, feasibility PoC only
-- [x] Client/Server load generator (`experiments/utils/loadgen.py`) — asyncio, paced arrivals; replaced iperf2
+- [x] Client/Server load generator (`experiments/nodes/loadgen.py`) — asyncio, paced arrivals; replaced iperf2
 - [x] ClientNIC Scapy implementation (`src/clientnic/scapy/`) — deprecated, feasibility PoC only
 - [x] ClientNIC DPDK forwarder (`src/clientnic/dpdk-forwarder/`) — live: spoof + stamp V + transparent forward
 - [x] ServerNIC DPDK implementation (`src/servernic/dpdk/`) — sole translator, live: V extraction, delta, buffering, seq/ack rewrite
@@ -263,16 +263,17 @@ src/
 │       ├── README.md
 │       └── tests/                # Python unit tests (no DPDK required)
 │
-└── (client/server apps have no source — they are experiments/utils/loadgen.py)
+└── (client/server apps have no source — they are experiments/nodes/loadgen.py)
 
 experiments/
 ├── README.md           # client/server endpoints: loadgen.py modes, usage, why not iperf
 ├── scapy/              # Deprecated Scapy stack: run_experiment.sh + clientnic.sh/servernic.sh node scripts
-├── dpdk/               # Live DPDK stack: run_experiment.sh, node scripts, probes/, reports/
+├── dpdk/               # Live DPDK stack: run_experiment.sh, run_stress.sh, probes/, reports/
 ├── baseline-tcp/       # Plain-TCP baseline: run_experiment.sh + reports/
 ├── proxmox/            # RUNS lab (Proxmox) orchestrator
-├── nodes/              # Shared node scripts: server.sh, client.sh
-├── utils/              # run_core.sh, measure.sh, analyze_metrics.py, ssm.sh, ssh_lab.sh + loadgen.py + tests/
+├── nodes/              # VM-executed: client.sh, server.sh, clientnic.sh, servernic.sh, loadgen.py, analyze_metrics.py
+├── lib/                # Laptop-side: core.sh, measure.sh, endpoint.sh, output.sh, report.sh, transport/{ssm,ssh_lab}.sh
+├── tests/              # Offline pytest suite + endpoint_mock_harness.sh
 └── archive/            # Historical test reports
 
 infra/

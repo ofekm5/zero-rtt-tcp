@@ -157,7 +157,7 @@ log "IP forwarding: enabled"
 # and invisible to ethtool/ip, and eth0 is now the kernel/SSM management ENI that
 # carries no data-plane traffic. GRO/LRO coalescing and qdisc depth were AF_PACKET
 # concerns; DPDK bypasses both. No tcpdump either — the client-side capture is
-# taken on the Client VM's own eth0 (see run_core.sh).
+# taken on the Client VM's own eth0 (see core.sh).
 
 # ─── Cleanup on exit ──────────────────────────────────────────────────────────
 cleanup() {

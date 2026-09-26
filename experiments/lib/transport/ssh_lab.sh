@@ -46,7 +46,7 @@ LAB_SERVERNIC_IP="${LAB_SERVERNIC_IP:-10.13.37.12}"
 LAB_SERVER_IP_INTERNAL="${LAB_SERVER_IP_INTERNAL:-10.13.37.13}"
 
 # ─── JSON helpers (same as ssm.sh) ───────────────────────────────────────────
-# These are needed by run_core.sh's json_idx calls on remote_run output.
+# These are needed by core.sh's json_idx calls on remote_run output.
 # remote_run in ssh_lab.sh emits JSON [status, stdout, stderr] so json_idx works.
 
 mk_params() { :; }  # not used in SSH transport; defined for source compatibility
@@ -122,7 +122,7 @@ remote_stdout() {
 }
 
 # ─── Node discovery ───────────────────────────────────────────────────────────
-# Populates the global node-ID variables expected by run_core.sh.
+# Populates the global node-ID variables expected by core.sh.
 # In SSH transport, node-IDs are IP addresses; no dynamic discovery needed.
 # Override the LAB_*_IP env vars above for different lab topologies.
 discover_nodes() {

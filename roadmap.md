@@ -63,13 +63,13 @@ the same legibility problem.
       history keeps it if it is ever wanted.
 - [ ] Decide what stays an entrypoint. Today: `dpdk/`, `baseline-tcp/`,
       `proxmox/`, `scapy/` each ship their own `run_experiment.sh` (12.5 /
-      14.3 / 6.9 / 17.0 KB) over the same `utils/run_core.sh`, plus
+      14.3 / 6.9 / 17.0 KB) over the same `lib/core.sh`, plus
       `run_think_sweep.sh` and `dpdk/run_stress.sh`. Both sweeps earn their
       keep — they ask different questions; the four near-duplicate runners are
       the actual duplication.
 - [ ] Fold `proxmox/` into a transport choice, not a stack. It differs from
-      `dpdk/` only in reaching VMs through `utils/ssh_lab.sh` instead of
-      `utils/ssm.sh` — which is a flag, not a fifth orchestrator, and it is
+      `dpdk/` only in reaching VMs through `lib/transport/ssh_lab.sh` instead of
+      `lib/transport/ssm.sh` — which is a flag, not a fifth orchestrator, and it is
       also what [Phase 1](#phase-1--bluefield-as-servernic) needs anyway.
 - [ ] Prune report artifacts: 22 files under `dpdk/reports/` of which 9 are raw
       `run-*.log` dumps from the iperf era, 13 under `baseline-tcp/reports/`,
@@ -88,7 +88,7 @@ the same legibility problem.
 **three sequential sends** so the run exercises steady-state translation, not
 just the handshake and one segment.
 
-Note: the load generator is `experiments/utils/loadgen.py` (asyncio), not iperf
+Note: the load generator is `experiments/nodes/loadgen.py` (asyncio), not iperf
 — iperf's thread-per-connection model was replaced in PR #27. `_client_conn()`
 does `write(nbytes)` → `write_eof()` → close, and never reads a response.
 
@@ -199,14 +199,14 @@ Porting `src/servernic/dpdk/` to the DPU:
 
 What the port does *not* carry, and Phase 1 still owns:
 
-- [ ] `run_core.sh`'s AWS assumptions — the repo-sync step hardcodes
+- [ ] `core.sh`'s AWS assumptions — the repo-sync step hardcodes
       `sudo -u ec2-user` and `aws secretsmanager get-secret-value
       --region eu-central-1`, and `experiments/proxmox/run_experiment.sh`
       sources it, so every lab run hits that path today
 - [ ] Endpoint VM provisioning in the RUNS lab (Client, Server, and the x86
       ClientNIC VM Phase 1 keeps)
 - Already done, not a task: the transport half —
-  `experiments/proxmox/run_experiment.sh` + `experiments/utils/ssh_lab.sh`
+  `experiments/proxmox/run_experiment.sh` + `experiments/lib/transport/ssh_lab.sh`
   reach the 4-VM chain at `10.13.37.10-13` over the RUNS gateway.
 
 ### Phase 2 — BlueField as ClientNIC and ServerNIC

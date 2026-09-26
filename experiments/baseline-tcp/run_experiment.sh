@@ -35,7 +35,7 @@ REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 
 # Transport shims — endpoint.sh is written against the generic remote_* names so
-# the same code drives this stack and the 0-RTT stack (run_core.sh).
+# the same code drives this stack and the 0-RTT stack (core.sh).
 remote_run()    { ssm_run    "$@"; }
 remote_bg()     { ssm_bg     "$@"; }
 remote_stdout() { ssm_stdout "$@"; }
@@ -85,7 +85,7 @@ done
 REPO_REF="${REPO_REF:-main}"
 log "Syncing all VMs to origin/${REPO_REF}..."
 [[ "$REPO_REF" != "main" ]] && warn "REPO_REF=${REPO_REF} — VMs are running a NON-MAIN ref"
-# Clone-on-demand, mirroring run_core.sh. The baseline CDK user-data clone uses
+# Clone-on-demand, mirroring core.sh. The baseline CDK user-data clone uses
 # a token that has expired — cloud-init logged "Invalid username or token" and
 # left every baseline VM with no repo at all, which no amount of `git fetch`
 # recovers from. Re-clone here with the PAT from Secrets Manager so the run is
@@ -154,7 +154,7 @@ sleep 2
 # The whole point of this run is to be compared against experiments/dpdk. Any
 # endpoint parameter that differs between the two — emulated RTT, offloads, MTU,
 # TCP options, kernel limits — becomes a confound indistinguishable from 0-RTT
-# benefit or cost. endpoint_tune() is the same function run_core.sh calls.
+# benefit or cost. endpoint_tune() is the same function core.sh calls.
 endpoint_tune "$CLIENT_ID" "$SERVER_ID"
 
 

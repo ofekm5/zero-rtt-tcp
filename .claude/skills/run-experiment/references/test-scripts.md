@@ -10,7 +10,7 @@ their own report to `<mode>/reports/` and exit with the failure count.
 | `experiments/proxmox/run_experiment.sh` | DPDK 0-RTT | SSH gateway | `analyze_metrics.py` | `experiments/proxmox/reports/` |
 | `experiments/baseline-tcp/run_experiment.sh` | plain TCP | AWS SSM | (none) | `experiments/baseline-tcp/reports/` |
 
-**Load generator**: `experiments/utils/loadgen.py` (asyncio, single thread; iperf has
+**Load generator**: `experiments/nodes/loadgen.py` (asyncio, single thread; iperf has
 been removed). `LOAD_PARALLEL` (default 100000) total connections per round are spread
 round-robin across `LOAD_PORTS` (default 4) contiguous server ports, so a single client
 IP can clear the ~28K-per-tuple ephemeral-port ceiling. `LOAD_RATE` (default 2000
@@ -20,25 +20,25 @@ segment so FCT ≈ handshake + 1 RTT. The DPDK data plane covers the same port r
 `--port-count` (runner passes `LOAD_PORTS`). `CONNECTIONS` = number of rounds
 (default 1). Scapy is pinned to single-port/low-parallel.
 
-**Endpoint setup is shared**: `experiments/utils/endpoint.sh` applies sysctls, MTU,
+**Endpoint setup is shared**: `experiments/lib/endpoint.sh` applies sysctls, MTU,
 offloads, netem, captures and analysis identically for the DPDK and baseline stacks,
 so the two are comparable. Emulated RTT (`NETEM_RTT_MS`, default 100) sits entirely on
 the **Server** egress — see that file for why splitting it across both endpoints
 halved the measurable 0-RTT saving.
 
-Shared building blocks under `experiments/utils/`:
-- `run_core.sh` — transport-agnostic `run_experiment()`; the whole DPDK/Proxmox flow.
-- `ssm.sh` — AWS SSM transport (`ssm_run`/`ssm_bg`/`ssm_stdout`, `get_iid`/`get_ip`, `json_idx`).
-- `ssh_lab.sh` — RUNS-lab SSH-jump transport (`remote_*` over `runs-gateway`, `get_lab_mac`).
-- `measure.sh` — `run_ttfb_measurement`, `summarize_metric`, `report_nic_ttfb`.
-- `analyze_metrics.py` — offline endpoint-pcap analyzer (FCT, send_unlock, server_gap).
+Shared building blocks — laptop-side under `experiments/lib/`, VM-side under `experiments/nodes/`:
+- `lib/core.sh` — transport-agnostic `run_experiment()`; the whole DPDK/Proxmox flow.
+- `lib/transport/ssm.sh` — AWS SSM transport (`ssm_run`/`ssm_bg`/`ssm_stdout`, `get_iid`/`get_ip`, `json_idx`).
+- `lib/transport/ssh_lab.sh` — RUNS-lab SSH-jump transport (`remote_*` over `runs-gateway`, `get_lab_mac`).
+- `lib/measure.sh` — `run_ttfb_measurement`, `summarize_metric`, `report_nic_ttfb`.
+- `nodes/analyze_metrics.py` — offline endpoint-pcap analyzer (FCT, send_unlock, server_gap).
 
 ---
 
 ## experiments/scapy/run_experiment.sh
 
 **Scapy stack** — ClientNIC uses Python/Scapy on both eth0 and eth1. Self-contained
-(does not use `run_core.sh`). Default 3 connections.
+(does not use `core.sh`). Default 3 connections.
 
 **Prerequisites**: `aws` CLI with SSM access, `python3` in PATH, `eu-central-1`.
 
@@ -64,7 +64,7 @@ Shared building blocks under `experiments/utils/`:
 ## experiments/dpdk/run_experiment.sh + experiments/proxmox/run_experiment.sh
 
 **DPDK stack** — ClientNIC `dpdk-forwarder` (spoof + stamp V), ServerNIC
-`servernic-dpdk` (sole translator). Both runners share `run_core.sh`; they differ
+`servernic-dpdk` (sole translator). Both runners share `core.sh`; they differ
 only in transport, node discovery, MAC resolution, and report filename.
 
 ```bash
@@ -72,7 +72,7 @@ only in transport, node discovery, MAC resolution, and report filename.
 CONNECTIONS=10 ./experiments/proxmox/run_experiment.sh   # RUNS lab via gateway
 ```
 
-### Per-runner head (before run_core)
+### Per-runner head (before core.sh)
 
 | Concern | DPDK (AWS) | Proxmox |
 |---------|------------|---------|
@@ -84,7 +84,7 @@ CONNECTIONS=10 ./experiments/proxmox/run_experiment.sh   # RUNS lab via gateway
 | Repo path | `/home/ec2-user/zero-rtt-tcp` | `/home/user/zero-rtt-tcp` |
 | Report | `integration-test-report-YYYY-MM-DD.md` | `proxmox-test-report-YYYY-MM-DD.md` |
 
-### Shared core steps (`run_core.sh::run_experiment`)
+### Shared core steps (`core.sh::run_experiment`)
 
 | Step | Action | Pass condition |
 |------|--------|----------------|
@@ -95,8 +95,8 @@ CONNECTIONS=10 ./experiments/proxmox/run_experiment.sh   # RUNS lab via gateway
 | Build | Build `clientnic-dpdk-forwarder` (meson+ninja) | `BUILD_SUCCESS` |
 | Build | Build `servernic-dpdk` (meson+ninja) | `BUILD_SUCCESS` |
 | 1 | Start Server (`experiments/nodes/server.sh`) | `ss -tlnp` shows `:8080` |
-| 2 | Start ServerNIC (`experiments/dpdk/servernic.sh`, env MACs) | `pgrep servernic-dpdk` + `ip_forward==1` |
-| 3 | Start ClientNIC (`experiments/dpdk/clientnic.sh <GW_MAC>`) | `pgrep clientnic-dpdk-forwarder` + `ip_forward==1` |
+| 2 | Start ServerNIC (`experiments/nodes/servernic.sh`, env MACs) | `pgrep servernic-dpdk` + `ip_forward==1` |
+| 3 | Start ClientNIC (`experiments/nodes/clientnic.sh <GW_MAC>`) | `pgrep clientnic-dpdk-forwarder` + `ip_forward==1` |
 | 3b | tcpdump on **Client host** + **Server host** (nano ts, `-s 128`) | (capture) |
 | 4 | `run_ttfb_measurement` — CONNECTIONS rounds × `LOAD_PARALLEL` parallel iperf2 streams (default 100000) | `Success: N/N` |
 | 5 | Stop captures + SIGTERM both DPDK binaries | (always) |
@@ -156,7 +156,7 @@ real `scapy` package.
 
 ---
 
-## experiments/utils/analyze_metrics.py (DPDK / Proxmox)
+## experiments/nodes/analyze_metrics.py (DPDK / Proxmox)
 
 Offline endpoint-pcap analyzer. Computes endpoint-observed metrics from the Client
 and Server captures:
@@ -167,11 +167,11 @@ and Server captures:
 - **server_gap** — gap observed at the server between expected and actual arrival.
 
 ```bash
-python3 experiments/utils/analyze_metrics.py \
+python3 experiments/nodes/analyze_metrics.py \
     --client-pcap /tmp/client_side_endpoint.pcap \
     --server-pcap /tmp/server_side.pcap
 ```
 
 Output is `key=value` lines consumed by `summarize_metric`. A `missing=` line means
 a required metric event was not found in the pcaps → the runner counts it as a
-failure. Unit tests: `experiments/utils/tests/test_analyze_metrics.py`.
+failure. Unit tests: `experiments/tests/test_analyze_metrics.py`.

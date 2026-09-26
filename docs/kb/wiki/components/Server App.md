@@ -1,7 +1,7 @@
 ---
 type: Wiki Entry
 title: "Server App"
-description: "The unmodified TCP server side of the 0-RTT demo, driven by experiments/utils/loadgen.py."
+description: "The unmodified TCP server side of the 0-RTT demo, driven by experiments/nodes/loadgen.py."
 tags: [component, server]
 timestamp: 2026-08-04T19:21:32+03:00
 ---
@@ -10,7 +10,7 @@ Source: `src/server-app/README.md`
 
 # Server App
 
-The server side of the 0-RTT demo. Runs `experiments/utils/loadgen.py` in
+The server side of the 0-RTT demo. Runs `experiments/nodes/loadgen.py` in
 server mode: one asyncio process listening on `LOAD_PORTS` contiguous ports,
 draining each connection until EOF.
 
@@ -28,7 +28,7 @@ experiments/nodes/server.sh
 Direct:
 
 ```bash
-python3 experiments/utils/loadgen.py --mode server --port 8080 --port-count 4
+python3 experiments/nodes/loadgen.py --mode server --port 8080 --port-count 4
 ```
 
 Start the server **first** — the startup order is

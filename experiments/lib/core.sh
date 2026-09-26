@@ -78,7 +78,7 @@ run_experiment() {
     log "Load/port plan: $NPORTS port(s) [${SERVER_PORT}-${PORT_HI}], LOAD_PARALLEL=${LOAD_PARALLEL:-100000}, LOAD_BYTES=${LOAD_BYTES:-1024}, LOAD_RATE=${LOAD_RATE:-2000} conn/s, LOAD_CONCURRENCY=${LOAD_CONCURRENCY:-2000}"
 
     # ─── Port-space assertion (capacity-model.md §8) ──────────────────────────
-    # run_core.sh widens the client's ephemeral range to 1024-65535 below, so
+    # core.sh widens the client's ephemeral range to 1024-65535 below, so
     # the available range is ~64512. Assert LOAD_PORTS * range >= target
     # connections *before* spending 10+ minutes on a run that can't possibly
     # open that many sockets from one source IP, with 2xMSL TIME_WAIT margin

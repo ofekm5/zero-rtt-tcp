@@ -24,8 +24,8 @@ Companion documents: `experiments/insights.md` (per-run findings),
 
 ## Summary of findings
 
-1. **iperf is no longer used in the live path.** `run_core.sh` →
-   `measure.sh:run_ttfb_measurement` → `experiments/utils/loadgen.py`. What
+1. **iperf is no longer used in the live path.** `core.sh` →
+   `measure.sh:run_ttfb_measurement` → `experiments/nodes/loadgen.py`. What
    survives is iperf-shaped *naming* (`LOAD_*`) and, until this review, the
    iperf-shaped *load pattern*.
 2. **The burst load could not demonstrate the claim.** All connections were
@@ -51,7 +51,7 @@ signal about the translation mechanism instead of about endpoint RAM.
 
 ### A1 ✅ Arrival-rate knob (`--rate <conns/sec>`)
 
-**File:** `experiments/utils/loadgen.py`
+**File:** `experiments/nodes/loadgen.py`
 
 **Was:** every `--parallel` coroutine was created and handed to
 `asyncio.gather()` in one pass, so all connections reached the wire
@@ -77,7 +77,7 @@ toward a burst — previously undetectable.
 
 ### A2 ✅ Pass the concurrency ceiling
 
-**Files:** `experiments/utils/measure.sh`, `experiments/nodes/client.sh`
+**Files:** `experiments/lib/measure.sh`, `experiments/nodes/client.sh`
 
 **Was:** `--concurrency-limit` existed in `loadgen.py` but was never passed by
 any caller; `limit = args.concurrency_limit or args.parallel` made it a no-op.
@@ -95,8 +95,8 @@ the latency measurement.
 
 ### A3 ✅ Payload default cut to one segment
 
-**Files:** `experiments/utils/loadgen.py` (`--bytes`),
-`experiments/utils/measure.sh` (`LOAD_BYTES`), `experiments/nodes/client.sh`
+**Files:** `experiments/nodes/loadgen.py` (`--bytes`),
+`experiments/lib/measure.sh` (`LOAD_BYTES`), `experiments/nodes/client.sh`
 
 **Was:** 1048576 (1 MB), inherited from `iperf -n 1M`.
 **Now:** 1024 (one segment).
@@ -119,7 +119,7 @@ latency claim.
 - **Burst-mode warning**: `LOAD_RATE=0` now emits an explicit warning, in both
   the orchestrated and interactive paths, that the run's latency numbers
   include SYN queueing and are not 0-RTT results.
-- **Run banner** (`run_core.sh`): reports the full load shape
+- **Run banner** (`core.sh`): reports the full load shape
   (`LOAD_PARALLEL`, `LOAD_BYTES`, `LOAD_RATE`, `LOAD_CONCURRENCY`).
 - **`_build_parser()`** extracted from `loadgen.py:main()` so defaults are
   unit-testable.
@@ -128,9 +128,9 @@ latency claim.
 
 ### Verification
 
-- `pytest experiments/utils/tests/` → **57 passed** (12 in `test_loadgen.py`,
+- `pytest experiments/tests/` → **57 passed** (12 in `test_loadgen.py`,
   incl. 4 new pacing tests and 2 default-guard tests).
-- `bash -n` clean on `measure.sh`, `run_core.sh`, `client.sh`.
+- `bash -n` clean on `measure.sh`, `core.sh`, `client.sh`.
 - Live loopback, 500 conns × 2 ports: paced → **249 conn/s achieved over
   2.007 s**, 500/500 ok; unpaced → **295k conn/s**, 0.641 s, 500/500 ok.
 
@@ -155,8 +155,8 @@ into pacing. Open question whether the CLI should default to paced too.
 
 ### B1 ✅ Full emulated RTT on the Server egress; Client egress left clean
 
-**Files:** `experiments/utils/endpoint.sh` (new, `endpoint_tune()`),
-`experiments/utils/run_core.sh` (inline block replaced by the call)
+**Files:** `experiments/lib/endpoint.sh` (new, `endpoint_tune()`),
+`experiments/lib/core.sh` (inline block replaced by the call)
 
 **Was:** `tc qdisc add dev eth0 root netem delay 50ms` on **both** endpoints. A
 root qdisc delays **egress only**, giving:
@@ -201,8 +201,8 @@ FCT cannot improve. See §E.
 
 ### B2 ✅ `send_unlock` promoted to the headline metric
 
-**Files:** `experiments/utils/endpoint.sh` (`endpoint_latency_summary()`),
-`experiments/utils/run_core.sh`, `experiments/dpdk/run_experiment.sh`,
+**Files:** `experiments/lib/endpoint.sh` (`endpoint_latency_summary()`),
+`experiments/lib/core.sh`, `experiments/dpdk/run_experiment.sh`,
 `experiments/baseline-tcp/run_experiment.sh`
 
 The latency block is now explicitly tiered:
@@ -227,7 +227,7 @@ a change in either is not by itself evidence about the handshake.
 
 ### B3 ✅ Dead client-stdout metric rows removed
 
-**Files:** `experiments/utils/run_core.sh`,
+**Files:** `experiments/lib/core.sh`,
 `experiments/baseline-tcp/run_experiment.sh`
 
 **Was:** four rows piped `CLIENT_STDOUT` into `summarize_metric` for `ttfb` and
@@ -262,7 +262,7 @@ direction.
 
 ### C2 ✅ Both stacks share one endpoint-setup implementation
 
-**File:** `experiments/utils/endpoint.sh` (sourced by `run_core.sh` and by
+**File:** `experiments/lib/endpoint.sh` (sourced by `core.sh` and by
 `baseline-tcp/run_experiment.sh`)
 
 Rather than documenting that the two runs *should* match, `endpoint_tune()`,
@@ -287,7 +287,7 @@ two copies of setup code drift, one shared function cannot.
 Sets `LOAD_RATE=0` and lifts `LOAD_CONCURRENCY` to `LOAD_PARALLEL` (so the
 semaphore cannot quietly convert the burst back into a paced run), prints a
 banner stating what may and may not be concluded, then execs the normal
-orchestrator. `run_core.sh` emits a matching `CAPACITY RUN` warning, and the
+orchestrator. `core.sh` emits a matching `CAPACITY RUN` warning, and the
 DPDK report writer prefixes the report with a blockquote to the same effect.
 
 **Improves:** keeps a legitimate engineering result without letting it
@@ -302,7 +302,7 @@ Deleted `src/client-app/iperf_client.sh` and `src/server-app/iperf_server.sh`
 100k pthreads in one process). Both READMEs rewritten around `loadgen.py`, and
 the stale `pkill -f 'iperf -s'` in the baseline orchestrator (which killed
 nothing, since the baseline server is `loadgen.py`) now targets `loadgen.py`.
-Same fix applied in `experiments/scapy/run_experiment.sh` and `run_core.sh`.
+Same fix applied in `experiments/scapy/run_experiment.sh` and `core.sh`.
 
 Prose describing behavior that no longer exists was corrected in `README.md`,
 `CLAUDE.md`, `.claude/skills/run-experiment/SKILL.md`,
@@ -311,7 +311,7 @@ documented `iperf -s` per port and `iperf -c -P N` fan-out.
 
 ### D3 ✅ `IPERF_*` -> `LOAD_*`
 
-Renamed across `measure.sh`, `run_core.sh`, `nodes/client.sh`, `nodes/server.sh`,
+Renamed across `measure.sh`, `core.sh`, `nodes/client.sh`, `nodes/server.sh`,
 all four orchestrators, the DPDK node scripts, both GitHub workflows, the skill
 docs, `docs/capacity-model.md` and `CLAUDE.md`.
 

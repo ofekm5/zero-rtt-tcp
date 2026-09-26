@@ -1,0 +1,33 @@
+{
+  "verdict": "ok",
+  "sprints": [
+    {
+      "id": 1,
+      "name": "Reorganize directory layout",
+      "dependsOn": [],
+      "touches": ["experiments"]
+    },
+    {
+      "id": 2,
+      "name": "Write single entrypoint and mock test",
+      "dependsOn": [1],
+      "touches": ["experiments/run.sh", "experiments/lib/core.sh", "experiments/tests/test_run_sh.py"]
+    },
+    {
+      "id": 3,
+      "name": "Delete old runners and fix report paths",
+      "dependsOn": [2],
+      "touches": ["experiments"]
+    },
+    {
+      "id": 4,
+      "name": "Update callers and roadmap",
+      "dependsOn": [3],
+      "touches": [".github/workflows/run-experiment.yml", ".claude/skills", "CLAUDE.md", "experiments/README.md", "roadmap.md"]
+    }
+  ],
+  "manualTasks": [],
+  "triage": {
+    "skippedReason": "triage-verdict: ok found in plan file C:/Users/shir/Documents/GitHub/zero-rtt-tcp/docs/superpowers/plans/2026-09-08-streamline-experiments-harness.md"
+  }
+}
