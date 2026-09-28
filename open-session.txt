@@ -1,3 +1,0 @@
-claude --resume "first-plan"
-https://claude.ai/artifact/EyrKdLco5simWTaQb9XLcx
-https://github.com/ofekm5/zero-rtt-tcp/pull/36
