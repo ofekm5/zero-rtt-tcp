@@ -35,10 +35,10 @@ set -uo pipefail
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-# shellcheck source=../utils/ssm.sh
-source "$(dirname "$0")/../utils/ssm.sh"
-# shellcheck source=../utils/measure.sh
-source "$(dirname "$0")/../utils/measure.sh"
+# shellcheck source=../lib/transport/ssm.sh
+source "$(dirname "$0")/../lib/transport/ssm.sh"
+# shellcheck source=../lib/measure.sh
+source "$(dirname "$0")/../lib/measure.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
@@ -49,13 +49,13 @@ source "$(dirname "$0")/../lib/output.sh"
 source "$(dirname "$0")/../lib/report.sh"
 
 # Number of measurement ROUNDS (each round opens LOAD_PARALLEL connections across
-# LOAD_PORTS ports — see experiments/utils/measure.sh). Default 1 round of 100000.
+# LOAD_PORTS ports — see experiments/lib/measure.sh). Default 1 round of 100000.
 # Override via env: CONNECTIONS=3 ./run_experiment.sh
 CONNECTIONS="${CONNECTIONS:-1}"
 
 FAILURES=0
 
-# ─── Transport shims: map run_core.sh primitives to SSM helpers ───────────────
+# ─── Transport shims: map core.sh primitives to SSM helpers ───────────────
 remote_run()    { ssm_run    "$@"; }
 remote_bg()     { ssm_bg     "$@"; }
 remote_stdout() { ssm_stdout "$@"; }
@@ -63,7 +63,7 @@ remote_stdout() { ssm_stdout "$@"; }
 # SSM silently truncates StandardOutputContent at 24 KB — no error, no marker,
 # the last line is simply cut mid-character. Anything this transport fetches by
 # `cat`-ing a whole file is therefore a prefix once the file passes ~24 KB, which
-# is routine for the NIC logs at 100k connections. run_core.sh uses this to warn
+# is routine for the NIC logs at 100k connections. core.sh uses this to warn
 # when a fetched blob lands at the cap. Unset for uncapped transports (SSH).
 REMOTE_OUTPUT_CAP=24000
 
@@ -77,8 +77,8 @@ discover_nodes() {
     SERVER_IP=$(get_ip "smartnics-server")
 }
 
-# shellcheck source=../utils/run_core.sh
-source "$(dirname "$0")/../utils/run_core.sh"
+# shellcheck source=../lib/core.sh
+source "$(dirname "$0")/../lib/core.sh"
 
 
 # ─── Step 0: Discover instances ───────────────────────────────────────────────

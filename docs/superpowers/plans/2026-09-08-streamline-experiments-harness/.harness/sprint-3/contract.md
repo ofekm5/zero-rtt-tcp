@@ -1,15 +1,16 @@
-# Sprint 3: Write single run.sh entrypoint
+# Sprint 3: Delete old runners and fix report paths
 
 ## Tasks
-- Task 5: Write experiments/run.sh with STACK/TRANSPORT dispatch; absorb shared flow into experiments/lib/core.sh
+- Task 7: Delete the four runners and the Scapy stack; move the sweeps
+- Task 8: Point new report output at `reports/{0rtt,baseline}/`
 
 ## Acceptance criteria
-- C1: run.sh is executable and exits non-zero for an unrecognised STACK value — verify: `test -x experiments/run.sh && { remote_run(){ :; }; remote_bg(){ :; }; remote_stdout(){ :; }; export -f remote_run remote_bg remote_stdout; STACK=__invalid__ TRANSPORT=ssm bash experiments/run.sh 2>/dev/null; [ "$?" -ne 0 ]; }`
-- C2: STACK=baseline correctly skips NIC build, NIC start, and NIC log-collection steps and STACK=0rtt issues those steps for both transports — manual review (confirmed by the mock-transport test suite in Sprint 4)
+- C1: `experiments/run.sh` is the only orchestrator and no `run_experiment.sh` remains anywhere under `experiments/` — verify: `test -x experiments/run.sh && test -z "$(find experiments -name run_experiment.sh)"`
+- C2: The Scapy stack directory is deleted and both sweeps exist under `experiments/sweeps/` — verify: `test ! -d experiments/scapy && test -f experiments/sweeps/think.sh -a -f experiments/sweeps/stress.sh`
+- C3: The report-path test passes and the new output directories exist — verify: `pytest experiments/tests/test_report_path.py -q && test -d experiments/reports/0rtt -a -d experiments/reports/baseline`
 
 ## Out of scope
-- Writing the mock-transport test (Sprint 4)
-- Deleting old run_experiment.sh runners (Sprint 4)
-- Updating .github/workflows/, skill docs, or CLAUDE.md (Sprint 5)
-- Changing measurement semantics or metric definitions
-- Any change to src/
+- Updating `.github/workflows/`, `.claude/skills/`, or `CLAUDE.md` — that is Sprint 4
+- Moving or deleting historical reports under `experiments/dpdk/reports/` and `experiments/baseline-tcp/reports/`
+- Any change to `src/` or to measurement logic in the moved scripts
+- Files under `docs/openspec/changes/archive/` or `docs/kb/raw/`

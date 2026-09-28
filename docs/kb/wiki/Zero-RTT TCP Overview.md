@@ -114,7 +114,7 @@ Both scripts discover all 4 VMs via AWS SSM, pull latest code, rebuild if needed
 
 ### Load Generation
 
-`experiments/utils/loadgen.py` is the traffic generator — a single-thread asyncio
+`experiments/nodes/loadgen.py` is the traffic generator — a single-thread asyncio
 (epoll-driven) TCP client/server. The 0-RTT translation layer is traffic-agnostic;
 these flows pass through ClientNIC unchanged.
 
@@ -127,11 +127,11 @@ pacing, so per-connection latency measured queueing rather than the network path
 | Script | VM | What it does |
 |--------|----|--------------|
 | `experiments/nodes/server.sh` | Server | Starts one asyncio listener across the port range |
-| `experiments/dpdk/servernic.sh` | ServerNIC | Builds + starts `servernic-dpdk` (translator) |
-| `experiments/dpdk/clientnic.sh` | ClientNIC | Builds + starts `clientnic-dpdk-forwarder` |
+| `experiments/nodes/servernic.sh` | ServerNIC | Builds + starts `servernic-dpdk` (translator) |
+| `experiments/nodes/clientnic.sh` | ClientNIC | Builds + starts `clientnic-dpdk-forwarder` |
 | `experiments/nodes/client.sh` | Client | Auto-discovers server IP, drives load |
 
-**Load knobs** (`experiments/utils/measure.sh` is the single source of truth):
+**Load knobs** (`experiments/lib/measure.sh` is the single source of truth):
 
 | Knob | Default | Purpose |
 |------|---------|---------|
@@ -166,11 +166,11 @@ Startup order: **Server → ServerNIC → ClientNIC → Client**
 
 # 2. ServerNIC VM — Scapy (deprecated, feasibility PoC only) or DPDK (translator, live)
 setsid python3 src/servernic/scapy/main.py < /dev/null >> /tmp/servernic.log 2>&1 &   # Scapy
-./experiments/dpdk/servernic.sh                                                       # DPDK
+./experiments/nodes/servernic.sh                                                       # DPDK
 
 # 3. ClientNIC VM — Scapy (deprecated) or DPDK (eth1 must already be bound to vfio-pci)
 setsid python3 src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &   # Scapy
-./experiments/dpdk/clientnic.sh                                                       # DPDK
+./experiments/nodes/clientnic.sh                                                       # DPDK
 
 # 4. Client VM
 ./experiments/nodes/client.sh

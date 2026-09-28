@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared endpoint (Client VM + Server VM) setup, capture and analysis.
 #
-# Both the 0-RTT stack (experiments/utils/run_core.sh) and the plain-TCP
+# Both the 0-RTT stack (experiments/lib/core.sh) and the plain-TCP
 # baseline (experiments/baseline-tcp/run_experiment.sh) source this file, so the
 # two runs are configured by the *same code* rather than by two copies that
 # drift. That is the point: the project's central claim is a difference between
@@ -257,7 +257,7 @@ endpoint_analyze() {
     log "Endpoint analysis: running analyzer on the Client host capture..."
     local c_result c_status c_stdout c_stderr
     c_result=$(remote_run "$client_iid" \
-        "python3 $repo/experiments/utils/analyze_metrics.py \
+        "python3 $repo/experiments/nodes/analyze_metrics.py \
             --client-pcap /tmp/client_side.pcap \
             --summary --detail-out /tmp/client_metrics_per_flow.txt" \
         "$timeout")
@@ -268,7 +268,7 @@ endpoint_analyze() {
     log "Endpoint analysis: running analyzer on the Server host capture..."
     local s_result s_status s_stdout s_stderr
     s_result=$(remote_run "$server_iid" \
-        "python3 $repo/experiments/utils/analyze_metrics.py \
+        "python3 $repo/experiments/nodes/analyze_metrics.py \
             --server-pcap /tmp/server_side.pcap \
             --summary --detail-out /tmp/server_metrics_per_flow.txt" \
         "$timeout")

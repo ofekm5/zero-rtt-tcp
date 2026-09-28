@@ -3,7 +3,7 @@
 End-to-end orchestrators and node scripts for the 0-RTT TCP demo. Sub-directory
 map is in the repo root `CLAUDE.md`; this file covers the **client and server
 endpoints**, which have no source of their own — both are just
-`experiments/utils/loadgen.py` in different modes.
+`experiments/nodes/loadgen.py` in different modes.
 
 ## Client and server apps
 
@@ -26,7 +26,7 @@ experiments/nodes/server.sh
 Direct:
 
 ```bash
-python3 experiments/utils/loadgen.py --mode server --port 8080 --port-count 4
+python3 experiments/nodes/loadgen.py --mode server --port 8080 --port-count 4
 ```
 
 One process listens on `LOAD_PORTS` contiguous ports and drains each connection
@@ -43,12 +43,12 @@ experiments/nodes/client.sh <server-ip>     # press Enter to fire a flow
 Direct:
 
 ```bash
-python3 experiments/utils/loadgen.py --mode client \
+python3 experiments/nodes/loadgen.py --mode client \
     --host <server-ip> --port 8080 --port-count 4 \
     --parallel 100000 --bytes 1024 --rate 2000 --concurrency-limit 2000
 ```
 
-Under the orchestrators every knob comes from `experiments/utils/measure.sh`
+Under the orchestrators every knob comes from `experiments/lib/measure.sh`
 (`LOAD_PARALLEL`, `LOAD_PORTS`, `LOAD_BYTES`, `LOAD_RATE`, `LOAD_CONCURRENCY`).
 
 ## Why not iperf

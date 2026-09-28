@@ -14,7 +14,7 @@ fds and kernel limits, not with thread count.
 Client mode: opens --parallel TCP connections spread round-robin across
 --port-count contiguous ports starting at --port, sends --bytes of payload
 per connection, then closes. Mirrors the old `iperf -c ... -P N -n 1M`
-per-port-fan-out shape closely enough that run_core.sh/measure.sh need no
+per-port-fan-out shape closely enough that core.sh/measure.sh need no
 downstream changes (analyze_metrics.py works from tcpdump captures, not from
 this tool's own output).
 
@@ -179,7 +179,7 @@ async def run_server(ports):
                 _print_summary("so far")
 
     # The harness stops this process with SIGTERM/SIGINT at the end of a run
-    # (run_core.sh cleanup, matching the old pkill-iperf behavior) — print a
+    # (core.sh cleanup, matching the old pkill-iperf behavior) — print a
     # final summary on the way out so "Server received data" checks that grep
     # the log for "Received|bytes" still see a line even on a short run.
     stop_event = asyncio.Event()

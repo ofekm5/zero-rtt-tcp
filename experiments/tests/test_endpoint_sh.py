@@ -1,6 +1,6 @@
 """
-Tests for experiments/utils/endpoint.sh — the shared endpoint setup/capture/
-analysis module used by BOTH the 0-RTT stack (run_core.sh) and the plain-TCP
+Tests for experiments/lib/endpoint.sh — the shared endpoint setup/capture/
+analysis module used by BOTH the 0-RTT stack (core.sh) and the plain-TCP
 baseline (baseline-tcp/run_experiment.sh).
 
 The functions here drive real VMs over SSM, so the tests substitute mock
@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 
 _TESTS_DIR = Path(__file__).parent
-_ENDPOINT_SH = _TESTS_DIR.parent / "endpoint.sh"
+_ENDPOINT_SH = _TESTS_DIR.parent / "lib" / "endpoint.sh"
 _HARNESS_SH = _TESTS_DIR / "endpoint_mock_harness.sh"
 
 pytestmark = pytest.mark.skipif(
@@ -47,7 +47,7 @@ def _run(func_args, netem_rtt_ms="100"):
         silently run the default and the test would assert nothing.
     """
     result = subprocess.run(
-        ["bash", _HARNESS_SH.name, netem_rtt_ms, f"../{_ENDPOINT_SH.name}",
+        ["bash", _HARNESS_SH.name, netem_rtt_ms, f"../lib/{_ENDPOINT_SH.name}",
          *func_args],
         capture_output=True, text=True, cwd=str(_TESTS_DIR),
     )

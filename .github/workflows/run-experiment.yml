@@ -179,7 +179,7 @@ jobs:
           # Without +e the first failing aws call aborts the step before a single
           # role is reported, which is the opposite of what a preflight is for.
           set +e
-          source experiments/utils/ssm.sh
+          source experiments/lib/transport/ssm.sh
           PREFIX='${{ steps.cfg.outputs.tag_prefix }}'
           MISSING=0
           for role in client clientnic servernic server; do
@@ -225,7 +225,7 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          source experiments/utils/ssm.sh
+          source experiments/lib/transport/ssm.sh
           PREFIX='${{ steps.cfg.outputs.tag_prefix }}'
           mkdir -p /tmp/nodelogs
           for role in server servernic clientnic client; do
@@ -284,7 +284,7 @@ jobs:
                                                   os.environ["GITHUB_RUN_ID"]),
             "requested_infra": os.environ.get("REQUESTED_INFRA", ""),
             # Only knobs explicitly set for this run; absent = the runner's own
-            # default (see experiments/utils/measure.sh + endpoint.sh).
+            # default (see experiments/lib/measure.sh + endpoint.sh).
             "knobs": {k: os.environ[k] for k in knobs if os.environ.get(k)},
           }
           json.dump(meta, open(sys.argv[1], "w"), indent=2)

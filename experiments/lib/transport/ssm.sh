@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared SSM helpers for all experiment orchestrators.
-# Source this file: source "$(dirname "$0")/../lib/ssm.sh"
+# Source this file: source "$(dirname "$0")/../lib/transport/ssm.sh"
 
 # ─── Dependency checks ────────────────────────────────────────────────────────
 if ! command -v aws &>/dev/null; then

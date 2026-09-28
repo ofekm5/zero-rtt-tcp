@@ -245,7 +245,7 @@ touching data-plane code, and consider teaching the validator to separate
 **Source:** `experiments/baseline-tcp/reports/baseline-report-2026-08-04-200506.md`
 and the matching DPDK run, both at `LOAD_PARALLEL=2000 LOAD_RATE=500
 LOAD_PORTS=4 LOAD_BYTES=1024 NETEM_RTT_MS=100`, both 2000/2000 connections OK.
-First run using the shared `experiments/utils/endpoint.sh` setup, so the two
+First run using the shared `experiments/lib/endpoint.sh` setup, so the two
 stacks were configured by identical code.
 
 | Metric (mean) | Baseline | 0-RTT DPDK | Delta |

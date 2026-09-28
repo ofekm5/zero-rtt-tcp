@@ -8,8 +8,8 @@ timestamp: 2026-08-08T18:53:12+03:00
 
 Analysis, 2026-08-08. Not mirrored from any repo doc — this entry is the only
 home for it. Derived from [[raw/2026-08-08-telemetry-review-artifact]] plus
-direct reading of `experiments/utils/loadgen.py`,
-`experiments/utils/analyze_metrics.py` and `experiments/utils/endpoint.sh`.
+direct reading of `experiments/nodes/loadgen.py`,
+`experiments/nodes/analyze_metrics.py` and `experiments/lib/endpoint.sh`.
 Companion: [[wiki/Measurement Methodology]].
 
 # Load Generation and Think Time

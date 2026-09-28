@@ -1,5 +1,5 @@
 """
-Tests for experiments/utils/loadgen.py — the asyncio event-driven load
+Tests for experiments/nodes/loadgen.py — the asyncio event-driven load
 generator that replaces iperf2 (see roadmap.md #20 scope item A).
 
 Runs plain pytest (no pytest-asyncio needed): async work is driven with
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-_LOADGEN_PATH = Path(__file__).parent.parent / "loadgen.py"
+_LOADGEN_PATH = Path(__file__).parent.parent / "nodes" / "loadgen.py"
 _spec = importlib.util.spec_from_file_location("loadgen", _LOADGEN_PATH)
 loadgen = importlib.util.module_from_spec(_spec)
 sys.modules["loadgen"] = loadgen
@@ -126,7 +126,7 @@ class TestArrivalPacing:
 class TestDefaults:
     """Defaults encode the measurement intent — a wrong default silently
     produces a run whose numbers cannot support the 0-RTT claim.
-    experiments/utils/measure.sh mirrors these; keep both in sync."""
+    experiments/lib/measure.sh mirrors these; keep both in sync."""
 
     def _defaults(self):
         return loadgen._build_parser().parse_args(["--mode", "client",

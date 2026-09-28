@@ -19,10 +19,10 @@
 #   warn <message>
 #
 # Also requires:
-#   - source experiments/utils/measure.sh  (before sourcing run_core.sh)
+#   - source experiments/lib/measure.sh  (before sourcing core.sh)
 #   - REPO_PATH, SERVER_PORT, CONNECTIONS, FAILURES set by caller
 #
-# Sources experiments/utils/endpoint.sh itself: endpoint tuning, capture and
+# Sources experiments/lib/endpoint.sh itself: endpoint tuning, capture and
 # analysis are shared verbatim with the plain-TCP baseline so the two stacks
 # differ only in the data plane under test.
 #
@@ -31,7 +31,7 @@
 #                       (SSM: 24000). Unset/0 means uncapped (SSH).
 #
 # Usage:
-#   source "$(dirname "$0")/../utils/run_core.sh"
+#   source "$(dirname "$0")/../lib/core.sh"
 #   run_experiment <servernic_eth1_mac> <clientnic_eth1_mac> <server_eth0_mac> \
 #                  <clientnic_eth2_mac> <servernic_eth2_mac>
 
@@ -78,7 +78,7 @@ run_experiment() {
     log "Load/port plan: $NPORTS port(s) [${SERVER_PORT}-${PORT_HI}], LOAD_PARALLEL=${LOAD_PARALLEL:-100000}, LOAD_BYTES=${LOAD_BYTES:-1024}, LOAD_RATE=${LOAD_RATE:-2000} conn/s, LOAD_CONCURRENCY=${LOAD_CONCURRENCY:-2000}"
 
     # ─── Port-space assertion (capacity-model.md §8) ──────────────────────────
-    # run_core.sh widens the client's ephemeral range to 1024-65535 below, so
+    # core.sh widens the client's ephemeral range to 1024-65535 below, so
     # the available range is ~64512. Assert LOAD_PORTS * range >= target
     # connections *before* spending 10+ minutes on a run that can't possibly
     # open that many sockets from one source IP, with 2xMSL TIME_WAIT margin
@@ -138,7 +138,7 @@ run_experiment() {
     done
 
     # ─── Endpoint tuning (shared with the baseline stack) ─────────────────────
-    # sysctls, MTU, offloads and netem all live in experiments/utils/endpoint.sh
+    # sysctls, MTU, offloads and netem all live in experiments/lib/endpoint.sh
     # so the baseline runs byte-identical setup — see that file's header for why
     # the emulated RTT sits entirely on the Server's egress.
     endpoint_tune "$CLIENT_ID" "$SERVER_ID"
@@ -247,7 +247,7 @@ run_experiment() {
         "SKIP_BUILD=1 PORT_COUNT=$NPORTS CLIENTNIC_GW_MAC=$CLIENTNIC_ETH1_MAC SERVER_GW_MAC=$SERVER_ETH0_MAC \
          CLIENT_PORT_MAC=$GW_MAC SERVER_PORT_MAC=$SERVERNIC_ETH2_MAC REPO_REF=$ref \
          WAN_DELAY_US=$WAN_US \
-         setsid bash $REPO_PATH/experiments/dpdk/servernic.sh \
+         setsid bash $REPO_PATH/experiments/nodes/servernic.sh \
          < /dev/null >> /tmp/servernic.log 2>&1 &"
     sleep 5
 
@@ -285,7 +285,7 @@ run_experiment() {
         "SKIP_BUILD=1 PORT_COUNT=$NPORTS REPO_REF=$ref \
          CLIENT_PORT_MAC=$CLIENTNIC_ETH2_MAC SERVER_PORT_MAC=$CLIENTNIC_ETH1_MAC \
          WAN_DELAY_US=$WAN_US \
-         setsid bash $REPO_PATH/experiments/dpdk/clientnic.sh $GW_MAC \
+         setsid bash $REPO_PATH/experiments/nodes/clientnic.sh $GW_MAC \
          < /dev/null >> /tmp/clientnic.log 2>&1 &"
     sleep 5
 

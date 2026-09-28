@@ -239,7 +239,7 @@ endpoint MTU ≤ 2048 − 14 (Ethernet header) = 2034 bytes
 
 Pick one:
 
-1. **Set MTU 1500 on the Client and Server VMs** in `run_core.sh` (cheapest, and
+1. **Set MTU 1500 on the Client and Server VMs** in `core.sh` (cheapest, and
    matches the 1460 MSS the ClientNIC already advertises), **or**
 2. Raise the mbuf dataroom past the max frame and handle chained mbufs by using
    `pkt_len` + `rte_pktmbuf_linearize()`.
@@ -247,7 +247,7 @@ Pick one:
 Until then, add a loud counter for `pkt_len != data_len` so a silent truncation
 cannot masquerade as a data-plane bug.
 
-**Done (2026-07-25):** option 1 — `run_core.sh` now runs `ip link set eth0 mtu
+**Done (2026-07-25):** option 1 — `core.sh` now runs `ip link set eth0 mtu
 1500` on both Client and Server every run, and both DPDK trees' main loops
 increment a `g_truncated_frames` counter whenever `rte_pktmbuf_pkt_len() !=
 rte_pktmbuf_data_len()`, logged as `stats: truncated_frames=...` if it's ever
@@ -377,7 +377,7 @@ LOAD_PORTS × ephemeral_range_size  ≥  target_connections   (with TIME_WAIT ma
 | widened `1024–65535` | 64,512 | **2** |
 
 This is precisely what `PORT_COUNT` / `LOAD_PORTS` exist for, and why both
-binaries take `--port-count`. Assert the inequality in `run_core.sh` before the
+binaries take `--port-count`. Assert the inequality in `core.sh` before the
 run rather than discovering it as mysterious connection failures. Leave real
 margin: connections in `TIME_WAIT` still hold their tuple for `2×MSL` (60 s).
 
@@ -454,7 +454,7 @@ The endpoints are no longer in the picture at 100k — the SmartNIC single-lcore
 CPU/burst-ring interaction (§4, §9, §13) is now the binding constraint.
 
 Also check on both endpoints, in this order — **all raised durably in
-`run_core.sh` as of 2026-07-25**:
+`core.sh` as of 2026-07-25**:
 
 | Setting | Default | Needed for 100k | Status |
 |---|---|---|---|
@@ -522,7 +522,7 @@ at:
 1. **Endpoint RAM / socket count** (§10) — the t3.micro wall. **✅ Resolved** (m5.xlarge).
 2. **Nitro allowances** (§4) — especially `conntrack_allowance_exceeded`. **✅ Confirmed 0** on both endpoints at 100k.
 3. **Kernel limits** (§10) — backlog, conntrack, fds, TIME_WAIT. **✅ Raised**, none hit.
-4. **Port space** (§8) — is `LOAD_PORTS` large enough to be *arithmetically* possible? **✅ Asserted in `run_core.sh`**, passed (4 × 32,256 ≥ 100,000).
+4. **Port space** (§8) — is `LOAD_PORTS` large enough to be *arithmetically* possible? **✅ Asserted in `core.sh`**, passed (4 × 32,256 ≥ 100,000).
 5. **Frame size** (§5) — is anything above 2048 bytes being silently truncated? **✅ 0 `truncated_frames`**.
 6. **SmartNIC CPU** (§9) — `imissed` climbing, cycles/packet. **← This is where the live 100k run actually stopped (§13).** `imissed` nonzero, `rx_nombuf`/`oerrors` zero, cycles/packet measured and well under budget in steady state — the ceiling is burst absorption (RX ring depth vs. 100k simultaneous SYNs), not per-packet cost.
 7. **Buffered-packet memory** (§7). **✅ Capped**, 446 MB/1 GiB observed, never reached.
@@ -591,7 +591,7 @@ the run would actually stop.
 | §4 Nitro allowances | Watch `conntrack_allowance_exceeded` | All five allowance counters read 0 on both endpoints |
 
 **The actual failure mode, precisely:** `asyncio.gather()` in
-`experiments/utils/loadgen.py` fires all 100,000 `open_connection()` calls at
+`experiments/nodes/loadgen.py` fires all 100,000 `open_connection()` calls at
 once — that's the point of an event-driven generator, no thread-per-connection
 throttling. That is an instantaneous SYN burst, not a sustained arrival rate.
 A burst that size overwhelms the 1024-deep RX ring's ~32-iteration absorption

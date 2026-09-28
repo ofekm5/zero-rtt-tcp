@@ -93,7 +93,7 @@ whose report filename is date-only and self-overwrites within a day.
 ### Load knobs are mandatory — the workflow's defaults will fail the run
 
 The workflow only exports a knob that was **explicitly passed**; anything omitted
-falls through to the runner default in `experiments/utils/measure.sh`, which is
+falls through to the runner default in `experiments/lib/measure.sh`, which is
 **`LOAD_PARALLEL=100000`, `LOAD_RATE=2000`**. That is a *capacity* setting, not a
 latency setting, and on the t3.micro endpoints it fails:
 
@@ -142,13 +142,13 @@ output of each script.
 
 ### Shared architecture (DPDK + Proxmox)
 
-The DPDK (AWS) and Proxmox runners share **`experiments/utils/run_core.sh`** —
+The DPDK (AWS) and Proxmox runners share **`experiments/lib/core.sh`** —
 all per-step orchestration lives there. The thin per-mode runner only does node
 discovery + MAC resolution, defines transport shims, then calls `run_experiment`:
 
 | Concern | DPDK (AWS) | Proxmox |
 |---------|------------|---------|
-| Transport layer | `experiments/utils/ssm.sh` | `experiments/utils/ssh_lab.sh` |
+| Transport layer | `experiments/lib/transport/ssm.sh` | `experiments/lib/transport/ssh_lab.sh` |
 | Shims | `remote_run`/`remote_bg`/`remote_stdout` → SSM | → SSH jump host (`runs-gateway`) |
 | Node discovery | EC2 `describe-instances` by tag | ping lab IPs via gateway |
 | MAC resolution | EC2 API (DeviceIndex query) | `get_lab_mac` reads `/sys/class/net/<if>/address` |
@@ -167,11 +167,11 @@ Per-node startup is delegated to scripts via the transport. Shared scripts live 
 | Node | Node script | Notes |
 |------|-------------|-------|
 | Server | `experiments/nodes/server.sh` | |
-| ServerNIC | `experiments/dpdk/servernic.sh` | env: `CLIENTNIC_GW_MAC`, `SERVER_GW_MAC`, `MIDDLE_ENI_MAC`, `SKIP_BUILD=1` |
-| ClientNIC | `experiments/dpdk/clientnic.sh <GW_MAC>` | `$1` = ServerNIC eth1 MAC; `SKIP_BUILD=1` (core builds explicitly) |
+| ServerNIC | `experiments/nodes/servernic.sh` | env: `CLIENTNIC_GW_MAC`, `SERVER_GW_MAC`, `MIDDLE_ENI_MAC`, `SKIP_BUILD=1` |
+| ClientNIC | `experiments/nodes/clientnic.sh <GW_MAC>` | `$1` = ServerNIC eth1 MAC; `SKIP_BUILD=1` (core builds explicitly) |
 | Client | `iperf2 -c` via `run_ttfb_measurement` (`measure.sh`) | `experiments/nodes/client.sh` has an interactive `read` loop — never used for automation |
 
-**Load generator: `experiments/utils/loadgen.py`** — a single-thread asyncio
+**Load generator: `experiments/nodes/loadgen.py`** — a single-thread asyncio
 (epoll-driven) TCP generator. iperf has been removed; it was thread-per-connection
 and had no arrival pacing. Knobs (defined in `measure.sh`, override via env):
 - **`LOAD_PARALLEL`** (default 100000) — total TCP connections per round.
@@ -202,7 +202,7 @@ Python data plane can't sustain this).
 The new measurement model captures at the **endpoints**, not on ClientNIC:
 - `tcpdump` runs on the **Client host** (`/tmp/client_side.pcap`) and **Server host** (`/tmp/server_side.pcap`), using nanosecond timestamps where supported.
 - Accuracy knobs applied before the run: GRO/LRO/TSO/GSO **off** + `tc qdisc netem delay 50ms` on Client and Server egress; TCP timestamps/window-scaling/SACK disabled.
-- Both pcaps are base64-shipped to ClientNIC, where `experiments/utils/analyze_metrics.py` computes endpoint-observed metrics: **FCT**, **send_unlock** (client), **server_gap** (server). A `missing=` line in its output = a metric event was not found → counts as a failure.
+- Both pcaps are base64-shipped to ClientNIC, where `experiments/nodes/analyze_metrics.py` computes endpoint-observed metrics: **FCT**, **send_unlock** (client), **server_gap** (server). A `missing=` line in its output = a metric event was not found → counts as a failure.
 - In-binary `[DIAG]` log lines (formerly `[METRIC]`) on ClientNIC/ServerNIC are diagnostic only — the authoritative latency numbers come from the endpoint pcaps.
 
 **DPDK build note**: the CDK user data builds DPDK 23.11 from source at provision
@@ -357,16 +357,16 @@ setsid python3 src/servernic/scapy/main.py --client-iface eth0 --server-iface et
     < /dev/null >> /tmp/servernic.log 2>&1 &
 # 2b. ServerNIC — DPDK translator
 CLIENTNIC_GW_MAC=<cnic-eth1-mac> SERVER_GW_MAC=<server-eth0-mac> MIDDLE_ENI_MAC=<snic-eth1-mac> \
-    SKIP_BUILD=1 setsid bash experiments/dpdk/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &
+    SKIP_BUILD=1 setsid bash experiments/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &
 
 # 3a. ClientNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
 setsid python3 src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
 # 3b. ClientNIC — DPDK forwarder (GW_MAC = ServerNIC eth1 MAC)
-SKIP_BUILD=1 setsid bash experiments/dpdk/clientnic.sh <GW_MAC> < /dev/null >> /tmp/clientnic.log 2>&1 &
+SKIP_BUILD=1 setsid bash experiments/nodes/clientnic.sh <GW_MAC> < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client — 100000 conns across 4 ports, paced at 2000/s, 1 KB each
 ulimit -n 1048576
-python3 experiments/utils/loadgen.py --mode client --host <server-ip> \
+python3 experiments/nodes/loadgen.py --mode client --host <server-ip> \
     --port 8080 --port-count 4 --parallel 100000 --bytes 1024 \
     --rate 2000 --concurrency-limit 2000
 ```
@@ -414,7 +414,7 @@ tcpdump -i eth1 -nn -tttt 'tcp port 8080' -w /tmp/server_side.pcap &
 
 **DPDK / Proxmox** — `analyze_metrics.py` on ClientNIC against both endpoint pcaps:
 ```bash
-python3 experiments/utils/analyze_metrics.py \
+python3 experiments/nodes/analyze_metrics.py \
     --client-pcap /tmp/client_side_endpoint.pcap \
     --server-pcap /tmp/server_side.pcap
 # Output lines: fct=, send_unlock=, server_gap=  (a "missing=" line = failure)

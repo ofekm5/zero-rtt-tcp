@@ -1,34 +1,36 @@
 # Run report — 2026-09-08-streamline-experiments-harness
 
-**scope-violation** — 1 merged · 1 scope-violation · 3 dependency-blocked | 373 tool calls, 3 denied | 108m from first to last tool call
+**completed** — 1 merged · 1 diff-budget-exceeded · 2 dependency-blocked | 165 tool calls, 3 denied | 42m from first to last tool call
 
 ## Lanes
 
 | lane | status | rounds | verify: passing per round | tool calls | denied | time |
 |---|---|---|---|---|---|---|
-| s1 | merged | 3 | r0 0/0 → r1 0/0 → r2 0/0 → r3 0/0 | 237 | 3 | 31m |
-| s2 | scope-violation | 1 | r0 0/2 → r1 0/0 | 136 | 0 | 76m |
+| s1 | merged | 1 | r0 1/4 → r1 4/4 | 80 | 1 | 10m |
+| s2 | diff-budget-exceeded | 1 | r0 0/2 → r1 0/0 | 64 | 2 | 20m |
 | s3 | dependency-blocked | 0 | — | 0 | 0 | — |
 | s4 | dependency-blocked | 0 | — | 0 | 0 | — |
-| s5 | dependency-blocked | 0 | — | 0 | 0 | — |
 
 ## Tool selection
 
-| role | Bash | Edit | Grep | Read | Write |
-|---|---|---|---|---|---|
-| builder | 107 | 42 | 31 | 61 | 8 |
-| grader | 84 | 0 | 0 | 1 | 0 |
-| verifier | 39 | 0 | 0 | 0 | 0 |
+| role | Bash | Edit | Glob | Grep | Read | Write |
+|---|---|---|---|---|---|---|
+| builder | 68 | 10 | 0 | 0 | 4 | 4 |
+| grader | 32 | 0 | 0 | 0 | 0 | 0 |
+| planner | 0 | 0 | 5 | 10 | 1 | 5 |
+| verifier | 26 | 0 | 0 | 0 | 0 | 0 |
 
-Most-run commands: `grader: git show` ×20, `builder: grep -n` ×16, `builder: \` ×9, `grader: mkdir -p` ×8, `builder: git add` ×7, `grader: git log` ×7, `builder: git status` ×7, `builder: mkdir -p` ×6
+Most-run commands: `verifier: \` ×15, `builder: sed -n` ×6, `builder: cat -n` ×6, `grader: git diff` ×5, `grader: mkdir -p` ×4, `verifier: mkdir -p` ×3, `builder: git diff` ×3, `builder: git add` ×3
 
 ## What went wrong
 
-- Run stopped with **scope-violation** — see launch-task-runner SKILL.md for this status.
+- Run stopped with **completed** — see launch-task-runner SKILL.md for this status.
 
-### s2 — scope-violation
+### s2 — diff-budget-exceeded
 
-- wrote outside the sprint's touches[] — re-plan
+- one round inserted more than the diff budget — sprint under-decomposed
+- Sandbox denied builder Bash `python -`: reaches outside the worktree: `ssh` in command position with no shell-function shim defined before first use
+- Sandbox denied builder Bash `git commit`: reaches outside the worktree: `ssh` in command position with no shell-function shim defined before first use
 - Evidence: `C:\Users\shir\Documents\GitHub\.task-runner-worktrees\2026-09-08-streamline-experiments-harness-s2\.harness\sprint-2`
 
 ### s3 — dependency-blocked
@@ -40,11 +42,6 @@ Most-run commands: `grader: git show` ×20, `builder: grep -n` ×16, `builder: \
 
 - a sprint it depends on did not merge
 - Evidence: `C:\Users\shir\Documents\GitHub\.task-runner-worktrees\2026-09-08-streamline-experiments-harness\.harness\sprint-4`
-
-### s5 — dependency-blocked
-
-- a sprint it depends on did not merge
-- Evidence: `C:\Users\shir\Documents\GitHub\.task-runner-worktrees\2026-09-08-streamline-experiments-harness\.harness\sprint-5`
 
 ## Tokens, cost, latency
 

@@ -24,18 +24,18 @@ set -uo pipefail
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-# shellcheck source=../utils/ssm.sh
-source "$(dirname "$0")/../utils/ssm.sh"
-# shellcheck source=../utils/measure.sh
-source "$(dirname "$0")/../utils/measure.sh"
-# shellcheck source=../utils/endpoint.sh
-source "$(dirname "$0")/../utils/endpoint.sh"
+# shellcheck source=../lib/transport/ssm.sh
+source "$(dirname "$0")/../lib/transport/ssm.sh"
+# shellcheck source=../lib/measure.sh
+source "$(dirname "$0")/../lib/measure.sh"
+# shellcheck source=../lib/endpoint.sh
+source "$(dirname "$0")/../lib/endpoint.sh"
 
 REPO_PATH="/home/ec2-user/zero-rtt-tcp"
 SERVER_PORT=8080
 
 # Transport shims — endpoint.sh is written against the generic remote_* names so
-# the same code drives this stack and the 0-RTT stack (run_core.sh).
+# the same code drives this stack and the 0-RTT stack (core.sh).
 remote_run()    { ssm_run    "$@"; }
 remote_bg()     { ssm_bg     "$@"; }
 remote_stdout() { ssm_stdout "$@"; }
@@ -85,7 +85,7 @@ done
 REPO_REF="${REPO_REF:-main}"
 log "Syncing all VMs to origin/${REPO_REF}..."
 [[ "$REPO_REF" != "main" ]] && warn "REPO_REF=${REPO_REF} — VMs are running a NON-MAIN ref"
-# Clone-on-demand, mirroring run_core.sh. The baseline CDK user-data clone uses
+# Clone-on-demand, mirroring core.sh. The baseline CDK user-data clone uses
 # a token that has expired — cloud-init logged "Invalid username or token" and
 # left every baseline VM with no repo at all, which no amount of `git fetch`
 # recovers from. Re-clone here with the PAT from Secrets Manager so the run is
@@ -154,7 +154,7 @@ sleep 2
 # The whole point of this run is to be compared against experiments/dpdk. Any
 # endpoint parameter that differs between the two — emulated RTT, offloads, MTU,
 # TCP options, kernel limits — becomes a confound indistinguishable from 0-RTT
-# benefit or cost. endpoint_tune() is the same function run_core.sh calls.
+# benefit or cost. endpoint_tune() is the same function core.sh calls.
 endpoint_tune "$CLIENT_ID" "$SERVER_ID"
 
 
@@ -255,8 +255,8 @@ EXTRA_BODY=$(
     echo "## Load Parameters"
     echo ""
     echo "These must match the 0-RTT run being compared against, or the comparison"
-    echo "is confounded. Both stacks read them from \`experiments/utils/measure.sh\`"
-    echo "and configure endpoints via \`experiments/utils/endpoint.sh\`."
+    echo "is confounded. Both stacks read them from \`experiments/lib/measure.sh\`"
+    echo "and configure endpoints via \`experiments/lib/endpoint.sh\`."
     echo ""
     echo "| Parameter | Value |"
     echo "|---|---|"

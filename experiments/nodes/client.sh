@@ -29,10 +29,10 @@ command -v python3 >/dev/null || { echo -e "${RED}ERROR: python3 not installed${
 
 # Total parallel connections per flow, spread across LOAD_PORTS contiguous
 # server ports so one source IP can clear the per-port ephemeral ceiling.
-# experiments/utils/loadgen.py opens every connection as an asyncio coroutine
+# experiments/nodes/loadgen.py opens every connection as an asyncio coroutine
 # on one thread (epoll-driven) rather than one OS thread per connection.
 #
-# Defaults mirror experiments/utils/measure.sh — keep the two in sync, since a
+# Defaults mirror experiments/lib/measure.sh — keep the two in sync, since a
 # manual run that differs from the orchestrated one is not comparable to it.
 # LOAD_RATE paces arrivals so each connection's latency reflects the path
 # rather than queueing behind the rest of the batch; LOAD_BYTES is one segment
@@ -96,7 +96,7 @@ echo ""
 while IFS= read -r _input; do
     CONN=$((CONN + 1))
     echo -e "${GREEN}─── Flow #${CONN} (${LOAD_PORTS} ports, $LOAD_PARALLEL total) ──────────${NC}"
-    python3 "$REPO_PATH/experiments/utils/loadgen.py" --mode client \
+    python3 "$REPO_PATH/experiments/nodes/loadgen.py" --mode client \
         --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
         --parallel "$LOAD_PARALLEL" --bytes "$LOAD_BYTES" \
         --rate "$LOAD_RATE" --think-ms "$LOAD_THINK_MS" \
