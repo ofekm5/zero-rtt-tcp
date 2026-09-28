@@ -197,19 +197,40 @@ def _parse(text):
     return {key: (rc, tuple(calls)) for key, (rc, calls) in out.items()}
 
 
+@pytest.fixture(scope="module")
+def run_sh(tmp_path_factory):
+    """run.sh in a temp copy of experiments/ (run.sh + lib/), so the report it
+    writes on exit lands in the temp tree, not in the repo's reports/."""
+    root = tmp_path_factory.mktemp("experiments")
+    shutil.copytree(_TESTS_DIR.parent / "lib", root / "lib")
+    shutil.copy(_TESTS_DIR.parent / "run.sh", root / "run.sh")
+    return (root / "run.sh").as_posix()
+
+
 @pytest.mark.parametrize("stack,transport", list(_OLD_RUNNERS))
-def test_remote_call_sequence_matches_the_old_runner(stack, transport):
-    rc, calls = _calls("../run.sh", stack, transport)
+def test_remote_call_sequence_matches_the_old_runner(run_sh, stack, transport):
+    rc, calls = _calls(run_sh, stack, transport)
     want_rc, want = RECORDED[(stack, transport)]
     assert calls == want
     assert rc == want_rc
 
 
-def test_baseline_issues_no_nic_build_or_start():
+def test_baseline_issues_no_nic_build_or_start(run_sh):
     """STACK=baseline has no data plane: the NIC VMs are plain kernel routers."""
-    _, calls = _calls("../run.sh", "baseline", "ssm")
+    _, calls = _calls(run_sh, "baseline", "ssm")
     nic = [c for c in calls if re.search(r"meson setup|nodes/(client|server)nic\.sh|nic-dpdk", c)]
     assert nic == []
+
+
+@pytest.mark.parametrize("stack,transport,prefix", [
+    ("0rtt", "ssm", "0rtt/integration-test-report-"),
+    ("0rtt", "ssh", "0rtt/proxmox-test-report-"),
+    ("baseline", "ssm", "baseline/baseline-report-"),
+])
+def test_run_sh_writes_its_report_under_reports_stack(run_sh, stack, transport, prefix):
+    _calls(run_sh, stack, transport)
+    reports = Path(run_sh).parent / "reports"
+    assert any(p.relative_to(reports).as_posix().startswith(prefix) for p in reports.rglob("*.md"))
 
 
 # 0rtt+ssh records exit 1 and no client-load call, exactly as proxmox/run_experiment.sh:
