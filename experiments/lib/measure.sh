@@ -130,7 +130,7 @@ run_ttfb_measurement() {
     local rate="${LOAD_RATE:-2000}"
     local conc="${LOAD_CONCURRENCY:-2000}"
     # Client think time between connect() and the first write. 0 = HTTP-style
-    # send-immediately, the workload 0-RTT targets. Sweep with run_think_sweep.sh.
+    # send-immediately, the workload 0-RTT targets. Sweep with experiments/sweeps/think.sh.
     local think="${LOAD_THINK_MS:-0}"
 
     # Pacing sets a wall-clock FLOOR the transport timeout must clear: at

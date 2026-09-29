@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Capacity / stress run for the 0-RTT DPDK stack — DELIBERATELY unpaced.
 #
-# This is a different question from run_experiment.sh, and the separation is the
-# point. run_experiment.sh asks "does the translation mechanism remove one RTT?"
+# This is a different question from run.sh's default paced run, and the
+# separation is the point. The paced run asks "does the translation mechanism remove one RTT?"
 # — a protocol question, answered by paced arrivals and per-connection latency.
 # This script asks "where does this data plane break?" — an engineering
 # question, answered by firing everything at once and counting what survives.
@@ -20,8 +20,8 @@
 #   ✗ anything about 0-RTT latency benefit — the numbers are queue-dominated
 #
 # Usage:
-#   ./experiments/dpdk/run_stress.sh                 # 100k conns, unpaced
-#   LOAD_PARALLEL=250000 ./experiments/dpdk/run_stress.sh
+#   ./experiments/sweeps/stress.sh                 # 100k conns, unpaced
+#   LOAD_PARALLEL=250000 ./experiments/sweeps/stress.sh
 #
 # All experiments/lib/measure.sh knobs still apply; only the arrival shape and
 # the concurrency ceiling are forced here.
@@ -47,8 +47,8 @@ echo "  CAPACITY RUN — unpaced burst (LOAD_RATE=0)"
 echo "  ${LOAD_PARALLEL} connections, ${LOAD_BYTES} bytes each, no arrival pacing"
 echo ""
 echo "  Latency figures from this run are queue-dominated and are NOT"
-echo "  0-RTT results. Use run_experiment.sh for latency."
+echo "  0-RTT results. Use run.sh for latency."
 echo "════════════════════════════════════════════════════════════════"
 echo -e "${NC}"
 
-exec "$(dirname "$0")/run_experiment.sh" "$@"
+exec "$(dirname "$0")/../run.sh" "$@"

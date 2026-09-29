@@ -480,7 +480,7 @@ run_experiment() {
 
     # A capacity run's latency figures are not 0-RTT results — say so here, in
     # the run output, rather than relying on whoever reads the report to recall
-    # which knobs were set. See experiments/dpdk/run_stress.sh.
+    # which knobs were set. See experiments/sweeps/stress.sh.
     if [[ "${LOAD_RATE:-2000}" == "0" ]]; then
         warn "CAPACITY RUN (LOAD_RATE=0): the latency block above includes SYN queueing behind the whole burst. Valid readings from this run: establishment success rate and data-plane throughput. NOT valid: any 0-RTT latency claim."
     fi
