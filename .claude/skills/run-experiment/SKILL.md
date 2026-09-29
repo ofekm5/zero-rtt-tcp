@@ -1,6 +1,6 @@
 ---
 name: run-experiment
-description: Run 0-RTT TCP experiments end-to-end across the 4-node chain (Client, ClientNIC, ServerNIC, Server) on AWS EC2 or the RUNS Proxmox lab, and interpret the result. INVOKE THIS SKILL — do not hand-run the orchestrator or read this file as documentation — whenever the request involves running, repeating, or sweeping an experiment on the dpdk / baseline / scapy / proxmox stacks; measuring TTFB, FCT, send_unlock, or server_gap; comparing 0-RTT against the plain-TCP baseline; updating anything under experiments/*/reports/; or diagnosing the 4-VM chain. Triggers on "run experiment", "run N experiments", "run the sweep", "rerun the benchmark", "run integration tests", "test 0-RTT", "measure latency", "compare dpdk vs baseline", "update the reports", "check the VMs", "verify packet flow", "debug the demo", "validate the setup" — and on a /goal or task whose objective is any of those, even when the request is phrased as raw CDK output or bare instance IDs.
+description: Run 0-RTT TCP experiments end-to-end across the 4-node chain (Client, ClientNIC, ServerNIC, Server) on AWS EC2 or the RUNS Proxmox lab, and interpret the result. INVOKE THIS SKILL — do not hand-run the orchestrator or read this file as documentation — whenever the request involves running, repeating, or sweeping an experiment on the dpdk / baseline / proxmox stacks; measuring TTFB, FCT, send_unlock, or server_gap; comparing 0-RTT against the plain-TCP baseline; updating anything under experiments/*/reports/; or diagnosing the 4-VM chain. Triggers on "run experiment", "run N experiments", "run the sweep", "rerun the benchmark", "run integration tests", "test 0-RTT", "measure latency", "compare dpdk vs baseline", "update the reports", "check the VMs", "verify packet flow", "debug the demo", "validate the setup" — and on a /goal or task whose objective is any of those, even when the request is phrased as raw CDK output or bare instance IDs.
 ---
 
 # Run Experiment — 0-RTT Integration Tester
@@ -141,9 +141,9 @@ output of each script.
 
 ### Shared architecture (DPDK + Proxmox)
 
-The DPDK (AWS) and Proxmox runners share **`experiments/lib/core.sh`** —
-all per-step orchestration lives there. The thin per-mode runner only does node
-discovery + MAC resolution, defines transport shims, then calls `run_experiment`:
+Every mode runs through **`experiments/run.sh`**; all per-step orchestration
+lives in **`experiments/lib/core.sh`**. `run.sh` only sources the transport
+(`TRANSPORT`), does node discovery + MAC resolution, then calls `run_experiment`:
 
 | Concern | DPDK (AWS) | Proxmox |
 |---------|------------|---------|
@@ -160,15 +160,15 @@ active + `~/.ssh/config` entry `runs-gateway → 132.75.121.140` (see the
 
 ### Node-script delegation (DPDK + Proxmox)
 
-Per-node startup is delegated to scripts via the transport. Shared scripts live in
-`experiments/nodes/`; NIC-specific scripts in `experiments/dpdk/`:
+Per-node startup is delegated to scripts via the transport. All node scripts live in
+`experiments/nodes/`:
 
 | Node | Node script | Notes |
 |------|-------------|-------|
 | Server | `experiments/nodes/server.sh` | |
 | ServerNIC | `experiments/nodes/servernic.sh` | env: `CLIENTNIC_GW_MAC`, `SERVER_GW_MAC`, `MIDDLE_ENI_MAC`, `SKIP_BUILD=1` |
 | ClientNIC | `experiments/nodes/clientnic.sh <GW_MAC>` | `$1` = ServerNIC eth1 MAC; `SKIP_BUILD=1` (core builds explicitly) |
-| Client | `iperf2 -c` via `run_ttfb_measurement` (`measure.sh`) | `experiments/nodes/client.sh` has an interactive `read` loop — never used for automation |
+| Client | `loadgen.py --mode client` via `run_ttfb_measurement` (`measure.sh`) | `experiments/nodes/client.sh` has an interactive `read` loop — never used for automation |
 
 **Load generator: `experiments/nodes/loadgen.py`** — a single-thread asyncio
 (epoll-driven) TCP generator. iperf has been removed; it was thread-per-connection
@@ -351,16 +351,11 @@ Always: **Server → ServerNIC → ClientNIC → Client**
 # 1. Server
 setsid bash experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &
 
-# 2a. ServerNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
-setsid python3 src/servernic/scapy/main.py --client-iface eth0 --server-iface eth1 \
-    < /dev/null >> /tmp/servernic.log 2>&1 &
-# 2b. ServerNIC — DPDK translator
+# 2. ServerNIC — DPDK translator
 CLIENTNIC_GW_MAC=<cnic-eth1-mac> SERVER_GW_MAC=<server-eth0-mac> MIDDLE_ENI_MAC=<snic-eth1-mac> \
     SKIP_BUILD=1 setsid bash experiments/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &
 
-# 3a. ClientNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
-setsid python3 src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
-# 3b. ClientNIC — DPDK forwarder (GW_MAC = ServerNIC eth1 MAC)
+# 3. ClientNIC — DPDK forwarder (GW_MAC = ServerNIC eth1 MAC)
 SKIP_BUILD=1 setsid bash experiments/nodes/clientnic.sh <GW_MAC> < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client — 100000 conns across 4 ports, paced at 2000/s, 1 KB each
@@ -375,12 +370,6 @@ python3 experiments/nodes/loadgen.py --mode client --host <server-ip> \
 **All modes — IP forwarding on NIC nodes:**
 ```bash
 cat /proc/sys/net/ipv4/ip_forward      # must be 1
-```
-
-**Scapy — block kernel forwarding so userspace wins the race:**
-```bash
-iptables -A FORWARD -p tcp --dport 8080 -j DROP
-iptables -A FORWARD -p tcp --sport 8080 -j DROP
 ```
 
 **DPDK (ClientNIC + ServerNIC):**
@@ -403,12 +392,6 @@ tcpdump --time-stamp-precision=nano -i eth0 -nn -s 128 'tcp port 8080' -w /tmp/c
 tcpdump --time-stamp-precision=nano -i eth0 -nn -s 128 'tcp port 8080' -w /tmp/server_side.pcap &
 ```
 
-**Scapy** uses the legacy on-ClientNIC capture instead (eth0 + eth1):
-```bash
-tcpdump -i eth0 -nn -tttt 'tcp port 8080' -w /tmp/client_side.pcap &
-tcpdump -i eth1 -nn -tttt 'tcp port 8080' -w /tmp/server_side.pcap &
-```
-
 ### Running the analyzer
 
 **DPDK / Proxmox** — `analyze_metrics.py` on ClientNIC against both endpoint pcaps:
@@ -417,13 +400,6 @@ python3 experiments/nodes/analyze_metrics.py \
     --client-pcap /tmp/client_side_endpoint.pcap \
     --server-pcap /tmp/server_side.pcap
 # Output lines: fct=, send_unlock=, server_gap=  (a "missing=" line = failure)
-```
-
-**Scapy** (deprecated — feasibility PoC only) — `validate_0rtt_capture.py` (copy to `/tmp/` first so `src/clientnic/scapy/`
-doesn't shadow the `scapy` package):
-```bash
-cp src/clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py
-python3 /tmp/validate_0rtt.py --client-pcap /tmp/client_side.pcap --server-pcap /tmp/server_side.pcap
 ```
 
 ## Known Issues

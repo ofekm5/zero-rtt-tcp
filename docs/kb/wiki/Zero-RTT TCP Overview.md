@@ -100,17 +100,14 @@ cd infra/dpdk      # or infra/scapy
 
 ## Running the Tests
 
-**Scapy stack** (ClientNIC uses Python/Scapy):
+One entrypoint, `experiments/run.sh`, selects the stack and transport:
 ```bash
-./experiments/scapy/run_experiment.sh
+./experiments/run.sh                       # 0-RTT DPDK stack on AWS (STACK=0rtt TRANSPORT=ssm)
+STACK=baseline ./experiments/run.sh        # plain-TCP baseline on AWS
+TRANSPORT=ssh ./experiments/run.sh         # 0-RTT DPDK stack on the RUNS Proxmox lab
 ```
 
-**DPDK stack** (ClientNIC uses C/DPDK):
-```bash
-./experiments/dpdk/run_experiment.sh
-```
-
-Both scripts discover all 4 VMs via AWS SSM, pull latest code, rebuild if needed, start services in the correct order, run a client connection, capture packets, and validate 0-RTT behavior with `validate_0rtt_capture.py`. Exit code = number of failures.
+It discovers all 4 VMs (AWS SSM or the lab's SSH gateway), syncs the code, builds, starts services in the correct order, runs the client load, captures packets at both endpoints, and analyzes them with `analyze_metrics.py`. Exit code = number of failures.
 
 ### Load Generation
 
@@ -147,9 +144,9 @@ pacing, so per-connection latency measured queueing rather than the network path
 
 | Script | Question | Reads as |
 |--------|----------|----------|
-| `experiments/dpdk/run_experiment.sh` | Does 0-RTT remove one RTT? | Latency — `Send unlock` is the headline metric |
-| `experiments/dpdk/run_stress.sh` | Where does the data plane break? | Capacity — establishment success rate and throughput only |
-| `experiments/baseline-tcp/run_experiment.sh` | What does plain TCP cost? | The comparison point; same knobs, same endpoint setup |
+| `experiments/run.sh` | Does 0-RTT remove one RTT? | Latency — `Send unlock` is the headline metric |
+| `experiments/sweeps/stress.sh` | Where does the data plane break? | Capacity — establishment success rate and throughput only |
+| `STACK=baseline experiments/run.sh` | What does plain TCP cost? | The comparison point; same knobs, same endpoint setup |
 
 Fusing latency and capacity into one run answers neither: a burst makes every
 latency sample queue-dominated, and a success rate depressed by endpoint resource

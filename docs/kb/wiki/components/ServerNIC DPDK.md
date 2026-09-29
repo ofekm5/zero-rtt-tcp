@@ -117,7 +117,7 @@ c2s ACK−delta and s2c SEQ+delta with 32-bit wraparound cases.
 Run the full experiment (drives all 4 VMs via SSM):
 
 ```bash
-./experiments/dpdk/run_experiment.sh
+./experiments/run.sh
 ```
 
 `servernic-dpdk` and `clientnic-dpdk-forwarder` are a matched pair — deploy together.

@@ -202,8 +202,7 @@ FCT cannot improve. See §E.
 ### B2 ✅ `send_unlock` promoted to the headline metric
 
 **Files:** `experiments/lib/endpoint.sh` (`endpoint_latency_summary()`),
-`experiments/lib/core.sh`, `experiments/dpdk/run_experiment.sh`,
-`experiments/baseline-tcp/run_experiment.sh`
+`experiments/lib/core.sh` (both stacks, via `experiments/run.sh`)
 
 The latency block is now explicitly tiered:
 
@@ -227,8 +226,7 @@ a change in either is not by itself evidence about the handshake.
 
 ### B3 ✅ Dead client-stdout metric rows removed
 
-**Files:** `experiments/lib/core.sh`,
-`experiments/baseline-tcp/run_experiment.sh`
+**Files:** `experiments/lib/core.sh` (both stacks, via `experiments/run.sh`)
 
 **Was:** four rows piped `CLIENT_STDOUT` into `summarize_metric` for `ttfb` and
 `fct`. `loadgen.py` emits no `metric=` lines at all, so all four printed
@@ -246,7 +244,7 @@ empty metric rows.
 
 ### C1 ✅ Baseline now captures and analyzes endpoint pcaps
 
-**File:** `experiments/baseline-tcp/run_experiment.sh`
+**File:** `experiments/lib/core.sh` (`STACK=baseline ./experiments/run.sh`)
 
 **Was:** no tcpdump, no analyzer — the baseline produced no `send_unlock`, FCT or
 `server_gap` at all, so the 0-RTT numbers had nothing to be compared against.
@@ -262,8 +260,8 @@ direction.
 
 ### C2 ✅ Both stacks share one endpoint-setup implementation
 
-**File:** `experiments/lib/endpoint.sh` (sourced by `core.sh` and by
-`baseline-tcp/run_experiment.sh`)
+**File:** `experiments/lib/endpoint.sh` (sourced by `core.sh`, which
+runs both stacks)
 
 Rather than documenting that the two runs *should* match, `endpoint_tune()`,
 `endpoint_capture_start/stop()`, `endpoint_analyze()` and
@@ -282,7 +280,7 @@ two copies of setup code drift, one shared function cannot.
 
 ### D1 ✅ Capacity runs are a separate entry point
 
-**File:** `experiments/dpdk/run_stress.sh` (new)
+**File:** `experiments/sweeps/stress.sh`
 
 Sets `LOAD_RATE=0` and lifts `LOAD_CONCURRENCY` to `LOAD_PARALLEL` (so the
 semaphore cannot quietly convert the burst back into a paced run), prints a
@@ -302,7 +300,7 @@ Deleted `src/client-app/iperf_client.sh` and `src/server-app/iperf_server.sh`
 100k pthreads in one process). Both READMEs rewritten around `loadgen.py`, and
 the stale `pkill -f 'iperf -s'` in the baseline orchestrator (which killed
 nothing, since the baseline server is `loadgen.py`) now targets `loadgen.py`.
-Same fix applied in `experiments/scapy/run_experiment.sh` and `core.sh`.
+Same fix applied in `core.sh`.
 
 Prose describing behavior that no longer exists was corrected in `README.md`,
 `CLAUDE.md`, `.claude/skills/run-experiment/SKILL.md`,
