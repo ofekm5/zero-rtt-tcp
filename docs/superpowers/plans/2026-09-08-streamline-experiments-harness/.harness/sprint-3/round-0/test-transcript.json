@@ -1,0 +1,17 @@
+{
+  "sprint": 3,
+  "round": 0,
+  "startedAt": "2026-09-28T00:00:00Z",
+  "criteria": [
+    {
+      "id": "C1",
+      "command": "pytest experiments/tests/test_run_sh.py -q",
+      "exitCode": 4,
+      "stdout": "no tests ran in 0.00s",
+      "stdoutTruncated": false,
+      "stderr": "ERROR: file or directory not found: experiments/tests/test_run_sh.py",
+      "stderrTruncated": false,
+      "durationMs": 1258
+    }
+  ]
+}

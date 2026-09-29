@@ -1,0 +1,27 @@
+{
+  "sprint": 2,
+  "round": 0,
+  "startedAt": "2026-09-28T12:48:16Z",
+  "criteria": [
+    {
+      "id": "C1",
+      "command": "( aws() { return 97; }; ssh() { return 97; }; export -f aws ssh; ! o1=$(STACK=quic bash experiments/run.sh 2>&1) && grep -q 0rtt <<< \"$o1\" && grep -q baseline <<< \"$o1\" && ! o2=$(TRANSPORT=pigeon bash experiments/run.sh 2>&1) && grep -q ssm <<< \"$o2\" && grep -q ssh <<< \"$o2\" )",
+      "exitCode": 1,
+      "stdout": "",
+      "stdoutTruncated": false,
+      "stderr": "",
+      "stderrTruncated": false,
+      "durationMs": 127
+    },
+    {
+      "id": "C2",
+      "command": "test -x experiments/run.sh",
+      "exitCode": 1,
+      "stdout": "",
+      "stdoutTruncated": false,
+      "stderr": "",
+      "stderrTruncated": false,
+      "durationMs": 31
+    }
+  ]
+}

@@ -1,16 +1,14 @@
-# Sprint 2: Write single entrypoint and mock test
+# Sprint 2: run.sh dispatch
 
 ## Tasks
-- Task 5: Write the single entrypoint with `STACK`/`TRANSPORT` dispatch
-- Task 6: Add the mock-transport test that pins the remote-call sequence
+- Task 5.2: Add `experiments/run.sh`, the single entrypoint with `STACK`/`TRANSPORT` dispatch
 
 ## Acceptance criteria
-- C1: `experiments/run.sh` is syntactically valid, is executable, and references both `STACK` and `TRANSPORT` — verify: `bash -n experiments/run.sh && test -x experiments/run.sh && grep -qE '\bSTACK\b' experiments/run.sh && grep -qE '\bTRANSPORT\b' experiments/run.sh`
-- C2: The mock-transport test passes for all supported `STACK`×`TRANSPORT` combinations, asserting the ordered remote-call sequence and that `STACK=baseline` omits NIC build and start calls — verify: `pytest experiments/tests/test_run_sh.py -q`
+- C1: `experiments/run.sh` exits non-zero with a message naming the accepted `STACK` values when given an unrecognised `STACK`, and exits non-zero with a message naming the accepted `TRANSPORT` values when given an unrecognised `TRANSPORT`, without making any remote call — verify: `( aws() { return 97; }; ssh() { return 97; }; export -f aws ssh; ! o1=$(STACK=quic bash experiments/run.sh 2>&1) && grep -q 0rtt <<< "$o1" && grep -q baseline <<< "$o1" && ! o2=$(TRANSPORT=pigeon bash experiments/run.sh 2>&1) && grep -q ssm <<< "$o2" && grep -q ssh <<< "$o2" )`
+- C2: `experiments/run.sh` exists and is marked executable — verify: `test -x experiments/run.sh`
 
 ## Out of scope
-- Deleting the four `run_experiment.sh` files — that is Sprint 3 (they coexist with `run.sh` until Sprint 3)
-- Updating `.github/workflows/`, `.claude/skills/`, or `CLAUDE.md` to reference `run.sh` — that is Sprint 4
-- Moving sweeps to `experiments/sweeps/` — that is Sprint 3
-- Changing report output directories — that is Sprint 3
-- Any change to `src/` or to measurement logic
+- Adding the mock-transport pytest suite (sprint 3)
+- Writing reports to `reports/<stack>/` (sprint 4)
+- Deleting the four runners (sprint 5)
+- Updating callers in `.github/workflows/`, `.claude/skills/`, and `CLAUDE.md` (sprint 6)

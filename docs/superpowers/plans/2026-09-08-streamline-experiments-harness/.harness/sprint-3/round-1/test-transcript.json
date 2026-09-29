@@ -1,0 +1,17 @@
+{
+  "sprint": 3,
+  "round": 1,
+  "startedAt": "2026-09-28T18:30:38Z",
+  "criteria": [
+    {
+      "id": "C1",
+      "command": "pytest experiments/tests/test_run_sh.py -q",
+      "exitCode": 0,
+      "stdout": "....                                                                     [100%]\n4 passed in 13.98s",
+      "stdoutTruncated": false,
+      "stderr": "",
+      "stderrTruncated": false,
+      "durationMs": 14767
+    }
+  ]
+}

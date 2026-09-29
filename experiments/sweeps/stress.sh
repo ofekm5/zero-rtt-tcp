@@ -32,6 +32,9 @@ set -uo pipefail
 # LOAD_PARALLEL so the semaphore does not quietly convert the burst back into a
 # paced run — an unintended throttle would make the capacity number meaningless.
 export LOAD_RATE=0
+# A capacity run of the 0-RTT data plane — pinned, so an inherited STACK=baseline
+# can't silently turn it into a baseline run.
+export STACK=0rtt
 export LOAD_PARALLEL="${LOAD_PARALLEL:-100000}"
 export LOAD_CONCURRENCY="${LOAD_CONCURRENCY:-$LOAD_PARALLEL}"
 

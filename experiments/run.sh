@@ -37,6 +37,12 @@ case "$TRANSPORT" in
     ssh) REPO_PATH="/home/user/zero-rtt-tcp" ;;
     *) echo "ERROR: unrecognised TRANSPORT='$TRANSPORT' — accepted values: ssm, ssh" >&2; exit 2 ;;
 esac
+# The lab is static DPDK VMs, not IaC — there is no baseline stack to reach over
+# ssh, and running the baseline flow there would leave routes/netem on shared VMs.
+if [[ "$STACK" == baseline && "$TRANSPORT" == ssh ]]; then
+    echo "ERROR: STACK=baseline is AWS-only (TRANSPORT=ssm) — the lab has no baseline stack" >&2
+    exit 2
+fi
 
 SERVER_PORT=8080
 # Measurement ROUNDS (each round opens LOAD_PARALLEL connections across

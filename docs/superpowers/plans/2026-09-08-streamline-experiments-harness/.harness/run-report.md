@@ -1,47 +1,32 @@
 # Run report — 2026-09-08-streamline-experiments-harness
 
-**completed** — 1 merged · 1 diff-budget-exceeded · 2 dependency-blocked | 165 tool calls, 3 denied | 42m from first to last tool call
+**pr-pending** — 6 merged | 556 tool calls, 7 denied by sandbox, 0 by permission system | 1134m from first to last tool call
 
 ## Lanes
 
-| lane | status | rounds | verify: passing per round | tool calls | denied | time |
-|---|---|---|---|---|---|---|
-| s1 | merged | 1 | r0 1/4 → r1 4/4 | 80 | 1 | 10m |
-| s2 | diff-budget-exceeded | 1 | r0 0/2 → r1 0/0 | 64 | 2 | 20m |
-| s3 | dependency-blocked | 0 | — | 0 | 0 | — |
-| s4 | dependency-blocked | 0 | — | 0 | 0 | — |
+| lane | status | rounds | verify: passing per round | tool calls | sandbox denied | permission denied | time |
+|---|---|---|---|---|---|---|---|
+| s1 | merged | 1 | r0 0/0 → r1 0/0 | 75 | 3 | 0 | 15m |
+| s2 | merged | 1 | r0 0/2 → r1 2/2 | 56 | 0 | 0 | 345m |
+| s3 | merged | 2 | r0 0/1 → r1 1/1 → r2 1/1 | 130 | 0 | 0 | 38m |
+| s4 | merged | 1 | r0 0/1 → r1 1/1 | 91 | 0 | 0 | 674m |
+| s5 | merged | 1 | r0 2/4 → r1 4/4 | 62 | 3 | 0 | 11m |
+| s6 | merged | 1 | r0 0/0 → r1 0/0 | 127 | 1 | 0 | 38m |
 
 ## Tool selection
 
 | role | Bash | Edit | Glob | Grep | Read | Write |
 |---|---|---|---|---|---|---|
-| builder | 68 | 10 | 0 | 0 | 4 | 4 |
-| grader | 32 | 0 | 0 | 0 | 0 | 0 |
-| planner | 0 | 0 | 5 | 10 | 1 | 5 |
-| verifier | 26 | 0 | 0 | 0 | 0 | 0 |
+| builder | 180 | 47 | 2 | 9 | 21 | 9 |
+| grader | 179 | 0 | 0 | 0 | 6 | 0 |
+| planner | 0 | 0 | 3 | 4 | 1 | 7 |
+| verifier | 88 | 0 | 0 | 0 | 0 | 0 |
 
-Most-run commands: `verifier: \` ×15, `builder: sed -n` ×6, `builder: cat -n` ×6, `grader: git diff` ×5, `grader: mkdir -p` ×4, `verifier: mkdir -p` ×3, `builder: git diff` ×3, `builder: git add` ×3
+Most-run commands: `builder: sed -n` ×28, `grader: git show` ×24, `verifier: {` ×22, `builder: grep -n` ×22, `grader: mkdir -p` ×19, `grader: git log` ×18, `verifier: mkdir -p` ×14, `grader: cat "C:/Users/shir/.claude/agents/grader.md"` ×13
 
 ## What went wrong
 
-- Run stopped with **completed** — see launch-task-runner SKILL.md for this status.
-
-### s2 — diff-budget-exceeded
-
-- one round inserted more than the diff budget — sprint under-decomposed
-- Sandbox denied builder Bash `python -`: reaches outside the worktree: `ssh` in command position with no shell-function shim defined before first use
-- Sandbox denied builder Bash `git commit`: reaches outside the worktree: `ssh` in command position with no shell-function shim defined before first use
-- Evidence: `C:\Users\shir\Documents\GitHub\.task-runner-worktrees\2026-09-08-streamline-experiments-harness-s2\.harness\sprint-2`
-
-### s3 — dependency-blocked
-
-- a sprint it depends on did not merge
-- Evidence: `C:\Users\shir\Documents\GitHub\.task-runner-worktrees\2026-09-08-streamline-experiments-harness\.harness\sprint-3`
-
-### s4 — dependency-blocked
-
-- a sprint it depends on did not merge
-- Evidence: `C:\Users\shir\Documents\GitHub\.task-runner-worktrees\2026-09-08-streamline-experiments-harness\.harness\sprint-4`
+- Run stopped with **pr-pending** — see launch-task-runner SKILL.md for this status.
 
 ## Tokens, cost, latency
 

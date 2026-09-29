@@ -8,8 +8,8 @@
 
 # report_header [TITLE_TEXT] IMPL_INFO OVERALL_RESULT [DATE_FORMAT]
 #   TITLE_TEXT     — report title, before " — <date>" (default: the shared
-#                    "Integration Test Report" title used by dpdk/scapy;
-#                    pass "" to take the default). baseline-tcp overrides it.
+#                    "Integration Test Report" title used by _report_0rtt_ssm;
+#                    pass "" to take the default). _report_baseline overrides it.
 #   IMPL_INFO      — one or more "**Key**: value" markdown lines
 #   OVERALL_RESULT — caller-formatted result string (may include emoji)
 #   DATE_FORMAT    — strftime format for the title date (default: %Y-%m-%d)
@@ -50,7 +50,7 @@ report_section() {
 #   path. Body and filename are the ones the matching pre-run.sh runner wrote:
 #     0rtt     + ssm  dpdk/     integration-test-report-<date>.md
 #     0rtt     + ssh  proxmox/  proxmox-test-report-<date>.md
-#     baseline        baseline-tcp/  baseline-report-<date-time>.md
+#     baseline        baseline-tcp/  baseline-report-<date-time>.md  (run.sh rejects baseline+ssh)
 #   Reads FAILURES, CONNECTIONS, the LOAD_*/NETEM_RTT_MS knobs, CLIENT_STDOUT,
 #   the CORE_* results run_experiment exports and (ssh only) LAB_GATEWAY.
 write_run_report() {
@@ -60,7 +60,6 @@ write_run_report() {
     case "$stack/$transport" in
         0rtt/ssm) file="$dir/integration-test-report-$(date +%Y-%m-%d).md"; _report_0rtt_ssm > "$file" ;;
         0rtt/ssh) file="$dir/proxmox-test-report-$(date +%Y-%m-%d).md";     _report_0rtt_ssh > "$file" ;;
-        # ponytail: baseline+ssh reuses the SSM baseline body — no lab runner existed to copy
         baseline/*) file="$dir/baseline-report-$(date +%Y-%m-%d-%H%M%S).md"; _report_baseline > "$file" ;;
     esac
     log "Report saved to $file"

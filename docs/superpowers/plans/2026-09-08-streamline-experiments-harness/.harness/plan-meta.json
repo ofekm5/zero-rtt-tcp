@@ -1,33 +1,17 @@
 {
   "verdict": "ok",
   "sprints": [
-    {
-      "id": 1,
-      "name": "Reorganize directory layout",
-      "dependsOn": [],
-      "touches": ["experiments"]
-    },
-    {
-      "id": 2,
-      "name": "Write single entrypoint and mock test",
-      "dependsOn": [1],
-      "touches": ["experiments/run.sh", "experiments/lib/core.sh", "experiments/tests/test_run_sh.py"]
-    },
-    {
-      "id": 3,
-      "name": "Delete old runners and fix report paths",
-      "dependsOn": [2],
-      "touches": ["experiments"]
-    },
-    {
-      "id": 4,
-      "name": "Update callers and roadmap",
-      "dependsOn": [3],
-      "touches": [".github/workflows/run-experiment.yml", ".claude/skills", "CLAUDE.md", "experiments/README.md", "roadmap.md"]
-    }
+    { "id": 1, "name": "core.sh honours STACK", "tasks": [5.1], "dependsOn": [], "touches": ["experiments/lib/core.sh"] },
+    { "id": 2, "name": "run.sh dispatch", "tasks": [5.2], "dependsOn": [1], "touches": ["experiments/run.sh", "experiments/lib/transport"] },
+    { "id": 3, "name": "pin run.sh remote-call sequence", "tasks": [6], "dependsOn": [2], "touches": ["experiments/tests/test_run_sh.py"] },
+    { "id": 4, "name": "run.sh report under reports/<stack>/", "tasks": [8], "dependsOn": [3], "touches": ["experiments/run.sh", "experiments/lib/report.sh", "experiments/reports", "experiments/tests", "experiments/README.md"] },
+    { "id": 5, "name": "delete the runners, move the sweeps", "tasks": [7], "dependsOn": [4], "touches": ["experiments"] },
+    { "id": 6, "name": "retarget callers at run.sh", "tasks": [9], "dependsOn": [5], "touches": [".github/workflows/run-experiment.yml", ".claude/skills/run-experiment", ".claude/skills/offline-analysis", "CLAUDE.md", "experiments/README.md", "experiments/run.sh", "experiments/lib", "experiments/nodes", "experiments/sweeps"] }
   ],
-  "manualTasks": [],
+  "manualTasks": [
+    "- [ ] 10 Rewrite the roadmap section to match the corrected ordering — manual review"
+  ],
   "triage": {
-    "skippedReason": "triage-verdict: ok found in plan file C:/Users/shir/Documents/GitHub/zero-rtt-tcp/docs/superpowers/plans/2026-09-08-streamline-experiments-harness.md"
+    "skippedReason": "triage-verdict: ok found in plan file (docs/superpowers/plans/2026-09-08-streamline-experiments-harness.md)"
   }
 }

@@ -179,7 +179,7 @@ and had no arrival pacing. Knobs (defined in `measure.sh`, override via env):
 - **`LOAD_RATE`** (default 2000 conn/s) — **arrival pacing**. Connections are
   spawned on a schedule rather than all at once, so per-connection latency reflects
   the network path instead of queueing behind the batch. `LOAD_RATE=0` restores the
-  burst; that is a capacity run, not a latency run (see `run_stress.sh`).
+  burst; that is a capacity run, not a latency run (see `experiments/sweeps/stress.sh`).
 - **`LOAD_BYTES`** (default 1024) — payload per connection. One segment, so flow
   completion time is dominated by the handshake 0-RTT shortens, not by transfer.
 - **`LOAD_CONCURRENCY`** (default 2000) — in-flight connection ceiling.

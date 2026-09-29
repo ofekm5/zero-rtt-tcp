@@ -1,16 +1,13 @@
-# Sprint 3: Delete old runners and fix report paths
+# Sprint 3: pin run.sh remote-call sequence
 
 ## Tasks
-- Task 7: Delete the four runners and the Scapy stack; move the sweeps
-- Task 8: Point new report output at `reports/{0rtt,baseline}/`
+- Task 6: Add the mock-transport test that pins the remote-call sequence
 
 ## Acceptance criteria
-- C1: `experiments/run.sh` is the only orchestrator and no `run_experiment.sh` remains anywhere under `experiments/` — verify: `test -x experiments/run.sh && test -z "$(find experiments -name run_experiment.sh)"`
-- C2: The Scapy stack directory is deleted and both sweeps exist under `experiments/sweeps/` — verify: `test ! -d experiments/scapy && test -f experiments/sweeps/think.sh -a -f experiments/sweeps/stress.sh`
-- C3: The report-path test passes and the new output directories exist — verify: `pytest experiments/tests/test_report_path.py -q && test -d experiments/reports/0rtt -a -d experiments/reports/baseline`
+- C1: The mock-transport test suite exists and all cases pass — for each supported `STACK`×`TRANSPORT` combination, `run.sh` issues the same ordered remote-call sequence as the corresponding old runner, and `STACK=baseline` produces no NIC build or start calls — verify: `pytest experiments/tests/test_run_sh.py -q`
 
 ## Out of scope
-- Updating `.github/workflows/`, `.claude/skills/`, or `CLAUDE.md` — that is Sprint 4
-- Moving or deleting historical reports under `experiments/dpdk/reports/` and `experiments/baseline-tcp/reports/`
-- Any change to `src/` or to measurement logic in the moved scripts
-- Files under `docs/openspec/changes/archive/` or `docs/kb/raw/`
+- Writing reports to `reports/<stack>/` (sprint 4)
+- Deleting the four runners (sprint 5)
+- Updating callers in `.github/workflows/`, `.claude/skills/`, and `CLAUDE.md` (sprint 6)
+- Any change to `experiments/lib/core.sh`, `experiments/run.sh`, or the transport shims

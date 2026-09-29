@@ -36,7 +36,7 @@
 #                       the middle leg). The five MACs may be "" for baseline.
 #
 # Usage:
-#   source "$(dirname "$0")/../lib/core.sh"
+#   source "$(dirname "$0")/lib/core.sh"   # from experiments/run.sh
 #   run_experiment <servernic_eth1_mac> <clientnic_eth1_mac> <server_eth0_mac> \
 #                  <clientnic_eth2_mac> <servernic_eth2_mac>
 

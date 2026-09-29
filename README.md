@@ -113,17 +113,14 @@ cd infra/dpdk      # or infra/scapy
 
 ## Running the Tests
 
-**Scapy stack** (ClientNIC uses Python/Scapy):
+One entrypoint, two variables:
 ```bash
-./experiments/scapy/run_experiment.sh
+./experiments/run.sh                        # 0-RTT DPDK stack on AWS (STACK=0rtt, TRANSPORT=ssm)
+STACK=baseline ./experiments/run.sh         # plain-TCP baseline on AWS (infra/baseline)
+TRANSPORT=ssh ./experiments/run.sh          # 0-RTT on the university lab's static VMs, over SSH
 ```
 
-**DPDK stack** (ClientNIC uses C/DPDK):
-```bash
-./experiments/dpdk/run_experiment.sh
-```
-
-Both scripts discover all 4 VMs via AWS SSM, pull latest code, rebuild if needed, start services in the correct order, run a client connection, capture packets, and validate 0-RTT behavior with `validate_0rtt_capture.py`. Exit code = number of failures.
+`STACK` is `0rtt` (default) or `baseline`; `TRANSPORT` is `ssm` (default, AWS) or `ssh` (lab). The lab has no baseline stack, so `STACK=baseline TRANSPORT=ssh` is rejected. The script discovers the 4 VMs, pulls latest code, rebuilds if needed, starts services in the correct order, drives the load, captures packets and writes a report to `experiments/reports/<stack>/`. Exit code = number of failures.
 
 ### Load Generation
 
@@ -160,9 +157,9 @@ pacing, so per-connection latency measured queueing rather than the network path
 
 | Script | Question | Reads as |
 |--------|----------|----------|
-| `experiments/dpdk/run_experiment.sh` | Does 0-RTT remove one RTT? | Latency — time the app is blocked in `connect()` before it can send data is the headline metric |
-| `experiments/dpdk/run_stress.sh` | Where does the data plane break? | Capacity — establishment success rate and throughput only |
-| `experiments/baseline-tcp/run_experiment.sh` | What does plain TCP cost? | The comparison point; same knobs, same endpoint setup |
+| `experiments/run.sh` | Does 0-RTT remove one RTT? | Latency — time the app is blocked in `connect()` before it can send data is the headline metric |
+| `experiments/sweeps/stress.sh` | Where does the data plane break? | Capacity — establishment success rate and throughput only |
+| `STACK=baseline experiments/run.sh` | What does plain TCP cost? | The comparison point; same knobs, same endpoint setup |
 
 Fusing latency and capacity into one run answers neither: a burst makes every
 latency sample queue-dominated, and a success rate depressed by endpoint resource

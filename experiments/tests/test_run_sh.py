@@ -9,16 +9,15 @@ way a healthy chain would, then runs the real run.sh end to end. The EC2 API
 (`aws`), the lab reachability probe (`ssh`) and `sleep` are stubbed too, so no
 call leaves the machine and a run takes seconds.
 
-The expected sequences (the RECORDED block at the bottom) are generated, not
-typed: `python experiments/tests/test_run_sh.py --record` runs each old runner
-under this same harness and rewrites the block with its calls, verbatim:
+The expected sequences (the RECORDED block at the bottom) were generated, not
+typed: each old runner was run under this same harness at b009590 and its calls
+recorded verbatim:
     0rtt     + ssm  <- experiments/dpdk/run_experiment.sh
     0rtt     + ssh  <- experiments/proxmox/run_experiment.sh
     baseline + ssm  <- experiments/baseline-tcp/run_experiment.sh
-While the old runners exist, re-running --record and finding no git diff proves
-the block is theirs. The pinned block is the parity check — there is
-deliberately no test that runs the old runners, so it outlives their deletion.
-The test fails if run.sh drops, adds, reorders or changes a remote call.
+Those runners are deleted now, so the block is hand-maintained: an intentional
+change to run.sh's remote calls edits it in the same commit. The test fails if
+run.sh drops, adds, reorders or changes a remote call.
 
 No AWS, no SSH, no live infrastructure.
 """
@@ -28,7 +27,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -156,35 +154,6 @@ _OLD_RUNNERS = {
     ("baseline", "ssm"): "baseline-tcp/run_experiment.sh",
 }
 
-_BEGIN = "# >>> RECORDED by `python experiments/tests/test_run_sh.py --record` — do not edit"
-_END = "# <<< RECORDED"
-
-
-def _record():
-    """Rewrite the RECORDED block from the old runners' own calls.
-
-    Each runner runs from a temp copy with lib/ beside it, so the report it
-    writes on exit lands in the temp dir, not in the repo. STACK and TRANSPORT
-    are passed empty — i.e. unset, as the old runners were always invoked.
-    """
-    experiments = _TESTS_DIR.parent
-    text = ""
-    with tempfile.TemporaryDirectory() as tmp:
-        shutil.copytree(experiments / "lib", Path(tmp, "lib"))
-        for (stack, transport), runner in _OLD_RUNNERS.items():
-            copy = Path(tmp, runner)
-            copy.parent.mkdir()
-            shutil.copy(experiments / runner, copy)
-            rc, calls = _calls(copy.as_posix(), "", "")
-            text += f"== {stack} {transport} {rc} <- {runner}\n" + "".join(c + "\n" for c in calls)
-    assert '"""' not in text, "a call would end the raw string literal"
-    src = Path(__file__).read_text(encoding="utf-8")
-    head, rest = src.split(f"\n{_BEGIN}\n", 1)
-    tail = rest.split(f"\n{_END}\n", 1)[1]
-    block = f'_RECORDED = r"""\n{text}"""'
-    Path(__file__).write_text(f"{head}\n{_BEGIN}\n{block}\n{_END}\n{tail}", encoding="utf-8", newline="\n")
-
-
 def _parse(text):
     """RECORDED block -> {(stack, transport): (exit code, calls)}."""
     out = {}
@@ -222,22 +191,35 @@ def test_baseline_issues_no_nic_build_or_start(run_sh):
     assert nic == []
 
 
-@pytest.mark.parametrize("stack,transport,prefix", [
-    ("0rtt", "ssm", "0rtt/integration-test-report-"),
-    ("0rtt", "ssh", "0rtt/proxmox-test-report-"),
-    ("baseline", "ssm", "baseline/baseline-report-"),
+@pytest.mark.parametrize("stack,transport", [
+    ("dpdk", "ssm"), ("0rtt", "aws"),   # unknown STACK / TRANSPORT
+    ("baseline", "ssh"),                 # no baseline stack in the lab
 ])
-def test_run_sh_writes_its_report_under_reports_stack(run_sh, stack, transport, prefix):
+def test_rejected_stack_or_transport_exits_2_before_any_remote_call(run_sh, stack, transport):
+    rc, calls = _calls(run_sh, stack, transport)
+    assert (rc, calls) == (2, ())
+
+
+# The last section each body writes: present only if the report ran to the end
+# (the `> "$file"` redirect creates the file before the body is written).
+@pytest.mark.parametrize("stack,transport,prefix,last", [
+    ("0rtt", "ssm", "0rtt/integration-test-report-", "## Packet Analysis"),
+    ("0rtt", "ssh", "0rtt/proxmox-test-report-", "## Packet Analysis"),
+    ("baseline", "ssm", "baseline/baseline-report-", "## Notes"),
+])
+def test_run_sh_writes_its_report_under_reports_stack(run_sh, stack, transport, prefix, last):
     _calls(run_sh, stack, transport)
     reports = Path(run_sh).parent / "reports"
-    assert any(p.relative_to(reports).as_posix().startswith(prefix) for p in reports.rglob("*.md"))
+    written = [p for p in reports.rglob("*.md") if p.relative_to(reports).as_posix().startswith(prefix)]
+    assert written
+    assert all(last in p.read_text(encoding="utf-8") for p in written)
 
 
 # 0rtt+ssh records exit 1 and no client-load call, exactly as proxmox/run_experiment.sh:
 # measure.sh's run_ttfb_measurement calls ssm_run, which the SSH transport does not
 # define, so the load step fails with "command not found".
 # Every entry is "<verb> <node> <command, whitespace collapsed>".
-# >>> RECORDED by `python experiments/tests/test_run_sh.py --record` — do not edit
+# >>> RECORDED from the old runners at b009590 — edit only with a deliberate run.sh change
 _RECORDED = r"""
 == 0rtt ssm 0 <- dpdk/run_experiment.sh
 run clientnic rm -f /tmp/clientnic_smoke.log; setsid /home/ec2-user/zero-rtt-tcp/src/clientnic/dpdk-forwarder/builddir/clientnic-dpdk-forwarder -l 0 -- --port=8080 --gw-mac=mac-servernic-eth1 --client-port-mac=mac-clientnic-eth2 --server-port-mac=mac-clientnic-eth1 < /dev/null > /tmp/clientnic_smoke.log 2>&1 & BPID=$!; sleep 3; kill $BPID 2>/dev/null; wait $BPID 2>/dev/null; true
@@ -397,7 +379,4 @@ RECORDED = _parse(_RECORDED)
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--record"]:
-        _record()
-    else:
-        sys.exit(pytest.main([__file__, "-v"]))
+    sys.exit(pytest.main([__file__, "-v"]))

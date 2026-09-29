@@ -1,0 +1,47 @@
+{
+  "sprint": 5,
+  "round": 1,
+  "startedAt": "2026-09-29T06:14:13Z",
+  "criteria": [
+    {
+      "id": "C1",
+      "command": "test -z \"$(find experiments -name run_experiment.sh)\" && test ! -d experiments/scapy && test -f experiments/sweeps/think.sh -a -f experiments/sweeps/stress.sh",
+      "exitCode": 0,
+      "stdout": "",
+      "stdoutTruncated": false,
+      "stderr": "",
+      "stderrTruncated": false,
+      "durationMs": 61
+    },
+    {
+      "id": "C2",
+      "command": "test -x experiments/run.sh && test -z \"$(find experiments -name run_experiment.sh)\"",
+      "exitCode": 0,
+      "stdout": "",
+      "stdoutTruncated": false,
+      "stderr": "",
+      "stderrTruncated": false,
+      "durationMs": 55
+    },
+    {
+      "id": "C3",
+      "command": "[ \"$(grep -rl '^log()' experiments/lib/ | wc -l)\" -eq 1 ] && [ \"$(grep -rl 'Integration Test Report' experiments/lib/ | wc -l)\" -eq 1 ]",
+      "exitCode": 0,
+      "stdout": "",
+      "stdoutTruncated": false,
+      "stderr": "",
+      "stderrTruncated": false,
+      "durationMs": 142
+    },
+    {
+      "id": "C4",
+      "command": "test -f experiments/nodes/client.sh -a -f experiments/nodes/server.sh -a -f experiments/nodes/clientnic.sh -a -f experiments/nodes/servernic.sh -a -f experiments/nodes/loadgen.py -a -f experiments/nodes/analyze_metrics.py && test -z \"$(ls experiments/lib/*.py 2>/dev/null)\"",
+      "exitCode": 0,
+      "stdout": "",
+      "stdoutTruncated": false,
+      "stderr": "",
+      "stderrTruncated": false,
+      "durationMs": 56
+    }
+  ]
+}
