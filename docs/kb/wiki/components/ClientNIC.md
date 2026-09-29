@@ -116,7 +116,7 @@ meson setup builddir && ninja -C builddir
 sudo ./tests/run_dpdk_tests.sh builddir/clientnic-dpdk-forwarder
 ```
 
-**Integration test** (`experiments/dpdk/run_experiment.sh`) — end-to-end 4-VM test validating actual 0-RTT behavior: starts Server → ServerNIC → ClientNIC → Client via SSM node scripts, then runs `validate_0rtt_capture.py` and writes a report to `experiments/dpdk/reports/`.
+**Integration test** (`experiments/run.sh`) — end-to-end 4-VM test validating actual 0-RTT behavior: starts Server → ServerNIC → ClientNIC → Client via SSM node scripts, then runs `validate_0rtt_capture.py` and writes a report to `experiments/reports/0rtt/`.
 
 Manual verification with tcpdump:
 ```bash

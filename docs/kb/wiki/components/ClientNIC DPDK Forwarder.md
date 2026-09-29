@@ -130,7 +130,7 @@ flow, transparent c2s/s2c forwarding (seq/ack/IP-payload unchanged).
 Run the full experiment (drives all 4 VMs via SSM):
 
 ```bash
-./experiments/dpdk/run_experiment.sh
+./experiments/run.sh
 ```
 
 The experiment uses `clientnic-dpdk-forwarder` on ClientNIC and `servernic-dpdk` on ServerNIC

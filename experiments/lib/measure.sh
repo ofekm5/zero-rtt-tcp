@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared measurement helpers for experiment orchestrators.
-# Source after ssm.sh. Requires: ssm_run, json_idx, log, pass, fail, warn.
+# Source after a transport shim. Requires: remote_run, json_idx, log, pass, fail, warn.
 #
 # Load-generator knobs (single source of truth; override via env):
 #   LOAD_PARALLEL : total parallel TCP connections per round (default 100000)
@@ -12,7 +12,7 @@
 #   LOAD_TIMEOUT  : seconds a measurement round may run before SSM gives up
 #                    (default 1800). 100000 conns x 1 MB across a 50 ms-netem path
 #                    moves ~100 GB and takes far longer than the old 120 s cap —
-#                    ssm_run polls up to this value instead of the ~100 s waiter.
+#                    the transport polls up to this value instead of the ~100 s waiter.
 #   LOAD_BYTES    : payload bytes sent per connection (default 1024 = one
 #                    segment). The old 1 MB default (matching iperf `-n 1M`) is
 #                    bandwidth-delay-product bound: with window scaling disabled
@@ -112,7 +112,7 @@ report_nic_ttfb() {
 }
 
 # run_ttfb_measurement <client-iid> <server-ip> <port> <count> <repo-path> [timeout-sec] [label]
-# Runs <count> sequential rounds on the client VM via SSM. Each round opens
+# Runs <count> sequential rounds on the client VM via remote_run. Each round opens
 # LOAD_PARALLEL total parallel TCP connections, spread across LOAD_PORTS
 # contiguous server ports ([port .. port+LOAD_PORTS-1]), via
 # experiments/nodes/loadgen.py — an asyncio (epoll-driven, single-thread)
@@ -130,7 +130,7 @@ run_ttfb_measurement() {
     local rate="${LOAD_RATE:-2000}"
     local conc="${LOAD_CONCURRENCY:-2000}"
     # Client think time between connect() and the first write. 0 = HTTP-style
-    # send-immediately, the workload 0-RTT targets. Sweep with run_think_sweep.sh.
+    # send-immediately, the workload 0-RTT targets. Sweep with experiments/sweeps/think.sh.
     local think="${LOAD_THINK_MS:-0}"
 
     # Pacing sets a wall-clock FLOOR the transport timeout must clear: at
@@ -152,7 +152,7 @@ run_ttfb_measurement() {
     fi
 
     local result
-    result=$(ssm_run "$client_iid" \
+    result=$(remote_run "$client_iid" \
         "command -v python3 >/dev/null || { echo 'ERROR: python3 not installed'; exit 1; }
          ulimit -n 1048576 2>/dev/null || true
          success=0

@@ -1,6 +1,6 @@
 ---
 name: run-experiment
-description: Run 0-RTT TCP experiments end-to-end across the 4-node chain (Client, ClientNIC, ServerNIC, Server) on AWS EC2 or the RUNS Proxmox lab, and interpret the result. INVOKE THIS SKILL — do not hand-run the orchestrator or read this file as documentation — whenever the request involves running, repeating, or sweeping an experiment on the dpdk / baseline / scapy / proxmox stacks; measuring TTFB, FCT, send_unlock, or server_gap; comparing 0-RTT against the plain-TCP baseline; updating anything under experiments/*/reports/; or diagnosing the 4-VM chain. Triggers on "run experiment", "run N experiments", "run the sweep", "rerun the benchmark", "run integration tests", "test 0-RTT", "measure latency", "compare dpdk vs baseline", "update the reports", "check the VMs", "verify packet flow", "debug the demo", "validate the setup" — and on a /goal or task whose objective is any of those, even when the request is phrased as raw CDK output or bare instance IDs.
+description: Run 0-RTT TCP experiments end-to-end across the 4-node chain (Client, ClientNIC, ServerNIC, Server) on AWS EC2 or the RUNS Proxmox lab, and interpret the result. INVOKE THIS SKILL — do not hand-run the orchestrator or read this file as documentation — whenever the request involves running, repeating, or sweeping an experiment on the dpdk / baseline / proxmox stacks; measuring TTFB, FCT, send_unlock, or server_gap; comparing 0-RTT against the plain-TCP baseline; updating anything under experiments/*/reports/; or diagnosing the 4-VM chain. Triggers on "run experiment", "run N experiments", "run the sweep", "rerun the benchmark", "run integration tests", "test 0-RTT", "measure latency", "compare dpdk vs baseline", "update the reports", "check the VMs", "verify packet flow", "debug the demo", "validate the setup" — and on a /goal or task whose objective is any of those, even when the request is phrased as raw CDK output or bare instance IDs.
 ---
 
 # Run Experiment — 0-RTT Integration Tester
@@ -15,10 +15,9 @@ result in chat, and investigate any failures.
 **Always ask the user** which mode they want before doing anything:
 
 > "Which experiment should I run?
-> 1. **Scapy** (AWS) — 0-RTT, Python/Scapy AF_PACKET (`experiments/scapy/run_experiment.sh`)
-> 2. **DPDK** (AWS) — 0-RTT, C/DPDK forwarder + translator (`experiments/dpdk/run_experiment.sh`)
-> 3. **Proxmox** — 0-RTT DPDK on the RUNS lab via SSH gateway (`experiments/proxmox/run_experiment.sh`)
-> 4. **Baseline** (AWS) — plain TCP, kernel forwarding, no middleware (`experiments/baseline-tcp/run_experiment.sh`)"
+> 1. **DPDK** (AWS) — 0-RTT, C/DPDK forwarder + translator (`./experiments/run.sh`)
+> 2. **Proxmox** — 0-RTT DPDK on the RUNS lab via SSH gateway (`TRANSPORT=ssh ./experiments/run.sh`)
+> 3. **Baseline** (AWS) — plain TCP, kernel forwarding, no middleware (`STACK=baseline ./experiments/run.sh`)"
 
 Set variables based on the answer:
 
@@ -26,18 +25,18 @@ A comparison request ("dpdk vs baseline", "does 0-RTT actually win") is **not** 
 mode choice — it is `infra=both` in one dispatch (Step 1). Don't run the two stacks
 as separate dispatches with hand-matched knobs.
 
-| Variable | Scapy | DPDK (AWS) | Proxmox | Baseline |
-|----------|-------|------------|---------|----------|
-| Workflow `infra` input | `scapy` | `dpdk` | *(not available in CI)* | `baseline` |
-| `EXPERIMENT_SCRIPT` | `experiments/scapy/run_experiment.sh` | `experiments/dpdk/run_experiment.sh` | `experiments/proxmox/run_experiment.sh` | `experiments/baseline-tcp/run_experiment.sh` |
-| `REPORT_DIR` | `experiments/scapy/reports/` | `experiments/dpdk/reports/` | `experiments/proxmox/reports/` | `experiments/baseline-tcp/reports/` |
-| Report filename | `integration-test-report-YYYY-MM-DD.md` | `integration-test-report-YYYY-MM-DD.md` | `proxmox-test-report-YYYY-MM-DD.md` | `baseline-report-YYYY-MM-DD-HHMMSS.md` |
-| `IMPL_NAME` | `scapy` | `dpdk` | `proxmox` | `baseline` |
-| Transport | AWS SSM | AWS SSM | SSH gateway | AWS SSM |
-| Node discovery | `smartnics-*` tags | `smartnics-*` tags | lab IPs (10.13.37.x) | `baseline-*` tags |
-| Default `CONNECTIONS` | 3 | 5 | 5 | 20 |
-| Infra stack | `infra/scapy` | `infra/dpdk` | RUNS Proxmox lab | `infra/baseline` |
-| Pcap validator | `validate_0rtt_capture.py` | `analyze_metrics.py` | `analyze_metrics.py` | (none) |
+| Variable | DPDK (AWS) | Proxmox | Baseline |
+|----------|------------|---------|----------|
+| Workflow `infra` input | `dpdk` | *(not available in CI)* | `baseline` |
+| `RUN_ENV` (prefix to `./experiments/run.sh`) | *(none — defaults `STACK=0rtt TRANSPORT=ssm`)* | `TRANSPORT=ssh` | `STACK=baseline` |
+| `REPORT_DIR` | `experiments/reports/0rtt/` | `experiments/reports/0rtt/` | `experiments/reports/baseline/` |
+| Report filename | `integration-test-report-YYYY-MM-DD.md` | `proxmox-test-report-YYYY-MM-DD.md` | `baseline-report-YYYY-MM-DD-HHMMSS.md` |
+| `IMPL_NAME` | `dpdk` | `proxmox` | `baseline` |
+| Transport | AWS SSM | SSH gateway | AWS SSM |
+| Node discovery | `smartnics-*` tags | lab IPs (10.13.37.x) | `baseline-*` tags |
+| Default `CONNECTIONS` | 1 | 1 | 1 |
+| Infra stack | `infra/dpdk` | RUNS Proxmox lab | `infra/baseline` |
+| Pcap validator | `analyze_metrics.py` | `analyze_metrics.py` | (none) |
 
 ## Step 1 — Run it (GitHub Actions is the default path)
 
@@ -64,7 +63,7 @@ gh run watch "$(gh run list --workflow=run-experiment.yml -L1 --json databaseId 
 
 | Input | Maps to | Default if omitted |
 |-------|---------|--------------------|
-| `infra` | `both` \| `dpdk` \| `baseline` \| `scapy` | `both` |
+| `infra` | `both` \| `dpdk` \| `baseline` | `both` |
 | `repo_ref` | branch the VMs hard-reset to | the workflow's own ref |
 | `rounds` | `CONNECTIONS` | 1 |
 | `load_parallel` | `LOAD_PARALLEL` | 100000 ⛔ never omit |
@@ -82,7 +81,7 @@ Why this path is preferred:
 - Needs no local AWS credentials, and survives the workstation going away.
 - Saves a full bundle per run to `experiments/ci-results/<stamp>-<infra>/`
   (`run-meta.json`, untruncated `experiment.log`, `report.md`, `node-logs/`) **and**
-  copies the report into `experiments/<mode>/reports/`, then commits both.
+  copies the report into `experiments/reports/<stack>/`, then commits both.
 - The workflow does **zero reasoning** on purpose. Step 6 supplies it.
 
 **Repeat runs / sweeps**: dispatch once per repetition (the `aws-ops` concurrency
@@ -124,10 +123,10 @@ Required for **Proxmox** (the GitHub runner cannot reach the lab: F5 VPN + SSH
 gateway), and for iterating with uncommitted local changes.
 
 ```bash
-LOAD_PARALLEL=2000 LOAD_RATE=500 ./<EXPERIMENT_SCRIPT>
+LOAD_PARALLEL=2000 LOAD_RATE=500 <RUN_ENV> ./experiments/run.sh
 ```
 
-The same rule applies here — a bare `./<EXPERIMENT_SCRIPT>` inherits the identical
+The same rule applies here — a bare `./experiments/run.sh` inherits the identical
 100000 @ 2000 conn/s default and fails the same way. `CONNECTIONS=N` adds
 measurement rounds and is optional.
 
@@ -142,9 +141,9 @@ output of each script.
 
 ### Shared architecture (DPDK + Proxmox)
 
-The DPDK (AWS) and Proxmox runners share **`experiments/lib/core.sh`** —
-all per-step orchestration lives there. The thin per-mode runner only does node
-discovery + MAC resolution, defines transport shims, then calls `run_experiment`:
+Every mode runs through **`experiments/run.sh`**; all per-step orchestration
+lives in **`experiments/lib/core.sh`**. `run.sh` only sources the transport
+(`TRANSPORT`), does node discovery + MAC resolution, then calls `run_experiment`:
 
 | Concern | DPDK (AWS) | Proxmox |
 |---------|------------|---------|
@@ -161,15 +160,15 @@ active + `~/.ssh/config` entry `runs-gateway → 132.75.121.140` (see the
 
 ### Node-script delegation (DPDK + Proxmox)
 
-Per-node startup is delegated to scripts via the transport. Shared scripts live in
-`experiments/nodes/`; NIC-specific scripts in `experiments/dpdk/`:
+Per-node startup is delegated to scripts via the transport. All node scripts live in
+`experiments/nodes/`:
 
 | Node | Node script | Notes |
 |------|-------------|-------|
 | Server | `experiments/nodes/server.sh` | |
 | ServerNIC | `experiments/nodes/servernic.sh` | env: `CLIENTNIC_GW_MAC`, `SERVER_GW_MAC`, `MIDDLE_ENI_MAC`, `SKIP_BUILD=1` |
 | ClientNIC | `experiments/nodes/clientnic.sh <GW_MAC>` | `$1` = ServerNIC eth1 MAC; `SKIP_BUILD=1` (core builds explicitly) |
-| Client | `iperf2 -c` via `run_ttfb_measurement` (`measure.sh`) | `experiments/nodes/client.sh` has an interactive `read` loop — never used for automation |
+| Client | `loadgen.py --mode client` via `run_ttfb_measurement` (`measure.sh`) | `experiments/nodes/client.sh` has an interactive `read` loop — never used for automation |
 
 **Load generator: `experiments/nodes/loadgen.py`** — a single-thread asyncio
 (epoll-driven) TCP generator. iperf has been removed; it was thread-per-connection
@@ -180,7 +179,7 @@ and had no arrival pacing. Knobs (defined in `measure.sh`, override via env):
 - **`LOAD_RATE`** (default 2000 conn/s) — **arrival pacing**. Connections are
   spawned on a schedule rather than all at once, so per-connection latency reflects
   the network path instead of queueing behind the batch. `LOAD_RATE=0` restores the
-  burst; that is a capacity run, not a latency run (see `run_stress.sh`).
+  burst; that is a capacity run, not a latency run (see `experiments/sweeps/stress.sh`).
 - **`LOAD_BYTES`** (default 1024) — payload per connection. One segment, so flow
   completion time is dominated by the handshake 0-RTT shortens, not by transfer.
 - **`LOAD_CONCURRENCY`** (default 2000) — in-flight connection ceiling.
@@ -352,16 +351,11 @@ Always: **Server → ServerNIC → ClientNIC → Client**
 # 1. Server
 setsid bash experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &
 
-# 2a. ServerNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
-setsid python3 src/servernic/scapy/main.py --client-iface eth0 --server-iface eth1 \
-    < /dev/null >> /tmp/servernic.log 2>&1 &
-# 2b. ServerNIC — DPDK translator
+# 2. ServerNIC — DPDK translator
 CLIENTNIC_GW_MAC=<cnic-eth1-mac> SERVER_GW_MAC=<server-eth0-mac> MIDDLE_ENI_MAC=<snic-eth1-mac> \
     SKIP_BUILD=1 setsid bash experiments/nodes/servernic.sh < /dev/null >> /tmp/servernic.log 2>&1 &
 
-# 3a. ClientNIC — Scapy (deprecated — feasibility PoC only, not used in the live DPDK path)
-setsid python3 src/clientnic/scapy/main.py < /dev/null >> /tmp/clientnic.log 2>&1 &
-# 3b. ClientNIC — DPDK forwarder (GW_MAC = ServerNIC eth1 MAC)
+# 3. ClientNIC — DPDK forwarder (GW_MAC = ServerNIC eth1 MAC)
 SKIP_BUILD=1 setsid bash experiments/nodes/clientnic.sh <GW_MAC> < /dev/null >> /tmp/clientnic.log 2>&1 &
 
 # 4. Client — 100000 conns across 4 ports, paced at 2000/s, 1 KB each
@@ -376,12 +370,6 @@ python3 experiments/nodes/loadgen.py --mode client --host <server-ip> \
 **All modes — IP forwarding on NIC nodes:**
 ```bash
 cat /proc/sys/net/ipv4/ip_forward      # must be 1
-```
-
-**Scapy — block kernel forwarding so userspace wins the race:**
-```bash
-iptables -A FORWARD -p tcp --dport 8080 -j DROP
-iptables -A FORWARD -p tcp --sport 8080 -j DROP
 ```
 
 **DPDK (ClientNIC + ServerNIC):**
@@ -404,12 +392,6 @@ tcpdump --time-stamp-precision=nano -i eth0 -nn -s 128 'tcp port 8080' -w /tmp/c
 tcpdump --time-stamp-precision=nano -i eth0 -nn -s 128 'tcp port 8080' -w /tmp/server_side.pcap &
 ```
 
-**Scapy** uses the legacy on-ClientNIC capture instead (eth0 + eth1):
-```bash
-tcpdump -i eth0 -nn -tttt 'tcp port 8080' -w /tmp/client_side.pcap &
-tcpdump -i eth1 -nn -tttt 'tcp port 8080' -w /tmp/server_side.pcap &
-```
-
 ### Running the analyzer
 
 **DPDK / Proxmox** — `analyze_metrics.py` on ClientNIC against both endpoint pcaps:
@@ -418,13 +400,6 @@ python3 experiments/nodes/analyze_metrics.py \
     --client-pcap /tmp/client_side_endpoint.pcap \
     --server-pcap /tmp/server_side.pcap
 # Output lines: fct=, send_unlock=, server_gap=  (a "missing=" line = failure)
-```
-
-**Scapy** (deprecated — feasibility PoC only) — `validate_0rtt_capture.py` (copy to `/tmp/` first so `src/clientnic/scapy/`
-doesn't shadow the `scapy` package):
-```bash
-cp src/clientnic/validate_0rtt_capture.py /tmp/validate_0rtt.py
-python3 /tmp/validate_0rtt.py --client-pcap /tmp/client_side.pcap --server-pcap /tmp/server_side.pcap
 ```
 
 ## Known Issues

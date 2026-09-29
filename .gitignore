@@ -222,6 +222,7 @@ infra/bluefield/setup/bf-bundle-3.0.0-135_25.04_ubuntu-22.04_prod.bfb
 
 # task-runner sprint scratch (plans, contracts, build notes, transcripts)
 .harness/
+.harness-run*/
 
 # graphify semantic-extraction cache
 graphify-out/cache/

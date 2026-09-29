@@ -48,7 +48,7 @@ try {
 
     Write-Host ""
     Write-Host "[*] Note: instances provision in ~2 minutes (no DPDK build)."
-    Write-Host "    Run experiments/baseline-tcp/run_experiment.sh when all VMs are 'running'."
+    Write-Host "    Run 'STACK=baseline ./experiments/run.sh' when all VMs are 'running'."
 
 } finally {
     Pop-Location

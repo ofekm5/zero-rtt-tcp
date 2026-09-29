@@ -22,30 +22,31 @@
 #   still carry a qdisc.
 #
 # Usage:
-#   ./experiments/run_think_sweep.sh dpdk
-#   ./experiments/run_think_sweep.sh baseline
-#   THINK_SWEEP="0 50 100" ./experiments/run_think_sweep.sh dpdk
+#   ./experiments/sweeps/think.sh
+#   STACK=baseline ./experiments/sweeps/think.sh
+#   THINK_SWEEP="0 50 100" ./experiments/sweeps/think.sh
 #
 # Env:
+#   STACK         0rtt (default) | baseline — passed through to run.sh
 #   THINK_SWEEP   space-separated think times in ms (default "0 25 50 100 200")
-#   SWEEP_OUT     output directory (default experiments/<mode>/reports/sweep-<ts>)
-#   everything else (LOAD_*, NETEM_RTT_MS) is passed through to the runner
+#   SWEEP_OUT     output directory (default experiments/reports/<stack>/sweep-<ts>)
+#   everything else (TRANSPORT, LOAD_*, NETEM_RTT_MS) is passed through to run.sh
 #
 # Exit code: number of sweep points that failed.
 
 set -uo pipefail
 
-MODE="${1:-}"
-case "$MODE" in
-    dpdk)     RUNNER="experiments/dpdk/run_experiment.sh" ;;
-    baseline) RUNNER="experiments/baseline-tcp/run_experiment.sh" ;;
+STACK="${STACK:-0rtt}"
+case "$STACK" in
+    0rtt|baseline) export STACK ;;
     *)
-        echo "Usage: $0 {dpdk|baseline}" >&2
+        echo "ERROR: unrecognised STACK='$STACK' — accepted values: 0rtt, baseline" >&2
         exit 2
         ;;
 esac
+RUNNER="experiments/run.sh"
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 2
 
 THINK_SWEEP="${THINK_SWEEP:-0 25 50 100 200}"
@@ -53,7 +54,7 @@ NETEM_RTT_MS="${NETEM_RTT_MS:-100}"
 export NETEM_RTT_MS
 
 TS="$(date '+%Y-%m-%d-%H%M%S')"
-SWEEP_OUT="${SWEEP_OUT:-experiments/${MODE}/reports/sweep-${TS}}"
+SWEEP_OUT="${SWEEP_OUT:-experiments/reports/${STACK}/sweep-${TS}}"
 mkdir -p "$SWEEP_OUT" || exit 2
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -63,7 +64,7 @@ fail() { echo -e "${RED}[sweep FAIL]${NC} $*"; }
 
 FAILED=0
 
-log "Think-time sweep on the $MODE stack"
+log "Think-time sweep on the $STACK stack"
 log "  points:        $THINK_SWEEP (ms)"
 log "  modelled RTT:  ${NETEM_RTT_MS} ms (middle leg, half per direction)"
 log "  output:        $SWEEP_OUT"
@@ -100,7 +101,7 @@ done
 # one place where a metric is computed (analyze_metrics.py).
 SUMMARY="$SWEEP_OUT/curve.md"
 {
-    echo "# Think-time sweep — $MODE stack"
+    echo "# Think-time sweep — $STACK stack"
     echo ""
     echo "- Date: $TS"
     echo "- Modelled RTT: ${NETEM_RTT_MS} ms on the ClientNIC<->ServerNIC leg"
