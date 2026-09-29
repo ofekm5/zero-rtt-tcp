@@ -1,12 +1,14 @@
-# Sprint 4: run.sh report under reports/<stack>/
+# Sprint 4: Update callers and roadmap
 
 ## Tasks
-- Task 8: Write `run.sh`'s report under `reports/{0rtt,baseline}/`
+- Task 9: Update every caller of the old entrypoints
+- Task 10: Rewrite the roadmap section to match the corrected ordering
 
 ## Acceptance criteria
-- C1: The report-path test passes and both report directories exist — the test invokes the report writer with stubbed `CORE_*` values in a temp tree and asserts the file lands under `experiments/reports/<stack>/` with the correct filename convention — verify: `pytest experiments/tests/test_report_path.py -q && test -d experiments/reports/0rtt -a -d experiments/reports/baseline`
+- C1: No live caller references `run_experiment.sh` in the workflow, skills, CLAUDE.md, the harness README, or any live shell/Markdown file under `experiments/` — verify: `! grep -rn 'run_experiment\.sh' .github/workflows/ .claude/skills/ CLAUDE.md experiments/README.md experiments/run.sh experiments/lib/ experiments/nodes/ experiments/sweeps/ --include='*.yml' --include='*.md' --include='*.sh'`
+- C2: `roadmap.md` records that harness consolidation landed and references `run.sh` — manual review
 
 ## Out of scope
-- Deleting the four runners and `experiments/scapy/` (sprint 5)
-- Updating callers in `.github/workflows/`, `.claude/skills/`, and `CLAUDE.md` (sprint 6)
-- Moving or deleting historical reports under `experiments/dpdk/reports/` or `experiments/baseline-tcp/reports/`
+- Files under `experiments/*/reports/`, `experiments/ci-results/`, `experiments/insights.md`, and `experiments/measurement-methodology-review.md` — historical references in those files are protected
+- Files under `docs/openspec/changes/archive/` and `docs/kb/raw/`
+- Any change to `src/` or to measurement logic
