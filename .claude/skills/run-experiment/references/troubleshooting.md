@@ -164,7 +164,7 @@ fatal: detected dubious ownership in repository at '/home/ec2-user/zero-rtt-tcp'
 git config --global --add safe.directory /home/ec2-user/zero-rtt-tcp
 ```
 
-This is done automatically in `run_experiment.sh`'s pre-pull loop. If you hit this in manual SSM commands, run it first.
+This is done automatically in the pre-pull loop `experiments/run.sh` runs (`experiments/lib/core.sh`). If you hit this in manual SSM commands, run it first.
 
 ---
 
@@ -178,7 +178,7 @@ python3 /home/ec2-user/zero-rtt-tcp/client-app/client.py \
     --host <SERVER_IP> --port 8080 --mode repeated --count 1 --verbose
 ```
 
-`run_experiment.sh` already uses this approach and does not invoke `client.sh`.
+`experiments/run.sh` already uses this approach and does not invoke `client.sh`.
 
 ---
 
@@ -190,7 +190,7 @@ aws ec2 describe-instances --filters "Name=tag:Name,Values=smartnics-servernic" 
 ```
 This can fail with `AccessDenied` if the ClientNIC IAM role lacks `ec2:DescribeInstances`.
 
-**Fix** — pass the MAC as an argument (already done by `run_experiment.sh`):
+**Fix** — pass the MAC as an argument (already done by `experiments/run.sh`):
 ```bash
 # Orchestrator reads it from ServerNIC via SSM — no IAM needed:
 GW_MAC=$(ssm_stdout "$SERVERNIC_ID" "cat /sys/class/net/eth0/address" 30)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Shared logging/result helpers for experiments/*/run_experiment.sh runners.
-# Identical across all four runners before this hoist — source and go.
+# Shared logging/result helpers for experiments/run.sh and experiments/lib/.
+# Identical across all four former per-stack runners before this hoist — source and go.
 # The sourcing script must set FAILURES=0 before the first fail() call.
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'

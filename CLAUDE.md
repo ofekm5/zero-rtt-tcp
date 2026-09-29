@@ -124,10 +124,9 @@ Scapy provides:
 - **`.claude/skills/deploy-infra/SKILL.md`**: Deploy/destroy the AWS CDK stacks and BlueField-3 DPU setup pointers
 
 ### Integration Testing
-- **`experiments/scapy/run_experiment.sh`**: End-to-end orchestrator for the deprecated Scapy stack (local → 4 VMs via SSM)
-- **`experiments/dpdk/run_experiment.sh`**: End-to-end orchestrator for the live DPDK stack — builds binary, passes `--server-pcap` so the validator has a real eth1 capture
+- **`experiments/run.sh`**: Single end-to-end orchestrator — `STACK=0rtt|baseline` (default `0rtt`, the live DPDK stack) × `TRANSPORT=ssm|ssh` (default `ssm`; `ssh` = RUNS Proxmox lab)
 - **`src/clientnic/validate_0rtt_capture.py`**: pcap analysis — validates spoofed SYN-ACK, ISN delta, timing, checksums (runs on ClientNIC VM); copy to `/tmp/` before running to avoid `src/clientnic/scapy/` shadowing the `scapy` package
-- **`experiments/dpdk/reports/`**: Test run reports
+- **`experiments/reports/<stack>/`**: Test run reports (`experiments/dpdk/reports/` and `experiments/baseline-tcp/reports/` are frozen historical output)
 
 Startup order: **Server → ServerNIC → ClientNIC → Client**
 
@@ -161,10 +160,10 @@ edit `.claude/skills/deploy-infra/request.json`, commit, push; results come back
 (read `.claude/skills/deploy-infra/results/latest.md` after `git pull`). Full playbook: **`.claude/skills/deploy-infra/references/mobile-ops.md`**.
 
 **AWS EC2 Testing & Experimentation:**
-1. **DPDK stack** (live): `./experiments/dpdk/run_experiment.sh`
-2. **Scapy stack** (deprecated, feasibility PoC only): `./experiments/scapy/run_experiment.sh`
+1. **DPDK stack** (live): `./experiments/run.sh`
+2. **Baseline** (plain TCP): `STACK=baseline ./experiments/run.sh`
 3. Investigate failures using the manual steps in `.claude/skills/run-experiment/SKILL.md`
-4. Reports are written automatically to `experiments/<mode>/reports/`
+4. Reports are written automatically to `experiments/reports/<stack>/`
 
 **Change Management (OpenSpec Workflow):**
 - Active changes tracked in `docs/openspec/changes/` with spec-driven proposals, designs, and task lists; `roadmap.md` records what is open, queued, or blocked
@@ -267,10 +266,11 @@ src/
 
 experiments/
 ├── README.md           # client/server endpoints: loadgen.py modes, usage, why not iperf
-├── scapy/              # Deprecated Scapy stack: run_experiment.sh + clientnic.sh/servernic.sh node scripts
-├── dpdk/               # Live DPDK stack: run_experiment.sh, run_stress.sh, probes/, reports/
-├── baseline-tcp/       # Plain-TCP baseline: run_experiment.sh + reports/
-├── proxmox/            # RUNS lab (Proxmox) orchestrator
+├── run.sh              # Single entrypoint: STACK=0rtt|baseline × TRANSPORT=ssm|ssh
+├── reports/            # run.sh output: reports/0rtt/, reports/baseline/
+├── sweeps/             # Multi-run sweeps: stress.sh, think.sh
+├── dpdk/               # probes/ + frozen historical reports/
+├── baseline-tcp/       # Frozen historical reports/
 ├── nodes/              # VM-executed: client.sh, server.sh, clientnic.sh, servernic.sh, loadgen.py, analyze_metrics.py
 ├── lib/                # Laptop-side: core.sh, measure.sh, endpoint.sh, output.sh, report.sh, transport/{ssm,ssh_lab}.sh
 ├── tests/              # Offline pytest suite + endpoint_mock_harness.sh

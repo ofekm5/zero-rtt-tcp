@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Shared endpoint (Client VM + Server VM) setup, capture and analysis.
 #
-# Both the 0-RTT stack (experiments/lib/core.sh) and the plain-TCP
-# baseline (experiments/baseline-tcp/run_experiment.sh) source this file, so the
+# Both the 0-RTT stack and the plain-TCP baseline (experiments/run.sh
+# STACK=0rtt|baseline, via experiments/lib/core.sh) use this file, so the
 # two runs are configured by the *same code* rather than by two copies that
 # drift. That is the point: the project's central claim is a difference between
 # the two stacks, so any endpoint parameter that differs between them —

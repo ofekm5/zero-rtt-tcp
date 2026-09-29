@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Shared report-writing helpers used by experiments/dpdk, experiments/scapy
-# and experiments/baseline-tcp run_experiment.sh. Every report is built from
+# Shared report-writing helpers used by experiments/run.sh (write_run_report
+# below). Every report is built from
 # the same two repeating shapes: a title/impl-info/overall-result header, and
 # a "## Heading" followed by a fenced code block (optionally through
 # `tail -N`). Extracted here once; each caller supplies its own middle

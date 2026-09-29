@@ -1,14 +1,14 @@
 # Experiment Scripts
 
-Four orchestrators plus a shared core and two pcap analyzers. All runners write
-their own report to `<mode>/reports/` and exit with the failure count.
+One entrypoint, `experiments/run.sh`, plus a shared core and a pcap analyzer.
+`STACK` and `TRANSPORT` pick the run; it writes its own report to
+`experiments/reports/<STACK>/` and exits with the failure count.
 
-| Runner | Stack | Transport | Analyzer | Report dir |
-|--------|-------|-----------|----------|------------|
-| `experiments/scapy/run_experiment.sh` | Scapy 0-RTT | AWS SSM | `validate_0rtt_capture.py` | `experiments/scapy/reports/` |
-| `experiments/dpdk/run_experiment.sh` | DPDK 0-RTT | AWS SSM | `analyze_metrics.py` | `experiments/dpdk/reports/` |
-| `experiments/proxmox/run_experiment.sh` | DPDK 0-RTT | SSH gateway | `analyze_metrics.py` | `experiments/proxmox/reports/` |
-| `experiments/baseline-tcp/run_experiment.sh` | plain TCP | AWS SSM | (none) | `experiments/baseline-tcp/reports/` |
+| Invocation | Stack | Transport | Analyzer | Report dir |
+|------------|-------|-----------|----------|------------|
+| `./experiments/run.sh` | DPDK 0-RTT | AWS SSM | `analyze_metrics.py` | `experiments/reports/0rtt/` |
+| `TRANSPORT=ssh ./experiments/run.sh` | DPDK 0-RTT | SSH gateway | `analyze_metrics.py` | `experiments/reports/0rtt/` |
+| `STACK=baseline ./experiments/run.sh` | plain TCP | AWS SSM | (none) | `experiments/reports/baseline/` |
 
 **Load generator**: `experiments/nodes/loadgen.py` (asyncio, single thread; iperf has
 been removed). `LOAD_PARALLEL` (default 100000) total connections per round are spread
@@ -35,44 +35,18 @@ Shared building blocks — laptop-side under `experiments/lib/`, VM-side under `
 
 ---
 
-## experiments/scapy/run_experiment.sh
-
-**Scapy stack** — ClientNIC uses Python/Scapy on both eth0 and eth1. Self-contained
-(does not use `core.sh`). Default 3 connections.
-
-**Prerequisites**: `aws` CLI with SSM access, `python3` in PATH, `eu-central-1`.
-
-```bash
-./experiments/scapy/run_experiment.sh
-```
-
-| Step | Action | Pass condition |
-|------|--------|----------------|
-| 0 | Discover EC2 instances by tag (`smartnics-*`) | All 4 IDs resolved |
-| — | `git pull` on all 4 VMs; kill leftovers; clear logs/pcaps | (best-effort) |
-| 1 | Start Server (`experiments/nodes/server.sh`) | `ss -tlnp` shows `:8080` |
-| 2 | Start ServerNIC (Scapy forwarder) + route + iptables DROP | `ip_forward == 1` |
-| 3 | tcpdump eth0+eth1, start `src/clientnic/scapy/main.py` | `ip_forward == 1` |
-| 4 | `run_ttfb_measurement` (3 rounds × `LOAD_PARALLEL` parallel streams) | `Success: 3/3` |
-| 5 | Stop tcpdump | (always) |
-| 6 | Read `/tmp/server.log` | Contains `Received`/`bytes` |
-| 7 | Read `/tmp/clientnic.log` | Contains `delta`/`flow created`/`SYN received`/`spoofed` |
-| 8 | `validate_0rtt_capture.py` (eth0+eth1 pcaps on ClientNIC) | `All checks passed` |
-
----
-
-## experiments/dpdk/run_experiment.sh + experiments/proxmox/run_experiment.sh
+## experiments/run.sh — `STACK=0rtt` (default)
 
 **DPDK stack** — ClientNIC `dpdk-forwarder` (spoof + stamp V), ServerNIC
-`servernic-dpdk` (sole translator). Both runners share `core.sh`; they differ
+`servernic-dpdk` (sole translator). Both transports share `core.sh`; they differ
 only in transport, node discovery, MAC resolution, and report filename.
 
 ```bash
-./experiments/dpdk/run_experiment.sh                 # AWS, default 5 conns
-CONNECTIONS=10 ./experiments/proxmox/run_experiment.sh   # RUNS lab via gateway
+./experiments/run.sh                                  # AWS, default 1 round
+TRANSPORT=ssh CONNECTIONS=10 ./experiments/run.sh     # RUNS lab via gateway
 ```
 
-### Per-runner head (before core.sh)
+### Per-transport head (before core.sh)
 
 | Concern | DPDK (AWS) | Proxmox |
 |---------|------------|---------|
@@ -115,15 +89,15 @@ CONNECTIONS=10 ./experiments/proxmox/run_experiment.sh   # RUNS lab via gateway
 
 ---
 
-## experiments/baseline-tcp/run_experiment.sh
+## experiments/run.sh — `STACK=baseline`
 
 **Plain TCP** — ClientNIC/ServerNIC are kernel routers (`ip_forward=1` + static
-routes from CDK). No DPDK, no Scapy, no build, no pcap analyzer. Default 20
-connections. Discovers `baseline-*` tagged instances (`infra/baseline` stack).
+routes from CDK). No DPDK, no Scapy, no build, no pcap analyzer. Default 1
+round. Discovers `baseline-*` tagged instances (`infra/baseline` stack).
 
 ```bash
-./experiments/baseline-tcp/run_experiment.sh
-CONNECTIONS=50 ./experiments/baseline-tcp/run_experiment.sh
+STACK=baseline ./experiments/run.sh
+STACK=baseline CONNECTIONS=50 ./experiments/run.sh
 ```
 
 | Step | Action | Pass condition |
