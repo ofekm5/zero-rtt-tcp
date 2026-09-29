@@ -99,9 +99,16 @@ run_experiment() {
     local USABLE_RANGE=$(( EPHEMERAL_RANGE / 2 ))
     local PORT_SPACE=$(( NPORTS * USABLE_RANGE ))
     if (( PORT_SPACE < TARGET_CONNS )); then
-        fail "Port-space check: LOAD_PORTS=$NPORTS x usable_range=$USABLE_RANGE = $PORT_SPACE" \
-             " < LOAD_PARALLEL=$TARGET_CONNS — raise LOAD_PORTS before running"
-        return 1
+        # The former baseline runner had no such check and ran these knobs
+        # (e.g. LOAD_PORTS=1, LOAD_PARALLEL=100000) to completion — keep it running.
+        if [[ "$stack" == baseline ]]; then
+            warn "Port-space check: LOAD_PORTS=$NPORTS x usable_range=$USABLE_RANGE = $PORT_SPACE" \
+                 " < LOAD_PARALLEL=$TARGET_CONNS — expect failed connects; raise LOAD_PORTS"
+        else
+            fail "Port-space check: LOAD_PORTS=$NPORTS x usable_range=$USABLE_RANGE = $PORT_SPACE" \
+                 " < LOAD_PARALLEL=$TARGET_CONNS — raise LOAD_PORTS before running"
+            return 1
+        fi
     else
         pass "Port-space check: $NPORTS port(s) x $USABLE_RANGE usable range = $PORT_SPACE >= $TARGET_CONNS target"
     fi
@@ -148,7 +155,8 @@ run_experiment() {
     for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
         remote_bg "$iid" "$sync_cmd"
     done
-    sleep 20
+    # The former runners waited 20 s (0rtt) and 30 s (baseline).
+    if [[ "$stack" == baseline ]]; then sleep 30; else sleep 20; fi
 
     # Confirm every VM actually landed on the requested ref. Measuring whatever
     # code a VM happened to already have is worse than no run, so a missing

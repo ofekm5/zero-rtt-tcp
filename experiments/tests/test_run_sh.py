@@ -216,6 +216,15 @@ def test_failed_repo_sync_aborts_before_measuring(run_sh, transport, head):
     assert "rev-parse --short HEAD" in calls[-1]
 
 
+def test_port_space_preflight_warns_on_baseline_but_aborts_0rtt(run_sh):
+    """LOAD_PORTS=1 x LOAD_PARALLEL=100000 ran under the old baseline runner, which
+    had no port-space check; only the 0rtt stack aborts on it."""
+    _, base = _calls(run_sh, "baseline", "ssm", "LOAD_PORTS=1")
+    assert [c for c in base if c.startswith("run client ") and "--mode client" in c]
+    rc, rtt = _calls(run_sh, "0rtt", "ssm", "LOAD_PORTS=1")
+    assert rc > 0 and not [c for c in rtt if "--mode client" in c]
+
+
 @pytest.mark.parametrize("stack,transport", [
     ("dpdk", "ssm"), ("0rtt", "aws"),   # unknown STACK / TRANSPORT
     ("baseline", "ssh"),                 # no baseline stack in the lab
