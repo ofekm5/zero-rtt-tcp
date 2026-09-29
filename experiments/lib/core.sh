@@ -107,46 +107,68 @@ run_experiment() {
     fi
 
     # ─── Pull latest code (clone if missing) ──────────────────────────────────
-    # On a fresh stack the CDK user-data clone can fail (e.g. expired token),
+    # On a fresh AWS stack the CDK user-data clone can fail (e.g. expired token),
     # leaving VMs with no repo. Clone-on-demand here using the GitHub PAT from
-    # Secrets Manager (zero-rtt/github-token) so the run is self-healing.
+    # Secrets Manager (zero-rtt/github-token) so the run is self-healing. The
+    # lab (TRANSPORT=ssh) has neither, so there it only fetches.
     #
     # REPO_REF selects which ref the VMs run. It defaults to main, so normal runs
     # are unchanged — but a harness change cannot be validated on real infra
     # before it is merged unless the VMs can be pointed at its branch, and
     # merging unexercised measurement code to main is the wrong order.
     local ref="${REPO_REF:-main}"
-    log "Syncing all VMs to origin/${ref} (cloning if missing)..."
+    log "Syncing all VMs to origin/${ref}..."
     [[ "$ref" != "main" ]] && warn "REPO_REF=${ref} — VMs are running a NON-MAIN ref"
-    for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
-        remote_bg "$iid" \
-            "git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; \
+    # Each VM touches /tmp/repo_sync.ok only when its sync fully succeeded; the
+    # check below fails the run without it.
+    local sync_cmd
+    if [[ "${TRANSPORT:-ssm}" == ssh ]]; then
+        # Lab VMs have no ec2-user and no Secrets Manager: the repo must already
+        # be cloned at $REPO_PATH, and is synced as the SSH user.
+        sync_cmd="git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; \
+             rm -f /tmp/repo_sync.ok; \
+             git -C $REPO_PATH fetch origin $ref 2>&1 && \
+             git -C $REPO_PATH checkout -B $ref origin/$ref 2>&1 && \
+             git -C $REPO_PATH reset --hard origin/$ref 2>&1 && \
+             touch /tmp/repo_sync.ok"
+    else
+        sync_cmd="git config --global --add safe.directory $REPO_PATH 2>/dev/null || true; \
+             rm -f /tmp/repo_sync.ok; \
              if [ -d $REPO_PATH/.git ]; then \
                  sudo -u ec2-user git -C $REPO_PATH fetch origin $ref 2>&1 && \
                  sudo -u ec2-user git -C $REPO_PATH checkout -B $ref origin/$ref 2>&1 && \
-                 sudo -u ec2-user git -C $REPO_PATH reset --hard origin/$ref 2>&1 || true; \
+                 sudo -u ec2-user git -C $REPO_PATH reset --hard origin/$ref 2>&1; \
              else \
                  GITHUB_TOKEN=\$(aws secretsmanager get-secret-value --secret-id zero-rtt/github-token --query SecretString --output text --region eu-central-1 | tr -d '\"[:space:]'); \
-                 sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git\" $REPO_PATH 2>&1 || true; \
-                 sudo -u ec2-user git -C $REPO_PATH checkout $ref 2>&1 || true; \
-                 chown -R ec2-user:ec2-user $REPO_PATH 2>/dev/null || true; \
-             fi"
+                 sudo -u ec2-user git clone \"https://x-access-token:\${GITHUB_TOKEN}@github.com/ofekm5/zero-rtt-tcp.git\" $REPO_PATH 2>&1 && \
+                 sudo -u ec2-user git -C $REPO_PATH checkout $ref 2>&1; \
+             fi && touch /tmp/repo_sync.ok; \
+             chown -R ec2-user:ec2-user $REPO_PATH 2>/dev/null || true"
+    fi
+    for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
+        remote_bg "$iid" "$sync_cmd"
     done
     sleep 20
 
-    # Confirm the VMs actually landed on the requested ref. A failed fetch is
-    # swallowed by `|| true` above (deliberately — a stale checkout beats an
-    # aborted run), so without this check the run would silently measure
-    # whatever code the VM happened to already have.
+    # Confirm every VM actually landed on the requested ref. Measuring whatever
+    # code a VM happened to already have is worse than no run, so a missing
+    # repo or a failed/unfinished sync aborts here.
     # `git rev-parse` as root refuses an ec2-user-owned repo ("dubious
     # ownership"), so pass safe.directory inline — otherwise a perfectly good
     # checkout reports NOREPO and the run looks broken when it is not.
-    local vm_head
+    local vm_head synced=1
     for iid in "$SERVER_ID" "$SERVERNIC_ID" "$CLIENTNIC_ID" "$CLIENT_ID"; do
         vm_head=$(remote_stdout "$iid" \
-            "git -c safe.directory=$REPO_PATH -C $REPO_PATH rev-parse --short HEAD 2>/dev/null || echo NOREPO" 30)
-        log "  $iid HEAD: $(echo "$vm_head" | tr -d '[:space:]')"
+            "git -c safe.directory=$REPO_PATH -C $REPO_PATH rev-parse --short HEAD 2>/dev/null || echo NOREPO; \
+             [ -f /tmp/repo_sync.ok ] || echo SYNC_FAILED" 30)
+        vm_head=$(echo "$vm_head" | tr -s '[:space:]' ' ')
+        log "  $iid HEAD: $vm_head"
+        case "$vm_head" in
+            *NOREPO*)      fail "$iid: no repo at $REPO_PATH"; synced=0 ;;
+            *SYNC_FAILED*) fail "$iid: sync to origin/$ref failed or did not finish — refusing to measure stale code"; synced=0 ;;
+        esac
     done
+    (( synced )) || return 1
 
     # ─── Baseline pre-flight: NIC VMs are plain kernel routers ────────────────
     # Steps and remote commands kept from the former baseline-tcp runner, in its
