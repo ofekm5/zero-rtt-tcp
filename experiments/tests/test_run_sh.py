@@ -191,6 +191,15 @@ def test_baseline_issues_no_nic_build_or_start(run_sh):
     assert nic == []
 
 
+@pytest.mark.parametrize("transport", ["ssm", "ssh"])
+def test_client_load_runs_on_every_transport(run_sh, transport):
+    """run_ttfb_measurement must go through remote_run: the old proxmox runner
+    called ssm_run, which ssh_lab.sh never defines, so the lab never ran load."""
+    rc, calls = _calls(run_sh, "0rtt", transport)
+    assert [c for c in calls if c.startswith("run client ") and "--mode client" in c]
+    assert rc == 0
+
+
 @pytest.mark.parametrize("stack,transport", [
     ("dpdk", "ssm"), ("0rtt", "aws"),   # unknown STACK / TRANSPORT
     ("baseline", "ssh"),                 # no baseline stack in the lab
@@ -215,9 +224,6 @@ def test_run_sh_writes_its_report_under_reports_stack(run_sh, stack, transport, 
     assert all(last in p.read_text(encoding="utf-8") for p in written)
 
 
-# 0rtt+ssh records exit 1 and no client-load call, exactly as proxmox/run_experiment.sh:
-# measure.sh's run_ttfb_measurement calls ssm_run, which the SSH transport does not
-# define, so the load step fails with "command not found".
 # Every entry is "<verb> <node> <command, whitespace collapsed>".
 # >>> RECORDED from the old runners at b009590 — edit only with a deliberate run.sh change
 _RECORDED = r"""
@@ -273,7 +279,7 @@ stdout client ls -lh /tmp/client_side.pcap 2>&1 || echo 'pcap file not found'
 stdout server ls -lh /tmp/server_side.pcap 2>&1 || echo 'pcap file not found'
 run client python3 /home/ec2-user/zero-rtt-tcp/experiments/nodes/analyze_metrics.py --client-pcap /tmp/client_side.pcap --summary --detail-out /tmp/client_metrics_per_flow.txt
 run server python3 /home/ec2-user/zero-rtt-tcp/experiments/nodes/analyze_metrics.py --server-pcap /tmp/server_side.pcap --summary --detail-out /tmp/server_metrics_per_flow.txt
-== 0rtt ssh 1 <- proxmox/run_experiment.sh
+== 0rtt ssh 0 <- proxmox/run_experiment.sh
 stdout servernic cat /sys/class/net/eth1/address 2>/dev/null || echo UNKNOWN
 stdout clientnic cat /sys/class/net/eth1/address 2>/dev/null || echo UNKNOWN
 stdout server cat /sys/class/net/eth0/address 2>/dev/null || echo UNKNOWN
@@ -315,6 +321,7 @@ run client pkill tcpdump 2>/dev/null || true; rm -f /tmp/client_side.pcap
 run server pkill tcpdump 2>/dev/null || true; rm -f /tmp/server_side.pcap
 bg client if tcpdump --time-stamp-precision=nano -d -i lo 2>/dev/null | grep -q .; then HIPREC_FLAG='--time-stamp-precision=nano' elif tcpdump -j adapter -d -i lo 2>/dev/null | grep -q .; then HIPREC_FLAG='-j adapter' else HIPREC_FLAG='' fi tcpdump $HIPREC_FLAG -i eth0 -nn -s 128 'tcp portrange 8080-8083' -w /tmp/client_side.pcap </dev/null >/tmp/tcpdump_hiprec.log 2>&1 &
 bg server if tcpdump --time-stamp-precision=nano -d -i lo 2>/dev/null | grep -q .; then HIPREC_FLAG='--time-stamp-precision=nano' elif tcpdump -j adapter -d -i lo 2>/dev/null | grep -q .; then HIPREC_FLAG='-j adapter' else HIPREC_FLAG='' fi tcpdump $HIPREC_FLAG -i eth0 -nn -s 128 'tcp portrange 8080-8083' -w /tmp/server_side.pcap </dev/null >/tmp/tcpdump_hiprec.log 2>&1 &
+run client command -v python3 >/dev/null || { echo 'ERROR: python3 not installed'; exit 1; } ulimit -n 1048576 2>/dev/null || true success=0 for i in $(seq 1 1); do echo "--- Round $i/1: 4 port(s) starting at 8080 x 100000 total connections, 1024 bytes/conn, 2000 conn/s arrival, 0ms think, max 2000 in flight ---" python3 /home/user/zero-rtt-tcp/experiments/nodes/loadgen.py --mode client --host server --port 8080 --port-count 4 --parallel 100000 --bytes 1024 --rate 2000 --think-ms 0 --concurrency-limit 2000 && success=$((success + 1)) done echo "Success: ${success}/1"
 run client pkill tcpdump 2>/dev/null || true; sleep 1
 run server pkill tcpdump 2>/dev/null || true; sleep 1
 run clientnic pkill tcpdump 2>/dev/null || true; sleep 1
