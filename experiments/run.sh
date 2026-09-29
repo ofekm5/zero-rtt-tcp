@@ -166,6 +166,8 @@ source "$(dirname "$0")/lib/measure.sh"
 source "$(dirname "$0")/lib/output.sh"
 # shellcheck source=lib/core.sh
 source "$(dirname "$0")/lib/core.sh"
+# shellcheck source=lib/report.sh
+source "$(dirname "$0")/lib/report.sh"
 
 
 # ─── Step 0: Discover nodes ───────────────────────────────────────────────────
@@ -205,5 +207,9 @@ else
     echo -e "${RED}  $FAILURES CHECK(S) FAILED${NC}"
 fi
 echo "════════════════════════════════════════"
+
+
+# ─── Write report ─────────────────────────────────────────────────────────────
+write_run_report "$STACK" "$TRANSPORT"
 
 exit "$FAILURES"

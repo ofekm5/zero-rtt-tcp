@@ -5,6 +5,13 @@ map is in the repo root `CLAUDE.md`; this file covers the **client and server
 endpoints**, which have no source of their own — both are just
 `experiments/nodes/loadgen.py` in different modes.
 
+## Reports
+
+`experiments/run.sh` writes each run's report under `experiments/reports/<stack>/`
+(`0rtt` or `baseline`). `experiments/dpdk/reports/` and
+`experiments/baseline-tcp/reports/` are frozen historical output from the
+per-stack runners that preceded `run.sh` — kept as-is, never written to.
+
 ## Client and server apps
 
 `loadgen.py` is an asyncio (epoll-driven, single-thread) TCP load generator. It
