@@ -399,8 +399,10 @@ run_experiment() {
 
     # ─── Step 4: Run client test ──────────────────────────────────────────────
     log "Step 4: Running client test ($CONNECTIONS connection(s))..."
+    local load_label=Client
+    [[ "$stack" == baseline ]] && load_label=Baseline
     run_ttfb_measurement "$CLIENT_ID" "$SERVER_IP" "$SERVER_PORT" \
-        "$CONNECTIONS" "$REPO_PATH" "${LOAD_TIMEOUT:-1800}"
+        "$CONNECTIONS" "$REPO_PATH" "${LOAD_TIMEOUT:-1800}" "$load_label"
 
     sleep 3
 
