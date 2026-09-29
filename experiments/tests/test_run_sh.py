@@ -225,6 +225,16 @@ def test_port_space_preflight_warns_on_baseline_but_aborts_0rtt(run_sh):
     assert rc > 0 and not [c for c in rtt if "--mode client" in c]
 
 
+def test_0rtt_reports_share_one_body_across_transports(run_sh):
+    """The lab report carries the same Load Parameters table as the AWS one."""
+    for transport in ("ssm", "ssh"):
+        _calls(run_sh, "0rtt", transport)
+    reports = Path(run_sh).parent / "reports" / "0rtt"
+    for prefix in ("integration-test-report-", "proxmox-test-report-"):
+        text = next(reports.glob(prefix + "*.md")).read_text(encoding="utf-8")
+        assert "## Load Parameters" in text and "## Latency Summary\n" in text
+
+
 @pytest.mark.parametrize("stack,transport", [
     ("dpdk", "ssm"), ("0rtt", "aws"),   # unknown STACK / TRANSPORT
     ("baseline", "ssh"),                 # no baseline stack in the lab

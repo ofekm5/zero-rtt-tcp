@@ -82,6 +82,11 @@ _report_0rtt_ssm() {
     )
 
     report_header "" "$impl_info" "$overall_result"
+    _report_0rtt_body
+}
+
+# Everything after the header, shared by both 0rtt transports.
+_report_0rtt_body() {
     if [[ "${LOAD_RATE:-2000}" == "0" ]]; then
         echo "> **CAPACITY RUN — \`LOAD_RATE=0\`.** Connections arrived as a single"
         echo "> burst, so every flow's latency includes queueing behind the rest of"
@@ -123,29 +128,24 @@ _report_0rtt_ssm() {
 }
 
 _report_0rtt_ssh() {
-    local overall_result
+    local overall_result impl_info
     if [[ $FAILURES -eq 0 ]]; then
         overall_result="ALL PASSED"
     else
         overall_result="$FAILURES FAILURE(S)"
     fi
 
-    echo "# Proxmox 0-RTT Test Report — $(date +%Y-%m-%d)"
-    echo ""
-    echo "**Implementation**: DPDK (ISN ack-num translation shift)"
-    echo "**Infra**: RUNS Proxmox lab — 4 VMs via SSH gateway (${LAB_GATEWAY})"
-    echo "**ClientNIC binary**: \`src/clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
-    echo "**ServerNIC binary**: \`src/servernic/dpdk/\` (full translator)"
-    echo "**Experiment script**: \`experiments/run.sh\`"
-    echo "**Transport**: SSH jump host via \`experiments/lib/transport/ssh_lab.sh\`"
-    echo "**Overall result**: $overall_result"
-    echo ""
-    report_section "Latency Summary (TTFB @ 3 points + FCT)" "${CORE_METRICS_SUMMARY:-}"
-    report_section "Client Output" "${CLIENT_STDOUT:-}"
-    report_section "ClientNIC Log (0-RTT activity)" "${CORE_CLIENTNIC_LOG:-}" 50
-    report_section "ServerNIC Log" "${CORE_SERVERNIC_LOG:-}" 30
-    report_section "Server Log" "${CORE_SERVER_LOG:-}" 20
-    report_section "Packet Analysis" "${CORE_ENDPOINT_METRICS:-}" "" 1
+    impl_info=$(
+        echo "**Implementation**: DPDK (ISN ack-num translation shift)"
+        echo "**Infra**: RUNS Proxmox lab — 4 VMs via SSH gateway (${LAB_GATEWAY:-})"
+        echo "**ClientNIC binary**: \`src/clientnic/dpdk-forwarder/\` (transparent forwarder + V-stamp)"
+        echo "**ServerNIC binary**: \`src/servernic/dpdk/\` (full translator)"
+        echo "**Experiment script**: \`experiments/run.sh\`"
+        echo "**Transport**: SSH jump host via \`experiments/lib/transport/ssh_lab.sh\`"
+    )
+
+    report_header "Proxmox 0-RTT Test Report" "$impl_info" "$overall_result"
+    _report_0rtt_body
 }
 
 _report_baseline() {
