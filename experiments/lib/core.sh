@@ -149,7 +149,7 @@ run_experiment() {
     done
 
     # ─── Baseline pre-flight: NIC VMs are plain kernel routers ────────────────
-    # Steps and remote commands kept from baseline-tcp/run_experiment.sh, in its
+    # Steps and remote commands kept from the former baseline-tcp runner, in its
     # order, so the baseline remote-call sequence is unchanged by the fold-in.
     if [[ "$stack" == baseline ]]; then
         log "Pre-flight — verifying IP forwarding and routes on NIC VMs..."
@@ -394,7 +394,7 @@ run_experiment() {
         pass "Captures stopped, DPDK binaries signalled"
     else
         # Baseline stops the Server and analyzes before reading the server log —
-        # the order baseline-tcp/run_experiment.sh uses.
+        # the order the former baseline-tcp runner used.
         log "Step 5: Stopping captures and Server..."
         endpoint_capture_stop "$CLIENT_ID" "$SERVER_ID"
         remote_bg "$SERVER_ID" "pkill -f loadgen.py 2>/dev/null || true"

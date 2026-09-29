@@ -15,10 +15,9 @@ result in chat, and investigate any failures.
 **Always ask the user** which mode they want before doing anything:
 
 > "Which experiment should I run?
-> 1. **Scapy** (AWS) — 0-RTT, Python/Scapy AF_PACKET (`experiments/scapy/run_experiment.sh`)
-> 2. **DPDK** (AWS) — 0-RTT, C/DPDK forwarder + translator (`experiments/dpdk/run_experiment.sh`)
-> 3. **Proxmox** — 0-RTT DPDK on the RUNS lab via SSH gateway (`experiments/proxmox/run_experiment.sh`)
-> 4. **Baseline** (AWS) — plain TCP, kernel forwarding, no middleware (`experiments/baseline-tcp/run_experiment.sh`)"
+> 1. **DPDK** (AWS) — 0-RTT, C/DPDK forwarder + translator (`./experiments/run.sh`)
+> 2. **Proxmox** — 0-RTT DPDK on the RUNS lab via SSH gateway (`TRANSPORT=ssh ./experiments/run.sh`)
+> 3. **Baseline** (AWS) — plain TCP, kernel forwarding, no middleware (`STACK=baseline ./experiments/run.sh`)"
 
 Set variables based on the answer:
 
@@ -26,18 +25,18 @@ A comparison request ("dpdk vs baseline", "does 0-RTT actually win") is **not** 
 mode choice — it is `infra=both` in one dispatch (Step 1). Don't run the two stacks
 as separate dispatches with hand-matched knobs.
 
-| Variable | Scapy | DPDK (AWS) | Proxmox | Baseline |
-|----------|-------|------------|---------|----------|
-| Workflow `infra` input | `scapy` | `dpdk` | *(not available in CI)* | `baseline` |
-| `EXPERIMENT_SCRIPT` | `experiments/scapy/run_experiment.sh` | `experiments/dpdk/run_experiment.sh` | `experiments/proxmox/run_experiment.sh` | `experiments/baseline-tcp/run_experiment.sh` |
-| `REPORT_DIR` | `experiments/scapy/reports/` | `experiments/dpdk/reports/` | `experiments/proxmox/reports/` | `experiments/baseline-tcp/reports/` |
-| Report filename | `integration-test-report-YYYY-MM-DD.md` | `integration-test-report-YYYY-MM-DD.md` | `proxmox-test-report-YYYY-MM-DD.md` | `baseline-report-YYYY-MM-DD-HHMMSS.md` |
-| `IMPL_NAME` | `scapy` | `dpdk` | `proxmox` | `baseline` |
-| Transport | AWS SSM | AWS SSM | SSH gateway | AWS SSM |
-| Node discovery | `smartnics-*` tags | `smartnics-*` tags | lab IPs (10.13.37.x) | `baseline-*` tags |
-| Default `CONNECTIONS` | 3 | 5 | 5 | 20 |
-| Infra stack | `infra/scapy` | `infra/dpdk` | RUNS Proxmox lab | `infra/baseline` |
-| Pcap validator | `validate_0rtt_capture.py` | `analyze_metrics.py` | `analyze_metrics.py` | (none) |
+| Variable | DPDK (AWS) | Proxmox | Baseline |
+|----------|------------|---------|----------|
+| Workflow `infra` input | `dpdk` | *(not available in CI)* | `baseline` |
+| `RUN_ENV` (prefix to `./experiments/run.sh`) | *(none — defaults `STACK=0rtt TRANSPORT=ssm`)* | `TRANSPORT=ssh` | `STACK=baseline` |
+| `REPORT_DIR` | `experiments/reports/0rtt/` | `experiments/reports/0rtt/` | `experiments/reports/baseline/` |
+| Report filename | `integration-test-report-YYYY-MM-DD.md` | `proxmox-test-report-YYYY-MM-DD.md` | `baseline-report-YYYY-MM-DD-HHMMSS.md` |
+| `IMPL_NAME` | `dpdk` | `proxmox` | `baseline` |
+| Transport | AWS SSM | SSH gateway | AWS SSM |
+| Node discovery | `smartnics-*` tags | lab IPs (10.13.37.x) | `baseline-*` tags |
+| Default `CONNECTIONS` | 1 | 1 | 1 |
+| Infra stack | `infra/dpdk` | RUNS Proxmox lab | `infra/baseline` |
+| Pcap validator | `analyze_metrics.py` | `analyze_metrics.py` | (none) |
 
 ## Step 1 — Run it (GitHub Actions is the default path)
 
@@ -64,7 +63,7 @@ gh run watch "$(gh run list --workflow=run-experiment.yml -L1 --json databaseId 
 
 | Input | Maps to | Default if omitted |
 |-------|---------|--------------------|
-| `infra` | `both` \| `dpdk` \| `baseline` \| `scapy` | `both` |
+| `infra` | `both` \| `dpdk` \| `baseline` | `both` |
 | `repo_ref` | branch the VMs hard-reset to | the workflow's own ref |
 | `rounds` | `CONNECTIONS` | 1 |
 | `load_parallel` | `LOAD_PARALLEL` | 100000 ⛔ never omit |
@@ -82,7 +81,7 @@ Why this path is preferred:
 - Needs no local AWS credentials, and survives the workstation going away.
 - Saves a full bundle per run to `experiments/ci-results/<stamp>-<infra>/`
   (`run-meta.json`, untruncated `experiment.log`, `report.md`, `node-logs/`) **and**
-  copies the report into `experiments/<mode>/reports/`, then commits both.
+  copies the report into `experiments/reports/<stack>/`, then commits both.
 - The workflow does **zero reasoning** on purpose. Step 6 supplies it.
 
 **Repeat runs / sweeps**: dispatch once per repetition (the `aws-ops` concurrency
@@ -124,10 +123,10 @@ Required for **Proxmox** (the GitHub runner cannot reach the lab: F5 VPN + SSH
 gateway), and for iterating with uncommitted local changes.
 
 ```bash
-LOAD_PARALLEL=2000 LOAD_RATE=500 ./<EXPERIMENT_SCRIPT>
+LOAD_PARALLEL=2000 LOAD_RATE=500 <RUN_ENV> ./experiments/run.sh
 ```
 
-The same rule applies here — a bare `./<EXPERIMENT_SCRIPT>` inherits the identical
+The same rule applies here — a bare `./experiments/run.sh` inherits the identical
 100000 @ 2000 conn/s default and fails the same way. `CONNECTIONS=N` adds
 measurement rounds and is optional.
 

@@ -34,7 +34,7 @@ If no bundle exists, say so and tell the user to trigger the workflow — do
 **not** try to run the experiment yourself from here:
 
 ```bash
-gh workflow run run-experiment.yml -f infra=<both|dpdk|baseline|scapy> \
+gh workflow run run-experiment.yml -f infra=<both|dpdk|baseline> \
     -f load_parallel=2000 -f load_rate=500
 ```
 

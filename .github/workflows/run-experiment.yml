@@ -31,7 +31,7 @@ on:
         type: choice
         required: true
         default: both
-        options: [both, dpdk, baseline, scapy]
+        options: [both, dpdk, baseline]
       repo_ref:
         description: "git branch the VMs hard-reset to (default: this workflow's ref)"
         default: ""
@@ -84,8 +84,8 @@ jobs:
         run: |
           case "$INFRA" in
             both)                 M='["baseline","dpdk"]' ;;
-            dpdk|scapy|baseline)  M="[\"$INFRA\"]" ;;
-            *) echo "::error::unknown infra '$INFRA' (both|dpdk|baseline|scapy)"; exit 1 ;;
+            dpdk|baseline)        M="[\"$INFRA\"]" ;;
+            *) echo "::error::unknown infra '$INFRA' (both|dpdk|baseline)"; exit 1 ;;
           esac
           echo "matrix=$M" >> "$GITHUB_OUTPUT"
           echo "will run: $M"
@@ -109,17 +109,19 @@ jobs:
         env:
           INFRA: ${{ matrix.infra }}
         run: |
-          # experiments/<dir>/ and the EC2 Name-tag prefix differ for baseline.
+          # run.sh's STACK, its report dir and the EC2 Name-tag prefix per infra.
           case "$INFRA" in
-            baseline) EXP_DIR=baseline-tcp; TAG_PREFIX=baseline  ;;
-            *)        EXP_DIR="$INFRA";     TAG_PREFIX=smartnics ;;
+            baseline) STACK=baseline; TAG_PREFIX=baseline  ;;
+            *)        STACK=0rtt;     TAG_PREFIX=smartnics ;;
           esac
+          REPORT_DIR="experiments/reports/$STACK"
           {
             echo "infra=$INFRA"
-            echo "exp_dir=$EXP_DIR"
+            echo "stack=$STACK"
+            echo "report_dir=$REPORT_DIR"
             echo "tag_prefix=$TAG_PREFIX"
           } >> "$GITHUB_OUTPUT"
-          echo "infra=$INFRA exp_dir=$EXP_DIR tag_prefix=$TAG_PREFIX"
+          echo "infra=$INFRA stack=$STACK report_dir=$REPORT_DIR tag_prefix=$TAG_PREFIX"
 
       - name: Export experiment knobs
         env:
@@ -207,14 +209,14 @@ jobs:
       - name: Run experiment
         id: run
         run: |
-          EXP_DIR='${{ steps.cfg.outputs.exp_dir }}'
+          REPORT_DIR='${{ steps.cfg.outputs.report_dir }}'
           # Marker: only files the runner writes AFTER this point go in the bundle.
-          # reports/ carries ~600 KB of committed historical logs otherwise.
-          mkdir -p "experiments/$EXP_DIR/reports"
+          # reports/ carries committed historical logs otherwise.
+          mkdir -p "$REPORT_DIR"
           touch /tmp/run-marker
-          chmod +x "experiments/$EXP_DIR/run_experiment.sh"
+          chmod +x experiments/run.sh
           set +e
-          "./experiments/$EXP_DIR/run_experiment.sh" 2>&1 | tee /tmp/experiment.log
+          STACK='${{ steps.cfg.outputs.stack }}' ./experiments/run.sh 2>&1 | tee /tmp/experiment.log
           RC=${PIPESTATUS[0]}
           set -e
           echo "exit_code=$RC" >> "$GITHUB_OUTPUT"
@@ -252,7 +254,7 @@ jobs:
           set +e
           export STAMP=$(date -u +%Y%m%d-%H%M%S)   # exported: the python heredoc below reads it
           INFRA='${{ steps.cfg.outputs.infra }}'
-          EXP_DIR='${{ steps.cfg.outputs.exp_dir }}'
+          REPORT_DIR='${{ steps.cfg.outputs.report_dir }}'
           RC='${{ steps.run.outputs.exit_code }}'
           OUT="experiments/ci-results/$STAMP-$INFRA"
           mkdir -p "$OUT/node-logs" "$OUT/reports"
@@ -272,7 +274,7 @@ jobs:
           rc = os.environ.get("RC", "")
           meta = {
             "infra": os.environ["INFRA"],
-            "exp_dir": os.environ["EXP_DIR"],
+            "report_dir": os.environ["REPORT_DIR"],
             "stamp_utc": os.environ["STAMP"],
             "exit_code": int(rc) if rc.isdigit() else None,
             "checks_failed": int(rc) if rc.isdigit() else None,
@@ -295,10 +297,10 @@ jobs:
           [ -f /tmp/experiment.log ] && cp /tmp/experiment.log "$OUT/experiment.log"
 
           # 3. Only reports this run produced (see the marker in "Run experiment").
-          if [ -d "experiments/$EXP_DIR/reports" ]; then
-            find "experiments/$EXP_DIR/reports" -type f -newer /tmp/run-marker \
+          if [ -d "$REPORT_DIR" ]; then
+            find "$REPORT_DIR" -type f -newer /tmp/run-marker \
               -exec cp {} "$OUT/reports/" \; 2>/dev/null || true
-            LATEST=$(find "experiments/$EXP_DIR/reports" -name '*.md' -newer /tmp/run-marker \
+            LATEST=$(find "$REPORT_DIR" -name '*.md' -newer /tmp/run-marker \
                        -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
             [ -n "$LATEST" ] && cp "$LATEST" "$OUT/report.md"
           fi
@@ -343,7 +345,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY" || true
         env:
           INFRA: ${{ steps.cfg.outputs.infra }}
-          EXP_DIR: ${{ steps.cfg.outputs.exp_dir }}
+          REPORT_DIR: ${{ steps.cfg.outputs.report_dir }}
           RC: ${{ steps.run.outputs.exit_code }}
           REQUESTED_INFRA: ${{ inputs.infra }}
 
@@ -357,14 +359,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           REF='${{ github.ref_name }}'
-          EXP_DIR='${{ steps.cfg.outputs.exp_dir }}'
+          REPORT_DIR='${{ steps.cfg.outputs.report_dir }}'
           # Two destinations on purpose. The bundle (experiment.log, node-logs/,
           # run-meta.json, report) goes to ci-results/; the runner's report ALSO
-          # goes to experiments/<mode>/reports/, which is where a locally-run
+          # goes to experiments/reports/<stack>/, which is where a locally-run
           # experiment leaves it. Committing only the bundle made "the dpdk
           # report" live in a different place depending on whether the run
           # happened in CI or on a workstation.
-          git add experiments/ci-results/ "experiments/$EXP_DIR/reports/"
+          git add experiments/ci-results/ "$REPORT_DIR/"
           git commit -m "ci: experiment ${{ steps.cfg.outputs.infra }} bundle ${{ steps.bundle.outputs.stamp }} [skip ci]" || {
             echo "nothing to commit"; exit 0; }
           # Anything the runner left unstaged would make rebase refuse; the
