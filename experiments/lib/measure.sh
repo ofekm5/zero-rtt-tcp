@@ -133,6 +133,22 @@ run_ttfb_measurement() {
     # send-immediately, the workload 0-RTT targets. Sweep with experiments/sweeps/think.sh.
     local think="${LOAD_THINK_MS:-0}"
 
+    # PROTO=quic swaps the load generator; everything around it is shared.
+    # loadgen_quic.py has no --think-ms. The orchestrator runs the generator
+    # directly (not via nodes/client.sh), so the pinned aioquic is ensured here.
+    local prep=""
+    local shape="${think}ms think, max $conc in flight"
+    local loadgen="python3 $repo/experiments/nodes/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --think-ms $think --concurrency-limit $conc"
+    if [[ "${PROTO:-tcp}" == quic ]]; then
+        prep="python3 -m pip show aioquic 2>/dev/null | grep -qx 'Version: 1.3.0' || python3 -m pip install --quiet 'aioquic==1.3.0'"
+        shape="QUIC cold, max $conc in flight"
+        loadgen="python3 $repo/experiments/nodes/loadgen_quic.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --concurrency-limit $conc"
+        if [[ "${QUIC_RESUME:-0}" == 1 ]]; then
+            shape="QUIC resumed, max $conc in flight"
+            loadgen+=" --resume"
+        fi
+    fi
+
     # Pacing sets a wall-clock FLOOR the transport timeout must clear: at
     # LOAD_RATE conn/s a round cannot finish sooner than parallel/rate seconds,
     # before any transfer or teardown. A timeout tuned for the old burst shape
@@ -140,23 +156,6 @@ run_ttfb_measurement() {
     # client failure, so say so up front rather than after 30 minutes.
     # rate may be fractional, so do the arithmetic in python (bc is not installed
     # on the Amazon Linux AMI); floor=0 signals "unpaced" back to the shell.
-    # PROTO=quic swaps the load generator; everything around it is shared.
-    # loadgen_quic.py has no --think-ms / --concurrency-limit. The orchestrator
-    # runs the generator directly (not via nodes/client.sh), so aioquic is
-    # ensured here.
-    local prep=""
-    local shape="${think}ms think, max $conc in flight"
-    local loadgen="python3 $repo/experiments/nodes/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --think-ms $think --concurrency-limit $conc"
-    if [[ "${PROTO:-tcp}" == quic ]]; then
-        prep="python3 -c 'import aioquic' 2>/dev/null || python3 -m pip install --quiet aioquic"
-        shape="QUIC cold"
-        loadgen="python3 $repo/experiments/nodes/loadgen_quic.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate"
-        if [[ "${QUIC_RESUME:-0}" == 1 ]]; then
-            shape="QUIC resumed"
-            loadgen+=" --resume"
-        fi
-    fi
-
     local floor
     floor=$(python3 -c "r=float('$rate'); print(int($parallel/r*$count) if r>0 else 0)" 2>/dev/null || echo 0)
     if (( floor > 0 )); then

@@ -62,13 +62,18 @@ echo ""
 # PROTO unset (or tcp) falls through to loadgen.py exactly as before.
 if [ "${PROTO:-tcp}" = "quic" ]; then
     pkill -f 'loadgen_quic.py' 2>/dev/null || true
-    python3 -c 'import aioquic' 2>/dev/null || {
-        log "Installing aioquic..."
-        python3 -m pip install --quiet aioquic
+    # Pinned: see client.sh.
+    python3 -m pip show aioquic 2>/dev/null | grep -qx 'Version: 1.3.0' || {
+        log "Installing aioquic 1.3.0..."
+        python3 -m pip install --quiet 'aioquic==1.3.0'
     }
-    # Throwaway self-signed cert: the client does not verify it.
-    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=loadgen" \
-        -keyout /tmp/quic.key -out /tmp/quic.crt 2>/dev/null
+    # Throwaway self-signed cert: the client does not verify it. EC P-256, the
+    # same key type the rate-spike calibration uses (loadgen_quic._write_cert).
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 \
+        -subj "/CN=loadgen" -keyout /tmp/quic.key -out /tmp/quic.crt || {
+        log "ERROR: openssl could not generate the QUIC cert"
+        exit 1
+    }
     exec python3 "$REPO_PATH/experiments/nodes/loadgen_quic.py" --mode server \
         --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
         --cert /tmp/quic.crt --key /tmp/quic.key

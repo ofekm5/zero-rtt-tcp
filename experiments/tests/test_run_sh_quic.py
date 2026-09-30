@@ -63,11 +63,11 @@ def test_quic_arm_runs_the_quic_endpoints(run_sh, arm):
     (load,) = _client_load(calls)
     assert "nodes/loadgen_quic.py --mode client --host 10.1.2.10 --port 8080 --port-count 4" in load
     assert "nodes/loadgen.py" not in load
-    # loadgen_quic.py rejects these two flags outright.
-    assert "--think-ms" not in load and "--concurrency-limit" not in load
+    # loadgen_quic.py rejects --think-ms outright; the in-flight cap is shared.
+    assert "--think-ms" not in load and "--concurrency-limit" in load
     assert ("--resume" in load) == (arm == "resumed")
     # The orchestrator bypasses nodes/client.sh, so it must ensure aioquic itself.
-    assert "import aioquic" in load
+    assert "aioquic==1.3.0" in load
 
     assert [c for c in calls if "pkill -f loadgen_quic.py" in c]
 
@@ -129,6 +129,15 @@ def test_missing_quic_summary_fails_the_run(run_sh):
 def test_quic_server_not_listening_on_udp_fails_the_run(run_sh):
     override = _quic("cold").replace("*'ss -ulnp'*) echo LISTEN_OK", "*'ss -ulnp'*) echo LISTEN_NONE")
     rc, _ = _calls(run_sh, "baseline", "ssm", override)
+    assert rc == 1
+
+
+@pytest.mark.parametrize("arm,reply", [
+    ("cold", _SUMMARY["cold"].replace("n=1 ", "n=0 ")),                  # nothing measured
+    ("resumed", _SUMMARY["resumed"].replace("=1/1", "=0/1")),            # 0-RTT rejected
+])
+def test_quic_round_without_valid_samples_fails_the_run(run_sh, arm, reply):
+    rc, _ = _calls(run_sh, "baseline", "ssm", _quic(arm, client_reply=f"Success: 1/1 {reply}"))
     assert rc == 1
 
 

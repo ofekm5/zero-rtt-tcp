@@ -539,10 +539,29 @@ run_experiment() {
     fi
 
     if [[ "$proto" == quic ]]; then
-        if echo "$METRICS_SUMMARY" | grep -q "quic_summary .*n=[1-9]"; then
-            pass "Metrics: QUIC client send_unlock summary collected"
-        else
+        # One quic_summary line per round. A round with n=0 measured nothing, and
+        # on a resumed run send_unlock is only true for flows whose 0-RTT data the
+        # server accepted, so anything short of early_data_accepted=n/n is a fail.
+        local quic_lines quic_bad
+        quic_lines=$(echo "$METRICS_SUMMARY" | grep -o 'quic_summary .*')
+        quic_bad=$(echo "$quic_lines" | awk -v resume="${QUIC_RESUME:-0}" 'NF {
+            n = ""; e = ""
+            for (i = 1; i <= NF; i++) {
+                split($i, kv, "=")
+                if (kv[1] == "n") n = kv[2]
+                if (kv[1] == "early_data_accepted") e = kv[2]
+            }
+            split(e, acc, "/")
+            if (n < 1 || (resume == 1 && acc[1] != n)) print
+        }')
+        if [[ -z "$quic_lines" ]]; then
             fail "Metrics: client printed no quic_summary line — no QUIC send_unlock to report"
+        elif (( $(echo "$quic_lines" | wc -l) < CONNECTIONS )); then
+            fail "Metrics: $(echo "$quic_lines" | wc -l) quic_summary line(s) for $CONNECTIONS round(s) — a round printed no summary"
+        elif [[ -n "$quic_bad" ]]; then
+            fail "Metrics: QUIC round(s) with no samples or, resumed, not every flow's 0-RTT accepted: $quic_bad"
+        else
+            pass "Metrics: QUIC client send_unlock summary collected"
         fi
     fi
 

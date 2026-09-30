@@ -65,6 +65,11 @@ case "$QUIC_RESUME" in
     0|1) ;;
     *) echo "ERROR: unrecognised QUIC_RESUME='$QUIC_RESUME' — accepted values: 0, 1" >&2; exit 2 ;;
 esac
+if [[ "$PROTO" == quic && -z "${LOAD_RATE:-}" ]]; then
+    echo "WARNING: PROTO=quic with LOAD_RATE unset runs at the TCP defaults (2000 conn/s," \
+         "LOAD_PARALLEL 100000) — pure-Python aioquic will not sustain that. Set LOAD_RATE to" \
+         "the rate chosen from 'loadgen_quic.py --mode rate-spike'." >&2
+fi
 
 SERVER_PORT=8080
 # Measurement ROUNDS (each round opens LOAD_PARALLEL connections across

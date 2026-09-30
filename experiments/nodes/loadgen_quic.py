@@ -31,6 +31,7 @@ import argparse
 import asyncio
 import contextlib
 import io
+import math
 import signal
 import ssl
 import subprocess
@@ -55,7 +56,7 @@ def _pct(values, p):
     if not values:
         return 0.0
     s = sorted(values)
-    return s[min(len(s) - 1, max(0, int(round(p / 100.0 * len(s) + 0.5)) - 1))]
+    return s[min(len(s) - 1, max(0, math.ceil(p / 100.0 * len(s)) - 1))]
 
 
 def _client_config(ticket=None):
@@ -68,7 +69,8 @@ def _client_config(ticket=None):
 
 
 async def _exchange(proto, nbytes):
-    """Send nbytes on one stream, then wait for the server to close its side."""
+    """Send nbytes on one stream and half-close; returns the reader — the
+    caller awaits reader.read() for the server's close."""
     reader, writer = await proto.create_stream()
     writer.write(b"\x00" * nbytes)
     writer.write_eof()
@@ -95,38 +97,48 @@ async def _prime(host, port, nbytes):
     return box[0] if box else None
 
 
-async def _client_conn(host, port, nbytes, ticket, samples, results):
+async def _client_conn(host, port, nbytes, ticket, samples, results, sem):
     resume = ticket is not None
-    try:
-        t0 = time.monotonic()
-        # Resuming: connect() returns before the handshake, so the write below
-        # goes out as 0-RTT early data in the first flight. Cold: connect()
-        # returns once the handshake is complete — the first moment a write is
-        # permitted.
-        async with connect(host, port, configuration=_client_config(ticket),
-                           wait_connected=not resume) as proto:
-            unlock = time.monotonic()
-            reader = await _exchange(proto, nbytes)
-            await proto.wait_connected()  # no-op when cold
-            hs = unlock if not resume else time.monotonic()
-            early = bool(proto._quic.tls.early_data_accepted)
-            await reader.read()
-    except Exception:
-        results["fail"] += 1
-        return
+    async with sem:
+        try:
+            t0 = time.monotonic()
+            # Resuming: connect() returns before the handshake, so the write
+            # below goes out as 0-RTT early data in the first flight. Cold:
+            # connect() returns once the handshake is complete — the first
+            # moment a write is permitted.
+            async with connect(host, port, configuration=_client_config(ticket),
+                               wait_connected=not resume) as proto:
+                unlock = time.monotonic()
+                reader = await _exchange(proto, nbytes)
+                await proto.wait_connected()  # no-op when cold
+                hs = unlock if not resume else time.monotonic()
+                # aioquic-internal: verified against the aioquic==1.3.0 pinned
+                # in nodes/client.sh, nodes/server.sh and lib/measure.sh.
+                early = bool(proto._quic.tls.early_data_accepted)
+                # A terminated connection also ends the stream with b"", so
+                # only the server's ack byte proves the payload was received.
+                if not await reader.read():
+                    raise ConnectionError("stream ended without the server's ack")
+        except Exception as e:
+            results["fail"] += 1
+            results.setdefault("error", repr(e))
+            return
     results["ok"] += 1
     samples.append(((unlock - t0) * 1000.0, (hs - t0) * 1000.0, early))
 
 
-async def run_client(host, ports, parallel, nbytes, rate=0.0, resume=False):
+async def run_client(host, ports, parallel, nbytes, rate=0.0, resume=False,
+                     concurrency_limit=None):
     """Open `parallel` QUIC connections paced at `rate` conn/s (0 = burst),
-    on the same absolute timeline as loadgen.run_client."""
+    on the same absolute timeline as loadgen.run_client, with at most
+    `concurrency_limit` in flight (None = parallel)."""
     ticket = await _prime(host, ports[0], nbytes)
     if resume and ticket is None:
         print("ERROR: priming connection got no session ticket; cannot resume",
               file=sys.stderr)
         return 1
 
+    sem = asyncio.Semaphore(concurrency_limit or parallel)
     results = {"ok": 0, "fail": 0}
     samples = []
     tasks = []
@@ -134,11 +146,12 @@ async def run_client(host, ports, parallel, nbytes, rate=0.0, resume=False):
     for i in range(parallel):
         if rate > 0:
             delay = (t0 + i / rate) - time.monotonic()
-            if delay > 0:
-                await asyncio.sleep(delay)
+            # Behind schedule: still yield, so running connections progress
+            # instead of the rest of the run being spawned in one burst.
+            await asyncio.sleep(max(delay, 0))
         tasks.append(asyncio.ensure_future(
             _client_conn(host, ports[i % len(ports)], nbytes,
-                         ticket if resume else None, samples, results)))
+                         ticket if resume else None, samples, results, sem)))
     spawn_dt = time.monotonic() - t0
     await asyncio.gather(*tasks)
     dt = time.monotonic() - t0
@@ -149,9 +162,13 @@ async def run_client(host, ports, parallel, nbytes, rate=0.0, resume=False):
     print(f"Transfer complete: {results['ok']}/{parallel} connections ok, "
           f"{results['fail']} failed, duration={dt:.3f}s")
     print(f"Success: {results['ok']}/{parallel}")
+    if "error" in results:
+        print(f"First connection error: {results['error']}", file=sys.stderr)
     unlock = [s[0] for s in samples]
     hs = [s[1] for s in samples]
     n = len(samples)
+    # Parsed format: lib/core.sh (pass/fail gate), lib/endpoint.sh
+    # (quic_latency_summary) and tests/test_loadgen_quic.py match this line.
     print(f"quic_summary mode={'resumed' if resume else 'cold'} n={n} "
           f"send_unlock_p50_ms={_pct(unlock, 50):.3f} "
           f"send_unlock_p95_ms={_pct(unlock, 95):.3f} "
@@ -182,6 +199,7 @@ async def _start_servers(ports, cert, key, counters, host="0.0.0.0"):
                 if not chunk:
                     break
                 total += len(chunk)
+            writer.write(b"\x01")  # ack: the client counts a flow ok only on it
             writer.write_eof()
         except Exception:
             pass
@@ -322,6 +340,9 @@ def _build_parser():
     ap.add_argument("--rate", type=float, default=0.0,
                     help="connection arrival rate in connections/sec (client "
                          "mode). 0 = all at once (burst)")
+    ap.add_argument("--concurrency-limit", type=int, default=None,
+                    help="client mode: max connections in flight "
+                         "(default = --parallel)")
     ap.add_argument("--resume", action="store_true",
                     help="client mode: reuse the priming connection's session "
                          "ticket on every connection (0-RTT)")
@@ -349,7 +370,8 @@ def main():
         print("ERROR: --host is required for --mode client", file=sys.stderr)
         return 2
     return asyncio.run(run_client(args.host, ports, args.parallel, args.bytes,
-                                  args.rate, args.resume))
+                                  args.rate, args.resume,
+                                  args.concurrency_limit))
 
 
 if __name__ == "__main__":

@@ -88,7 +88,7 @@ class TestServer:
         # The cert and key passed are the ones openssl was asked to write.
         (gen,) = [c for c in calls if c.startswith("openssl ")]
         gen_argv = gen.split()
-        assert "req -x509 -newkey rsa:2048 -nodes -days 1" in gen
+        assert "req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1" in gen
         assert gen_argv[gen_argv.index("-out") + 1] == cert
         assert gen_argv[gen_argv.index("-keyout") + 1] == key
         assert cert.startswith("/tmp/") and key.startswith("/tmp/")
@@ -97,6 +97,7 @@ class TestServer:
     def test_quic_pip_installs_aioquic(self, tmp_path):
         calls = _run(tmp_path, "server.sh", proto="quic")
         (install,) = _pip_installs(calls)
+        assert "aioquic==1.3.0" in install
         assert calls.index(install) < calls.index(_loadgen_calls(calls)[0])
 
     def test_proto_unset_falls_back_to_loadgen(self, tmp_path):
@@ -132,8 +133,8 @@ class TestClient:
         assert "--resume" not in run.split()
 
     def test_quic_passes_only_flags_loadgen_quic_accepts(self, tmp_path):
-        """loadgen_quic.py has no --think-ms / --concurrency-limit; argparse
-        would reject them on the VM and the flow would never start."""
+        """loadgen_quic.py has no --think-ms; argparse would reject an unknown
+        flag on the VM and the flow would never start."""
         calls = _run(tmp_path, "client.sh", proto="quic", resume="1",
                      args=["10.1.2.4"])
         (run,) = _loadgen_calls(calls)
@@ -144,6 +145,8 @@ class TestClient:
     def test_quic_pip_installs_aioquic(self, tmp_path):
         calls = _run(tmp_path, "client.sh", proto="quic", args=["10.1.2.4"])
         (install,) = _pip_installs(calls)
+        assert "aioquic==1.3.0" in install
+        assert "--concurrency-limit" in _loadgen_calls(calls)[0].split()
         assert calls.index(install) < calls.index(_loadgen_calls(calls)[0])
 
     def test_proto_unset_falls_back_to_loadgen(self, tmp_path):

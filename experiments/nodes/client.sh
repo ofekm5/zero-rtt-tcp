@@ -76,12 +76,13 @@ sudo -u ec2-user git -C "$REPO_PATH" fetch origin "$REPO_REF" 2>&1 \
 # ─── QUIC arm (PROTO=quic) ────────────────────────────────────────────────────
 # PROTO unset (or tcp) runs loadgen.py exactly as before. PROTO=quic runs
 # loadgen_quic.py; QUIC_RESUME=1 makes every measured connection reuse the
-# priming connection's session ticket (0-RTT).
+# priming connection's session ticket (0-RTT). aioquic is pinned: loadgen_quic.py
+# reads an aioquic-internal attribute verified against 1.3.0 (needs Python >= 3.10).
 PROTO="${PROTO:-tcp}"
 if [ "$PROTO" = "quic" ]; then
-    python3 -c 'import aioquic' 2>/dev/null || {
-        log "Installing aioquic..."
-        python3 -m pip install --quiet aioquic
+    python3 -m pip show aioquic 2>/dev/null | grep -qx 'Version: 1.3.0' || {
+        log "Installing aioquic 1.3.0..."
+        python3 -m pip install --quiet 'aioquic==1.3.0'
     }
 fi
 
@@ -109,11 +110,12 @@ while IFS= read -r _input; do
     CONN=$((CONN + 1))
     echo -e "${GREEN}─── Flow #${CONN} (${LOAD_PORTS} ports, $LOAD_PARALLEL total) ──────────${NC}"
     if [ "$PROTO" = "quic" ]; then
-        # loadgen_quic.py has no --think-ms / --concurrency-limit.
+        # loadgen_quic.py has no --think-ms.
         python3 "$REPO_PATH/experiments/nodes/loadgen_quic.py" --mode client \
             --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
             --parallel "$LOAD_PARALLEL" --bytes "$LOAD_BYTES" \
-            --rate "$LOAD_RATE" $([ "${QUIC_RESUME:-0}" = "1" ] && echo --resume)
+            --rate "$LOAD_RATE" --concurrency-limit "$LOAD_CONCURRENCY" \
+            $([ "${QUIC_RESUME:-0}" = "1" ] && echo --resume)
     else
         python3 "$REPO_PATH/experiments/nodes/loadgen.py" --mode client \
             --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \

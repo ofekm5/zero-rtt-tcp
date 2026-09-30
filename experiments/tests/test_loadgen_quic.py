@@ -8,7 +8,6 @@ Plain pytest, real aioquic client and server over 127.0.0.1; no netem, no VMs.
 
 import asyncio
 import contextlib
-import datetime
 import importlib.util
 import io
 import re
@@ -19,11 +18,6 @@ import pytest
 
 pytest.importorskip("aioquic", reason="aioquic is not installed — "
                     "pip install aioquic to run the QUIC loopback test")
-
-from cryptography import x509  # noqa: E402  (aioquic dependency)
-from cryptography.hazmat.primitives import hashes, serialization  # noqa: E402
-from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
-from cryptography.x509.oid import NameOID  # noqa: E402
 
 _PATH = Path(__file__).parent.parent / "nodes" / "loadgen_quic.py"
 _spec = importlib.util.spec_from_file_location("loadgen_quic", _PATH)
@@ -43,25 +37,6 @@ _SUMMARY_RE = re.compile(
     re.MULTILINE)
 
 
-def _write_cert(tmp_path):
-    key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
-    now = datetime.datetime.now(datetime.timezone.utc)
-    cert = (x509.CertificateBuilder()
-            .subject_name(name).issuer_name(name)
-            .public_key(key.public_key())
-            .serial_number(x509.random_serial_number())
-            .not_valid_before(now - datetime.timedelta(days=1))
-            .not_valid_after(now + datetime.timedelta(days=1))
-            .sign(key, hashes.SHA256()))
-    crt, pem = tmp_path / "quic.crt", tmp_path / "quic.key"
-    crt.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-    pem.write_bytes(key.private_bytes(serialization.Encoding.PEM,
-                                      serialization.PrivateFormat.PKCS8,
-                                      serialization.NoEncryption()))
-    return str(crt), str(pem)
-
-
 def _summary(out):
     matches = list(_SUMMARY_RE.finditer(out))
     assert len(matches) == 1, f"expected one quic_summary line, got:\n{out}"
@@ -73,7 +48,7 @@ def _summary(out):
 @pytest.fixture(scope="module")
 def arms(tmp_path_factory):
     """Run a cold and a resumed client against one loopback server."""
-    cert, key = _write_cert(tmp_path_factory.mktemp("quic"))
+    cert, key = loadgen_quic._write_cert(tmp_path_factory.mktemp("quic"))
     outs = {}
 
     async def _go():
@@ -122,3 +97,15 @@ def test_resumed_send_unlock_is_below_cold(arms):
     # A resumed flow still does a handshake; only the first write is unlocked
     # ahead of it.
     assert resumed["unlock_p50"] < resumed["hs_p50"], resumed
+
+
+@pytest.mark.parametrize("n,p,idx", [(1, 50, 0), (2, 50, 0), (10, 50, 4),
+                                     (20, 50, 9), (20, 95, 18), (100, 95, 94),
+                                     (3, 100, 2)])
+def test_pct_is_nearest_rank(n, p, idx):
+    # Shuffled-ish input: _pct must sort, and values equal their own rank index.
+    assert loadgen_quic._pct(list(range(n))[::-1], p) == idx
+
+
+def test_pct_of_empty_sample_is_zero():
+    assert loadgen_quic._pct([], 50) == 0.0
