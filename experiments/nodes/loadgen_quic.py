@@ -24,13 +24,18 @@ Usage:
         --cert /tmp/quic.crt --key /tmp/quic.key
     python3 loadgen_quic.py --mode client --host 10.1.2.4 --port 8080 \
         --port-count 4 --parallel 1000 --bytes 1024 --rate 200 [--resume]
+    python3 loadgen_quic.py --mode rate-spike   # loopback; prints sustained_rate=<n>
 """
 
 import argparse
 import asyncio
+import contextlib
+import io
 import signal
 import ssl
+import subprocess
 import sys
+import tempfile
 import time
 
 from aioquic.asyncio import connect, serve
@@ -38,6 +43,11 @@ from aioquic.quic.configuration import QuicConfiguration
 
 ALPN = ["loadgen"]
 TICKET_WAIT_S = 5.0
+# rate-spike mode: cold-handshake rates tried in order, seconds held at each,
+# and the sleep whose overshoot is the event-loop lag.
+SPIKE_RATES = (50, 100, 200, 400, 800, 1600, 3200)
+SPIKE_STEP_S = 2.0
+LAG_TICK_S = 0.01
 
 
 def _pct(values, p):
@@ -211,10 +221,96 @@ async def run_server(ports, cert, key):
         s.close()
 
 
+def _write_cert(directory):
+    """Throwaway self-signed cert for the rate-spike loopback server."""
+    import datetime
+    from pathlib import Path
+
+    from cryptography import x509  # aioquic dependency
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder()
+            .subject_name(name).issuer_name(name)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=1))
+            .sign(key, hashes.SHA256()))
+    crt, pem = Path(directory) / "quic.crt", Path(directory) / "quic.key"
+    crt.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    pem.write_bytes(key.private_bytes(serialization.Encoding.PEM,
+                                      serialization.PrivateFormat.PKCS8,
+                                      serialization.NoEncryption()))
+    return str(crt), str(pem)
+
+
+async def _lag_probe(lags):
+    """Record how late each LAG_TICK_S sleep wakes up, in ms."""
+    while True:
+        t = time.monotonic()
+        await asyncio.sleep(LAG_TICK_S)
+        lags.append((time.monotonic() - t - LAG_TICK_S) * 1000.0)
+
+
+async def run_rate_spike(port, nbytes, max_lag_ms):
+    """Ramp the cold-handshake arrival rate against a loopback server and
+    report the highest rate whose event-loop lag p95 stays under max_lag_ms
+    with no failed connection. Stops at the first rate that breaches."""
+    sustained = 0
+    for rate in SPIKE_RATES:
+        lags = []
+        probe = asyncio.ensure_future(_lag_probe(lags))
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = await run_client("127.0.0.1", [port],
+                                      int(rate * SPIKE_STEP_S), nbytes,
+                                      rate=float(rate))
+        finally:
+            probe.cancel()
+        lag = _pct(lags, 95)
+        ok = rc == 0 and lag <= max_lag_ms
+        print(f"rate_spike rate={rate} lag_p95_ms={lag:.3f} "
+              f"failed={int(rc != 0)} ok={int(ok)}", flush=True)
+        if not ok:
+            break
+        sustained = rate
+    print(f"sustained_rate={sustained}", flush=True)
+    return 0
+
+
+def _rate_spike_main(port, nbytes, max_lag_ms):
+    # The server runs as its own process so the lag measured is the client's
+    # alone, as it will be on the client VM.
+    with tempfile.TemporaryDirectory() as d:
+        cert, key = _write_cert(d)
+        srv = subprocess.Popen(
+            [sys.executable, __file__, "--mode", "server", "--port", str(port),
+             "--cert", cert, "--key", key],
+            stdout=subprocess.PIPE, text=True)
+        try:
+            if "Listening" not in srv.stdout.readline():
+                print("ERROR: loopback QUIC server did not start",
+                      file=sys.stderr)
+                return 1
+            return asyncio.run(run_rate_spike(port, nbytes, max_lag_ms))
+        finally:
+            srv.terminate()
+            srv.wait()
+
+
 def _build_parser():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--mode", choices=["client", "server"], required=True)
+    ap.add_argument("--mode", choices=["client", "server", "rate-spike"],
+                    required=True)
+    ap.add_argument("--max-lag-ms", type=float, default=20.0,
+                    help="rate-spike mode: event-loop lag p95 above this "
+                         "means the rate is not sustained")
     ap.add_argument("--host", default=None, help="server host (client mode only)")
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--port-count", type=int, default=1)
@@ -245,6 +341,9 @@ def main():
             return 2
         asyncio.run(run_server(ports, args.cert, args.key))
         return 0
+
+    if args.mode == "rate-spike":
+        return _rate_spike_main(args.port, args.bytes, args.max_lag_ms)
 
     if not args.host:
         print("ERROR: --host is required for --mode client", file=sys.stderr)
