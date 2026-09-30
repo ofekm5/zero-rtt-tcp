@@ -327,3 +327,16 @@ endpoint_latency_summary() {
     echo "$metrics" | summarize_metric "fct"        "client" "Pcap FCT      "
     echo "$metrics" | summarize_metric "server_gap" "server" "Server gap    "
 }
+
+# quic_latency_summary <client-stdout>
+#
+# The QUIC arm's latency block (PROTO=quic). QUIC payloads are encrypted, so
+# there is no pcap metric: the headline is the client's own app-side
+# send_unlock, printed by loadgen_quic.py as one quic_summary line per round.
+# The raw line is shown whole — it also carries handshake_p50_ms and
+# early_data_accepted, which the A2 escalation triggers are read off.
+quic_latency_summary() {
+    echo "  ── Primary: time-to-first-byte the client actually experiences ──"
+    echo "$1" | grep -o 'quic_summary .*' | sed 's/^/  /'
+    echo "  (app-side send_unlock from loadgen_quic.py; QUIC is encrypted, so no pcap fct/server_gap)"
+}
