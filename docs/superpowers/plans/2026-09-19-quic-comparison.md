@@ -32,14 +32,14 @@
     - Outcome: on loopback, ramps the cold-handshake rate and reports the highest rate at which the event-loop lag stays small (`sustained_rate=<n>`). The rate used for all four runs is about half of it, capped at 500. Record the chosen `RATE` in the design doc. Loopback is faster than a real 4-vCPU VM, so the number is an upper bound; confirm on the first AWS run that client CPU stays well under 100%.
     - Commit: `feat(experiments): add QUIC arrival-rate spike`
 
-- [ ] 4 Run QUIC from the endpoint node scripts — verify: `bash -n experiments/nodes/client.sh && bash -n experiments/nodes/server.sh && grep -q 'loadgen_quic.py' experiments/nodes/client.sh experiments/nodes/server.sh`
-    - File: `experiments/nodes/client.sh`, `experiments/nodes/server.sh`
-    - Outcome: when `PROTO=quic`, each script `pip install`s `aioquic` if missing and runs `loadgen_quic.py`; the server script first generates a self-signed cert and key with `openssl req -x509 -newkey rsa:2048 -nodes -days 1` into `/tmp` and passes `--cert`/`--key`; the client adds `--resume` when `QUIC_RESUME=1`. With `PROTO` unset both scripts behave as before.
+- [ ] 4 Run QUIC from the endpoint node scripts — verify: `pytest experiments/tests/test_quic_endpoints.py -q`
+    - File: `experiments/nodes/client.sh`, `experiments/nodes/server.sh`, `experiments/tests/test_quic_endpoints.py` (new)
+    - Outcome: the test runs each script with `pip`, `openssl` and `python3` stubbed on `PATH` (the pattern `experiments/tests/` already uses) and asserts on the recorded invocations — with `PROTO=quic` the loadgen run is `loadgen_quic.py`, the server's carries `--cert`/`--key` after an `openssl req` call, the client's carries `--resume` only when `QUIC_RESUME=1`; with `PROTO` unset it is `loadgen.py`. When `PROTO=quic`, each script `pip install`s `aioquic` if missing and runs `loadgen_quic.py`; the server script first generates a self-signed cert and key with `openssl req -x509 -newkey rsa:2048 -nodes -days 1` into `/tmp` and passes `--cert`/`--key`; the client adds `--resume` when `QUIC_RESUME=1`. With `PROTO` unset both scripts behave as before.
     - Commit: `feat(experiments): run the QUIC load generator from the endpoint scripts`
 
-- [ ] 5 Run the QUIC arm from the orchestrator and report it — verify: `bash -n experiments/run.sh && grep -q 'PROTO' experiments/run.sh && grep -q 'QUIC_RESUME' experiments/run.sh`
-    - File: `experiments/run.sh` (and the lib file that prints the latency block, per the layout `streamline-experiments-harness` produced)
-    - Outcome: on `STACK=baseline`, `PROTO=quic` starts the QUIC endpoints, captures the client's `quic_summary` line and prints it under the headline tier. Cold and resumed are separate runs (`QUIC_RESUME=0|1`). The report states that TCP and 0-RTT arms are plaintext while QUIC always encrypts, that all resumed flows reuse one ticket, and prints `early_data_accepted` and `handshake_p50_ms` so the escalation triggers can be read off it. Pcap capture and `analyze_metrics.py` are skipped for the QUIC arm.
+- [ ] 5 Run the QUIC arm from the orchestrator and report it — verify: `pytest experiments/tests/test_run_sh_quic.py -q`
+    - File: `experiments/run.sh` (and the lib file that prints the latency block, per the layout `streamline-experiments-harness` produced), `experiments/tests/test_run_sh_quic.py` (new)
+    - Outcome: the test runs `run.sh` offline with the transport stubbed, the way `experiments/tests/test_run_sh.py` does, with `STACK=baseline PROTO=quic` and `QUIC_RESUME=0` then `1`, and asserts the endpoints are started with `PROTO=quic` and the matching `QUIC_RESUME`, the report prints the stubbed client's `quic_summary` values, and pcap capture and `analyze_metrics.py` are not invoked. On `STACK=baseline`, `PROTO=quic` starts the QUIC endpoints, captures the client's `quic_summary` line and prints it under the headline tier. Cold and resumed are separate runs (`QUIC_RESUME=0|1`). The report states that TCP and 0-RTT arms are plaintext while QUIC always encrypts, that all resumed flows reuse one ticket, and prints `early_data_accepted` and `handshake_p50_ms` so the escalation triggers can be read off it. Pcap capture and `analyze_metrics.py` are skipped for the QUIC arm.
     - Commit: `feat(experiments): add a QUIC arm to the baseline stack`
 
 - [ ] 6 Run all four arms and write the table up — verify: `ls experiments/baseline-tcp/reports/*quic* | wc -l | grep -qE '^[2-9]' && grep -q 'QUIC' docs/index.html`
@@ -59,7 +59,7 @@
   "maxParallel": 2,
   "sprints": [
     { "id": 1, "name": "quic loadgen", "tasks": [1, 2, 3], "dependsOn": [], "touches": ["experiments/nodes/loadgen_quic.py", "experiments/tests/test_loadgen_quic.py"] },
-    { "id": 2, "name": "orchestration", "tasks": [4, 5], "dependsOn": [1], "touches": ["experiments/nodes", "experiments/run.sh"] }
+    { "id": 2, "name": "orchestration", "tasks": [4, 5], "dependsOn": [1], "touches": ["experiments/nodes", "experiments/run.sh", "experiments/lib", "experiments/tests/test_quic_endpoints.py", "experiments/tests/test_run_sh_quic.py"] }
   ],
   "waves": [[1], [2]]
 }
