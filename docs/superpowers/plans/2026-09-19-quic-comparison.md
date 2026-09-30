@@ -61,11 +61,12 @@
     { "id": 1, "name": "quic loadgen", "tasks": [1], "dependsOn": [], "touches": ["experiments/nodes/loadgen_quic.py"] },
     { "id": 2, "name": "loopback test", "tasks": [2], "dependsOn": [1], "touches": ["experiments/tests/test_loadgen_quic.py", "experiments/nodes/loadgen_quic.py"] },
     { "id": 3, "name": "rate spike", "tasks": [3], "dependsOn": [2], "touches": ["experiments/nodes/loadgen_quic.py"] },
-    { "id": 4, "name": "orchestration", "tasks": [4, 5], "dependsOn": [3], "touches": ["experiments/nodes", "experiments/run.sh", "experiments/lib", "experiments/tests/test_quic_endpoints.py", "experiments/tests/test_run_sh_quic.py"] }
+    { "id": 4, "name": "endpoint scripts", "tasks": [4], "dependsOn": [3], "touches": ["experiments/nodes", "experiments/tests/test_quic_endpoints.py"] },
+    { "id": 5, "name": "orchestrator", "tasks": [5], "dependsOn": [4], "touches": ["experiments/run.sh", "experiments/lib", "experiments/nodes", "experiments/tests/test_run_sh_quic.py"] }
   ],
-  "waves": [[1], [2], [3], [4]]
+  "waves": [[1], [2], [3], [4], [5]]
 }
 ```
-Task 6 is a manual AWS run and sits outside the sprint graph; it starts after sprint 4.
+Task 6 is a manual AWS run and sits outside the sprint graph; it starts after sprint 5.
 Task 7 is a manual-review roadmap entry and sits outside the sprint graph.
 triage-verdict: ok
