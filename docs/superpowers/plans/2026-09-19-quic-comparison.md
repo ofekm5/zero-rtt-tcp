@@ -2,7 +2,7 @@
 
 **Goal:** Add QUIC cold and QUIC resumed arms on the baseline stack and report client-side `send_unlock` for four arms: TCP baseline, 0-RTT TCP, QUIC cold, QUIC resumed.
 
-**Architecture:** a new `experiments/utils/loadgen_quic.py` runs an `aioquic` client/server that times connect-start to first-write-allowed on the client's own clock; the node scripts and `experiments/run.sh` select it with `PROTO=quic` on `STACK=baseline`. All four arms run at a lower arrival rate found by a loopback spike. No NIC VM or `src/` change — UDP rides the existing kernel-routed baseline path and its `netem` delay.
+**Architecture:** a new `experiments/nodes/loadgen_quic.py` runs an `aioquic` client/server that times connect-start to first-write-allowed on the client's own clock; the node scripts and `experiments/run.sh` select it with `PROTO=quic` on `STACK=baseline`. All four arms run at a lower arrival rate found by a loopback spike. No NIC VM or `src/` change — UDP rides the existing kernel-routed baseline path and its `netem` delay.
 
 **Tech Stack:** Python 3 + `aioquic` + pytest, Bash.
 
@@ -17,8 +17,8 @@
 
 ---
 
-- [ ] 1 Write `loadgen_quic.py` — verify: `python3 -c "import ast;ast.parse(open('experiments/utils/loadgen_quic.py').read())" && grep -q 'aioquic' experiments/utils/loadgen_quic.py && git diff --exit-code main -- experiments/utils/loadgen.py`
-    - File: `experiments/utils/loadgen_quic.py` (new); `loadgen.py` is not edited
+- [ ] 1 Write `loadgen_quic.py` — verify: `python3 -c "import ast;ast.parse(open('experiments/nodes/loadgen_quic.py').read())" && grep -q 'aioquic' experiments/nodes/loadgen_quic.py && git diff --exit-code main -- experiments/nodes/loadgen.py`
+    - File: `experiments/nodes/loadgen_quic.py` (new); `loadgen.py` is not edited
     - Outcome: QUIC client and server with the same paced-arrival shape as `loadgen.py` (`--rate`, `--parallel`, `--bytes`, ports). Flags: `--mode {client,server,rate-spike}`, `--resume`, `--cert`, `--key`. Each client connection records `send_unlock_ms` (connect start until the first write is permitted: handshake complete when cold, immediately after `connect()` returns when resuming), `handshake_ms` (connect start until handshake complete, always) and `early_data_accepted` (from the aioquic TLS state; check the attribute name against the installed version). One priming cold connection per process saves a session ticket; with `--resume` every later connection reuses it. The server sets `max_early_data` and keeps tickets in memory. At exit the client prints `quic_summary mode=<cold|resumed> n=<N> send_unlock_p50_ms=<x> send_unlock_p95_ms=<x> handshake_p50_ms=<x> early_data_accepted=<k>/<N>`.
     - Commit: `feat(experiments): add QUIC load generator with per-connection send_unlock`
 
@@ -27,8 +27,8 @@
     - Outcome: starts the QUIC server on `127.0.0.1`, runs a cold and a resumed client (small `n`), and asserts the resumed `send_unlock_p50_ms` is below the cold one, `early_data_accepted` equals `n` resumed and `0` cold, and the `quic_summary` line parses. It fails if resumption silently falls back to 1-RTT.
     - Commit: `test(experiments): pin QUIC cold vs resumed send_unlock on loopback`
 
-- [ ] 3 Spike: find the sustainable arrival rate — verify: `python3 experiments/utils/loadgen_quic.py --mode rate-spike | grep -q '^sustained_rate='`
-    - File: `experiments/utils/loadgen_quic.py` (add a `rate-spike` mode); result recorded in the design's "Not yet specified"
+- [ ] 3 Spike: find the sustainable arrival rate — verify: `python3 experiments/nodes/loadgen_quic.py --mode rate-spike | grep -q '^sustained_rate='`
+    - File: `experiments/nodes/loadgen_quic.py` (add a `rate-spike` mode); result recorded in the design's "Not yet specified"
     - Outcome: on loopback, ramps the cold-handshake rate and reports the highest rate at which the event-loop lag stays small (`sustained_rate=<n>`). The rate used for all four runs is about half of it, capped at 500. Record the chosen `RATE` in the design doc. Loopback is faster than a real 4-vCPU VM, so the number is an upper bound; confirm on the first AWS run that client CPU stays well under 100%.
     - Commit: `feat(experiments): add QUIC arrival-rate spike`
 
@@ -47,7 +47,7 @@
     - Outcome: manual, needs AWS. Deploy each stack and run at the same `NETEM_RTT_MS`, connection count and the `RATE` from Task 3. Paste the four `send_unlock` numbers into `docs/index.html` by hand, with the plaintext-vs-encrypted and one-ticket caveats. Check the escalation triggers in Global Constraints against the QUIC reports.
     - Commit: `docs(experiments): add the four-arm QUIC comparison`
 
-- [ ] 7 Record the change and the A2 escalation in the roadmap — verify: `grep -q 'A2' roadmap.md && grep -q 'quic-comparison' roadmap.md`
+- [ ] 7 Record the change and the A2 escalation in the roadmap — manual review
     - File: `roadmap.md`
     - Outcome: the "QUIC comparison" section links the plan and design, states the framing (0-RTT TCP versus QUIC cold and resumed, `send_unlock` only, reduced rate) and adds a checkbox: "If A1 results look off, add the pcap header cross-check (A2)", with the four triggers.
     - Commit: `docs(roadmap): record the QUIC comparison plan and A2 escalation`
@@ -58,12 +58,12 @@
 {
   "maxParallel": 2,
   "sprints": [
-    { "id": 1, "name": "quic loadgen", "tasks": [1, 2, 3], "dependsOn": [], "touches": ["experiments/utils/loadgen_quic.py", "experiments/tests/test_loadgen_quic.py"] },
-    { "id": 2, "name": "orchestration", "tasks": [4, 5], "dependsOn": [1], "touches": ["experiments/nodes", "experiments/run.sh"] },
-    { "id": 3, "name": "docs", "tasks": [7], "dependsOn": [], "touches": ["roadmap.md"] }
+    { "id": 1, "name": "quic loadgen", "tasks": [1, 2, 3], "dependsOn": [], "touches": ["experiments/nodes/loadgen_quic.py", "experiments/tests/test_loadgen_quic.py"] },
+    { "id": 2, "name": "orchestration", "tasks": [4, 5], "dependsOn": [1], "touches": ["experiments/nodes", "experiments/run.sh"] }
   ],
-  "waves": [[1, 3], [2]]
+  "waves": [[1], [2]]
 }
 ```
 Task 6 is a manual AWS run and sits outside the sprint graph; it starts after sprint 2.
+Task 7 is a manual-review roadmap entry and sits outside the sprint graph.
 triage-verdict: ok
