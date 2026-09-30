@@ -57,5 +57,22 @@ echo ""
 # thread-per-port either (see experiments/nodes/loadgen.py).
 log "Starting load-generator server on ports ${SERVER_PORT}-${SERVER_PORT_HI} — press Ctrl+C to stop."
 echo ""
+
+# ─── QUIC arm (PROTO=quic) ────────────────────────────────────────────────────
+# PROTO unset (or tcp) falls through to loadgen.py exactly as before.
+if [ "${PROTO:-tcp}" = "quic" ]; then
+    pkill -f 'loadgen_quic.py' 2>/dev/null || true
+    python3 -c 'import aioquic' 2>/dev/null || {
+        log "Installing aioquic..."
+        python3 -m pip install --quiet aioquic
+    }
+    # Throwaway self-signed cert: the client does not verify it.
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=loadgen" \
+        -keyout /tmp/quic.key -out /tmp/quic.crt 2>/dev/null
+    exec python3 "$REPO_PATH/experiments/nodes/loadgen_quic.py" --mode server \
+        --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
+        --cert /tmp/quic.crt --key /tmp/quic.key
+fi
+
 exec python3 "$REPO_PATH/experiments/nodes/loadgen.py" --mode server \
     --port "$SERVER_PORT" --port-count "$LOAD_PORTS"
