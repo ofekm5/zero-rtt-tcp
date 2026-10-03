@@ -1,0 +1,23 @@
+{
+  "infra": "baseline",
+  "report_dir": "experiments/reports/baseline",
+  "stamp_utc": "20261003-151532",
+  "exit_code": 0,
+  "checks_failed": 0,
+  "git_sha": "9e2e583fe75d22da0facf8fa57a5d620ce9281a2",
+  "git_ref": "experiments/quic-comparison-2026-10-03",
+  "repo_ref_on_vms": "experiments/quic-comparison-2026-10-03",
+  "run_url": "https://github.com/ofekm5/zero-rtt-tcp/actions/runs/37132329709",
+  "requested_infra": "baseline",
+  "knobs": {
+    "CONNECTIONS": "1",
+    "LOAD_PARALLEL": "2000",
+    "LOAD_PORTS": "4",
+    "LOAD_RATE": "100",
+    "LOAD_BYTES": "1024",
+    "LOAD_CONCURRENCY": "2000",
+    "LOAD_TIMEOUT": "300",
+    "NETEM_RTT_MS": "100",
+    "REPO_REF": "experiments/quic-comparison-2026-10-03"
+  }
+}
