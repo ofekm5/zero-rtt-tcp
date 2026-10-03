@@ -1,0 +1,35 @@
+===== /tmp/server.log =====
+[1;33m[14:49:01] Killing any leftover load-generator processes...[0m
+[1;33m[14:49:02] Open-file limit (ulimit -n): 1048576[0m
+[1;33m[14:49:02] Syncing code to origin/experiments/quic-comparison-2026-10-03 (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            experiments/quic-comparison-2026-10-03 -> FETCH_HEAD
+HEAD is now at 5566abe ci: experiment baseline bundle 20261003-144442 [skip ci]
+[1;33m[14:49:02] Server VM IP: 10.1.2.117[0m
+[1;33m[14:49:02] Will listen on 0.0.0.0:8080-8083 (4 port(s))[0m
+
+[1;33m[14:49:02] Starting load-generator server on ports 8080-8083 ? press Ctrl+C to stop.[0m
+
+Listening on ports [8080, 8081, 8082, 8083]
+Received 171008 bytes across 167 connections (so far)
+Received 376832 bytes across 368 connections (so far)
+Received 581632 bytes across 568 connections (so far)
+Received 786432 bytes across 768 connections (so far)
+Received 991232 bytes across 968 connections (so far)
+Received 1196032 bytes across 1168 connections (so far)
+Received 1400832 bytes across 1368 connections (so far)
+Received 1605632 bytes across 1568 connections (so far)
+Received 1810432 bytes across 1768 connections (so far)
+Received 2015232 bytes across 1968 connections (so far)
+Received 2048000 bytes across 2000 connections (so far)
+Received 2048000 bytes across 2000 connections (final)
+_GatheringFuture exception was never retrieved
+future: <_GatheringFuture finished exception=CancelledError()>
+concurrent.futures._base.CancelledError
+===== /tmp/tcpdump_hiprec.log =====
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 128 bytes
+16000 packets captured
+16000 packets received by filter
+0 packets dropped by kernel
+===== pcap inventory =====
+-rw-r--r-- 1 tcpdump tcpdump 1284024 Oct  3 14:49 /tmp/server_side.pcap

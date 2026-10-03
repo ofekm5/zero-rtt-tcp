@@ -11,7 +11,7 @@ Ranked easiest win first — least infra, fewest blockers, smallest change.
 | --- | --- | --- | --- |
 | 1 | [Human-readable experiment output](#human-readable-experiment-output) | Scoped — needs task-runner to implement | Local only: output + `experiments/` cleanup, no infra |
 | 2 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress — resume: `claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba` | One function in `loadgen.py`, already being specced |
-| 3 | [QUIC comparison](#quic-comparison) | Scoped, validation is in progress — resume: `claude --resume 25d15f2d-0439-4a70-b4db-945b03dbfe9d` | New experiment arm, no data-plane change |
+| 3 | [QUIC comparison](#quic-comparison) | Four-arm AWS comparison recorded; A2 follow-up pending | Experiment arms only, no data-plane change |
 | 4 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — porting decided, phase not scoped | Needs lab + runs3, but no external blocker |
 | 5 | [DDoS: purge delta rows](#ddos-purge-delta-rows) | Idea — not scoped | ServerNIC flow table only, unit-testable without a stack |
 | 6 | [`verify-eswitch-tcp-seq-offload`](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | Preemptive, off the Phase 1 path — in progress, DPU left mutated | 2/5 done; blocked on a sudo password + DPU restore |
@@ -325,11 +325,37 @@ the project has declared out of scope — see [`docs/kb/wiki/Known Limitations.m
 
 ### QUIC comparison
 
-**Status:** scoped, validation is in progress — resume:
-`claude --resume 25d15f2d-0439-4a70-b4db-945b03dbfe9d`
+**Status:** implementation merged in [PR #42](https://github.com/ofekm5/zero-rtt-tcp/pull/42);
+Tasks 6 and 7 are complete: the four-arm AWS measurement and
+[write-up](docs/index.html#quic-comparison) were recorded on 2026-10-03.
+The A2 wire cross-check remains a follow-up.
+[Plan](docs/superpowers/plans/2026-09-19-quic-comparison.md) ·
+[Design](docs/superpowers/specs/2026-09-19-quic-comparison-design.md).
 
-Add QUIC as a third arm in `experiments/` next to the plain-TCP baseline and
-the DPDK 0-RTT stack.
+Compare plain TCP, DPDK 0-RTT TCP, QUIC cold and QUIC resumed using client-side
+`send_unlock` only (A1). Run at identical connection counts, payloads and
+`NETEM_RTT_MS`, with a reduced arrival rate selected from the QUIC loopback
+rate spike (about half the sustained rate, capped at 500/s). Confirm client CPU
+headroom on AWS; the loopback rate is an upper bound.
+
+TCP arms are plaintext; QUIC encrypts. All resumed connections reuse one primed
+session ticket. The 0-RTT arm uses the DPDK stack; the other three use the
+kernel-routed baseline stack. Match endpoint VM sizes before comparing.
+
+- [x] Run all four arms at the same settings, write the `send_unlock` table in
+      `docs/index.html`, and evaluate all four A2 triggers against the reports.
+      At 100/s, 2000 connections per arm, 1 KB and 100 ms RTT, with m5.xlarge
+      endpoints: median send_unlock was 101.007 ms TCP, 0.338 ms 0-RTT TCP,
+      104.395 ms QUIC cold, and 1.436 ms QUIC resumed. All checks passed.
+      [Bundles and calibration](experiments/ci-results/20261003-quic-comparison/README.md).
+- [ ] If A1 results look off, add the pcap header cross-check (A2) as a follow-up:
+      cold `send_unlock` not near `NETEM_RTT_MS`; resumed `send_unlock` not clearly
+      below cold; early data accepted on fewer than all resumed connections;
+      or resumed `handshake_ms` equal to cold. A2 inspects QUIC's unencrypted
+      0-RTT long-header type and first short-header packet in the client pcap.
+      The first three triggers did not fire; handshake medians were similar
+      (104.395/104.827 ms), so queue A2 conservatively. All 2000 resumed flows
+      accepted early data; similar full-handshake timing alone does not prove fallback.
 
 ### DDoS: purge delta rows
 

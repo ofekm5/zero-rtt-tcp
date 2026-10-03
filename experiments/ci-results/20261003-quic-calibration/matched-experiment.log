@@ -1,0 +1,8 @@
+rate_spike rate=50 lag_p95_ms=1.236 failed=0 ok=1
+rate_spike rate=100 lag_p95_ms=1.245 failed=0 ok=1
+rate_spike rate=200 lag_p95_ms=1.777 failed=0 ok=1
+rate_spike rate=400 lag_p95_ms=9.841 failed=0 ok=1
+rate_spike rate=800 lag_p95_ms=9.870 failed=0 ok=1
+rate_spike rate=1600 lag_p95_ms=10.031 failed=0 ok=1
+rate_spike rate=3200 lag_p95_ms=11.170 failed=0 ok=1
+sustained_rate=3200

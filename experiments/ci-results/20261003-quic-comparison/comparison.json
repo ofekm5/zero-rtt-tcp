@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-03",
+  "metric": "client send_unlock",
+  "source_sha": "a340e3130774295cc91a2c7e27b97fa921b20be0",
+  "knobs": {
+    "CONNECTIONS": "1",
+    "LOAD_PARALLEL": "2000",
+    "LOAD_PORTS": "4",
+    "LOAD_RATE": "100",
+    "LOAD_BYTES": "1024",
+    "LOAD_CONCURRENCY": "2000",
+    "LOAD_TIMEOUT": "300",
+    "NETEM_RTT_MS": "100",
+    "REPO_REF": "experiments/quic-comparison-2026-10-03"
+  },
+  "arms": [
+    {
+      "id": "tcp",
+      "name": "Plain TCP",
+      "bundle": "experiments/ci-results/20261003-151532-baseline",
+      "send_unlock_p50_ms": 101.007,
+      "send_unlock_p95_ms": 101.193
+    },
+    {
+      "id": "0rtt-tcp",
+      "name": "DPDK 0-RTT TCP",
+      "bundle": "experiments/ci-results/20261003-145545-dpdk",
+      "send_unlock_p50_ms": 0.338,
+      "send_unlock_p95_ms": 0.364
+    },
+    {
+      "id": "quic-cold",
+      "name": "QUIC cold",
+      "bundle": "experiments/ci-results/20261003-150149-baseline",
+      "send_unlock_p50_ms": 104.395,
+      "send_unlock_p95_ms": 111.857,
+      "handshake_p50_ms": 104.395,
+      "early_data_accepted": 0
+    },
+    {
+      "id": "quic-resumed",
+      "name": "QUIC resumed",
+      "bundle": "experiments/ci-results/20261003-150711-baseline",
+      "send_unlock_p50_ms": 1.436,
+      "send_unlock_p95_ms": 2.326,
+      "handshake_p50_ms": 104.827,
+      "early_data_accepted": 2000
+    }
+  ],
+  "a2": {
+    "cold_far_from_rtt": false,
+    "resumed_not_below_cold": false,
+    "resumed_early_data_incomplete": false,
+    "handshake_times_similar": true,
+    "decision": "Queue the header cross-check as a follow-up; similar handshake times alone do not prove fallback."
+  }
+}

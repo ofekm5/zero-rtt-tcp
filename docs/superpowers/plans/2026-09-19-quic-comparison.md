@@ -42,12 +42,13 @@
     - Outcome: the test runs `run.sh` offline with the transport stubbed, the way `experiments/tests/test_run_sh.py` does, with `STACK=baseline PROTO=quic` and `QUIC_RESUME=0` then `1`, and asserts the endpoints are started with `PROTO=quic` and the matching `QUIC_RESUME`, the report prints the stubbed client's `quic_summary` values, and pcap capture and `analyze_metrics.py` are not invoked. On `STACK=baseline`, `PROTO=quic` starts the QUIC endpoints, captures the client's `quic_summary` line and prints it under the headline tier. Cold and resumed are separate runs (`QUIC_RESUME=0|1`). The report states that TCP and 0-RTT arms are plaintext while QUIC always encrypts, that all resumed flows reuse one ticket, and prints `early_data_accepted` and `handshake_p50_ms` so the escalation triggers can be read off it. Pcap capture and `analyze_metrics.py` are skipped for the QUIC arm.
     - Commit: `feat(experiments): add a QUIC arm to the baseline stack`
 
-- [ ] 6 Run all four arms and write the table up — verify: `ls experiments/baseline-tcp/reports/*quic* | wc -l | grep -qE '^[2-9]' && grep -q 'QUIC' docs/index.html`
-    - File: four new reports (TCP baseline, QUIC cold, QUIC resumed under `experiments/baseline-tcp/reports/`; 0-RTT TCP under `experiments/dpdk/reports/`), and `docs/index.html`
+- [x] 6 Run all four arms and write the table up — manual review: verify four successful live bundles, identical load knobs and endpoint sizes, and table values against the recorded summaries
+    - File: four new reports (TCP baseline, QUIC cold, QUIC resumed under `experiments/reports/baseline/`; 0-RTT TCP under `experiments/reports/0rtt/`), their `experiments/ci-results/` bundles, and `docs/index.html`
     - Outcome: manual, needs AWS. Deploy each stack and run at the same `NETEM_RTT_MS`, connection count and the `RATE` from Task 3. Paste the four `send_unlock` numbers into `docs/index.html` by hand, with the plaintext-vs-encrypted and one-ticket caveats. Check the escalation triggers in Global Constraints against the QUIC reports.
     - Commit: `docs(experiments): add the four-arm QUIC comparison`
+    - Evidence: `experiments/ci-results/20261003-quic-comparison/README.md`; all four final arms passed at 2000 connections, 100/s, 1 KB, 4 ports and 100 ms RTT, with m5.xlarge endpoints. A2 remains a roadmap follow-up because handshake medians were similar, despite 2000/2000 resumed early-data acceptance.
 
-- [ ] 7 Record the change and the A2 escalation in the roadmap — manual review
+- [x] 7 Record the change and the A2 escalation in the roadmap — manual review
     - File: `roadmap.md`
     - Outcome: the "QUIC comparison" section links the plan and design, states the framing (0-RTT TCP versus QUIC cold and resumed, `send_unlock` only, reduced rate) and adds a checkbox: "If A1 results look off, add the pcap header cross-check (A2)", with the four triggers.
     - Commit: `docs(roadmap): record the QUIC comparison plan and A2 escalation`

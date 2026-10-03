@@ -1,0 +1,178 @@
+[
+    {
+        "id": "i-076a900821682b59d",
+        "type": "m5.xlarge",
+        "tags": [
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-central-1:191106064063:stack/BaselineStack/11826980-bf34-11f1-98ca-06629ef4e517"
+            },
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "BaselineStack"
+            },
+            {
+                "Key": "Name",
+                "Value": "baseline-client"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "ClientInstance1EA7BD59"
+            }
+        ]
+    },
+    {
+        "id": "i-0ad77d24250108dc2",
+        "type": "m5.xlarge",
+        "tags": [
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "SmartNicsStack"
+            },
+            {
+                "Key": "Name",
+                "Value": "smartnics-client"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "ClientInstance1EA7BD59"
+            },
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-central-1:191106064063:stack/SmartNicsStack/eae883e0-bf33-11f1-a71b-06ffe0cd2a23"
+            }
+        ]
+    },
+    {
+        "id": "i-053a5c0fc5d3a5fb8",
+        "type": "m5.xlarge",
+        "tags": [
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-central-1:191106064063:stack/SmartNicsStack/eae883e0-bf33-11f1-a71b-06ffe0cd2a23"
+            },
+            {
+                "Key": "Name",
+                "Value": "smartnics-server"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "ServerInstance66AD925A"
+            },
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "SmartNicsStack"
+            }
+        ]
+    },
+    {
+        "id": "i-070215332db8b12a8",
+        "type": "t3.micro",
+        "tags": [
+            {
+                "Key": "Name",
+                "Value": "baseline-clientnic"
+            },
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-central-1:191106064063:stack/BaselineStack/11826980-bf34-11f1-98ca-06629ef4e517"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "ClientNicInstance0B309363"
+            },
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "BaselineStack"
+            }
+        ]
+    },
+    {
+        "id": "i-0cd27698c9e9dce11",
+        "type": "c5n.large",
+        "tags": [
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "SmartNicsStack"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "ServerNicInstanceB7DB1ADE"
+            },
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-central-1:191106064063:stack/SmartNicsStack/eae883e0-bf33-11f1-a71b-06ffe0cd2a23"
+            },
+            {
+                "Key": "Name",
+                "Value": "smartnics-servernic"
+            }
+        ]
+    },
+    {
+        "id": "i-0923500cd8a68534e",
+        "type": "t3.micro",
+        "tags": [
+            {
+                "Key": "Name",
+                "Value": "baseline-servernic"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "ServerNicInstanceB7DB1ADE"
+            },
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-central-1:191106064063:stack/BaselineStack/11826980-bf34-11f1-98ca-06629ef4e517"
+            },
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "BaselineStack"
+            }
+        ]
+    },
+    {
+        "id": "i-0a5d0cba12fefa386",
+        "type": "c5n.large",
+        "tags": [
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "SmartNicsStack"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "ClientNicInstance0B309363"
+            },
+            {
+                "Key": "Name",
+                "Value": "smartnics-clientnic"
+            },
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-central-1:191106064063:stack/SmartNicsStack/eae883e0-bf33-11f1-a71b-06ffe0cd2a23"
+            }
+        ]
+    },
+    {
+        "id": "i-0400231a687ac5bef",
+        "type": "m5.xlarge",
+        "tags": [
+            {
+                "Key": "aws:cloudformation:stack-id",
+                "Value": "arn:aws:cloudformation:eu-central-1:191106064063:stack/BaselineStack/11826980-bf34-11f1-98ca-06629ef4e517"
+            },
+            {
+                "Key": "Name",
+                "Value": "baseline-server"
+            },
+            {
+                "Key": "aws:cloudformation:stack-name",
+                "Value": "BaselineStack"
+            },
+            {
+                "Key": "aws:cloudformation:logical-id",
+                "Value": "ServerInstance66AD925A"
+            }
+        ]
+    }
+]

@@ -123,7 +123,7 @@ latency claim.
   (`LOAD_PARALLEL`, `LOAD_BYTES`, `LOAD_RATE`, `LOAD_CONCURRENCY`).
 - **`_build_parser()`** extracted from `loadgen.py:main()` so defaults are
   unit-testable.
-- **Docs**: `.claude/skills/run-experiment/references/troubleshooting.md` —
+- **Docs**: `.agents/skills/run-experiment/references/troubleshooting.md` —
   the `LOAD_TIMEOUT / LOAD_PARALLEL` section now covers `LOAD_RATE` coupling.
 
 ### Verification
