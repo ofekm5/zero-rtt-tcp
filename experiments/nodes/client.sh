@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-tcp"
+REPO_PATH="${REPO_PATH:-/home/ec2-user/zero-rtt-tcp}"
 SERVER_PORT=8080
 REGION="eu-central-1"
 
@@ -76,13 +76,14 @@ sudo -u ec2-user git -C "$REPO_PATH" fetch origin "$REPO_REF" 2>&1 \
 # ─── QUIC arm (PROTO=quic) ────────────────────────────────────────────────────
 # PROTO unset (or tcp) runs loadgen.py exactly as before. PROTO=quic runs
 # loadgen_quic.py; QUIC_RESUME=1 makes every measured connection reuse the
-# priming connection's session ticket (0-RTT). aioquic is pinned: loadgen_quic.py
-# reads an aioquic-internal attribute verified against 1.3.0 (needs Python >= 3.10).
+# priming connection's session ticket (0-RTT). It runs on its own Python 3.11 +
+# aioquic 1.3.0 interpreter (see ensure_quic_python.sh); loadgen.py keeps python3.
 PROTO="${PROTO:-tcp}"
 if [ "$PROTO" = "quic" ]; then
-    python3 -m pip show aioquic 2>/dev/null | grep -qx 'Version: 1.3.0' || {
-        log "Installing aioquic 1.3.0..."
-        python3 -m pip install --quiet 'aioquic==1.3.0'
+    log "Ensuring the QUIC interpreter (Python 3.11 + aioquic 1.3.0)..."
+    QUIC_PY=$(bash "$REPO_PATH/experiments/nodes/ensure_quic_python.sh") || {
+        log "ERROR: could not set up the QUIC interpreter"
+        exit 1
     }
 fi
 
@@ -111,7 +112,7 @@ while IFS= read -r _input; do
     echo -e "${GREEN}─── Flow #${CONN} (${LOAD_PORTS} ports, $LOAD_PARALLEL total) ──────────${NC}"
     if [ "$PROTO" = "quic" ]; then
         # loadgen_quic.py has no --think-ms.
-        python3 "$REPO_PATH/experiments/nodes/loadgen_quic.py" --mode client \
+        "$QUIC_PY" "$REPO_PATH/experiments/nodes/loadgen_quic.py" --mode client \
             --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
             --parallel "$LOAD_PARALLEL" --bytes "$LOAD_BYTES" \
             --rate "$LOAD_RATE" --concurrency-limit "$LOAD_CONCURRENCY" \

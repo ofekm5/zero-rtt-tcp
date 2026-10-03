@@ -66,8 +66,10 @@ def test_quic_arm_runs_the_quic_endpoints(run_sh, arm):
     # loadgen_quic.py rejects --think-ms outright; the in-flight cap is shared.
     assert "--think-ms" not in load and "--concurrency-limit" in load
     assert ("--resume" in load) == (arm == "resumed")
-    # The orchestrator bypasses nodes/client.sh, so it must ensure aioquic itself.
-    assert "aioquic==1.3.0" in load
+    # The orchestrator bypasses nodes/client.sh, so it must ensure the QUIC
+    # interpreter itself and run the generator on it, not on the system python3.
+    assert "nodes/ensure_quic_python.sh" in load
+    assert "$QUIC_PY " in load and "python3 " not in load.split("ensure_quic_python.sh", 1)[1]
 
     assert [c for c in calls if "pkill -f loadgen_quic.py" in c]
 

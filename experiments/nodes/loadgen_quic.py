@@ -113,7 +113,7 @@ async def _client_conn(host, port, nbytes, ticket, samples, results, sem):
                 await proto.wait_connected()  # no-op when cold
                 hs = unlock if not resume else time.monotonic()
                 # aioquic-internal: verified against the aioquic==1.3.0 pinned
-                # in nodes/client.sh, nodes/server.sh and lib/measure.sh.
+                # in nodes/ensure_quic_python.sh.
                 early = bool(proto._quic.tls.early_data_accepted)
                 # A terminated connection also ends the stream with b"", so
                 # only the server's ack byte proves the payload was received.

@@ -30,7 +30,7 @@ _PY_STUB = _STUB + '[ "$1" = "-c" ] && exit 1\nexit 0\n'
 # bash builds sanitize the inherited environment (see test_endpoint_sh.py).
 _DRIVER = """\
 unset PROTO QUIC_RESUME
-export STUB_LOG="$PWD/calls.log" PATH="$PWD/stubs:$PATH"
+export STUB_LOG="$PWD/calls.log" PATH="$PWD/stubs:$PATH" REPO_PATH="$PWD/repo"
 [ "$2" != "-" ] && export PROTO="$2"
 [ "$3" != "-" ] && export QUIC_RESUME="$3"
 script="$1"; shift 3
@@ -47,6 +47,12 @@ def _run(tmp_path, script, proto="-", resume="-", args=()):
         (stubs / name).chmod(0o755)
     (stubs / "python3").write_text(_PY_STUB, newline="\n")
     (stubs / "python3").chmod(0o755)
+    # The QUIC interpreter: the helper records that it ran and prints a stub's name.
+    (stubs / "quicpy").write_text(_STUB, newline="\n")
+    (stubs / "quicpy").chmod(0o755)
+    helper = tmp_path / "repo" / "experiments" / "nodes" / "ensure_quic_python.sh"
+    helper.parent.mkdir(parents=True)
+    helper.write_text('echo "ensure_quic_python.sh" >> "$STUB_LOG"\necho quicpy\n', newline="\n")
     shutil.copy(_NODES_DIR / script, tmp_path / script)
     # A driver file rather than an inline command string: Windows argv quoting
     # mangles a string with embedded double quotes.
@@ -68,11 +74,15 @@ def _run(tmp_path, script, proto="-", resume="-", args=()):
 
 
 def _loadgen_calls(calls):
-    return [c for c in calls if c.startswith("python3 ") and "loadgen" in c]
+    return [c for c in calls if c.startswith(("python3 ", "quicpy ")) and "loadgen" in c]
 
 
 def _pip_installs(calls):
     return [c for c in calls if "pip install" in c and "aioquic" in c]
+
+
+def _ensures(calls):
+    return [c for c in calls if c == "ensure_quic_python.sh"]
 
 
 class TestServer:
@@ -94,11 +104,14 @@ class TestServer:
         assert cert.startswith("/tmp/") and key.startswith("/tmp/")
         assert calls.index(gen) < calls.index(run), "cert must exist before serve"
 
-    def test_quic_pip_installs_aioquic(self, tmp_path):
+    def test_quic_runs_on_the_quic_interpreter(self, tmp_path):
+        """System python3 is 3.7 on the VMs; aioquic 1.3.0 needs >= 3.10."""
         calls = _run(tmp_path, "server.sh", proto="quic")
-        (install,) = _pip_installs(calls)
-        assert "aioquic==1.3.0" in install
-        assert calls.index(install) < calls.index(_loadgen_calls(calls)[0])
+        (ensure,) = _ensures(calls)
+        (run,) = _loadgen_calls(calls)
+        assert run.startswith("quicpy ")
+        assert calls.index(ensure) < calls.index(run)
+        assert not _pip_installs(calls)
 
     def test_proto_unset_falls_back_to_loadgen(self, tmp_path):
         calls = _run(tmp_path, "server.sh")
@@ -106,7 +119,8 @@ class TestServer:
         argv = run.split()
         assert argv[1].endswith("/loadgen.py")
         assert "--cert" not in argv and "--key" not in argv
-        assert not _pip_installs(calls)
+        assert run.startswith("python3 ")
+        assert not _pip_installs(calls) and not _ensures(calls)
         assert not [c for c in calls if c.startswith("openssl ")]
 
 
@@ -142,12 +156,14 @@ class TestClient:
         for flag in (a for a in run.split() if a.startswith("--")):
             assert f'"{flag}"' in source, f"{flag} is not a loadgen_quic.py flag"
 
-    def test_quic_pip_installs_aioquic(self, tmp_path):
+    def test_quic_runs_on_the_quic_interpreter(self, tmp_path):
         calls = _run(tmp_path, "client.sh", proto="quic", args=["10.1.2.4"])
-        (install,) = _pip_installs(calls)
-        assert "aioquic==1.3.0" in install
-        assert "--concurrency-limit" in _loadgen_calls(calls)[0].split()
-        assert calls.index(install) < calls.index(_loadgen_calls(calls)[0])
+        (ensure,) = _ensures(calls)
+        (run,) = _loadgen_calls(calls)
+        assert run.startswith("quicpy ")
+        assert "--concurrency-limit" in run.split()
+        assert calls.index(ensure) < calls.index(run)
+        assert not _pip_installs(calls)
 
     def test_proto_unset_falls_back_to_loadgen(self, tmp_path):
         calls = _run(tmp_path, "client.sh", resume="1", args=["10.1.2.4"])
@@ -156,4 +172,5 @@ class TestClient:
         assert argv[1].endswith("/loadgen.py")
         assert "--resume" not in argv
         assert "--think-ms" in argv and "--concurrency-limit" in argv
-        assert not _pip_installs(calls)
+        assert run.startswith("python3 ")
+        assert not _pip_installs(calls) and not _ensures(calls)

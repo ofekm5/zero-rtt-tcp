@@ -135,14 +135,15 @@ run_ttfb_measurement() {
 
     # PROTO=quic swaps the load generator; everything around it is shared.
     # loadgen_quic.py has no --think-ms. The orchestrator runs the generator
-    # directly (not via nodes/client.sh), so the pinned aioquic is ensured here.
+    # directly (not via nodes/client.sh), so the QUIC interpreter is ensured here.
     local prep=""
     local shape="${think}ms think, max $conc in flight"
     local loadgen="python3 $repo/experiments/nodes/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --think-ms $think --concurrency-limit $conc"
     if [[ "${PROTO:-tcp}" == quic ]]; then
-        prep="python3 -m pip show aioquic 2>/dev/null | grep -qx 'Version: 1.3.0' || python3 -m pip install --quiet 'aioquic==1.3.0'"
+        # \$QUIC_PY is expanded on the client VM, from the path the helper prints.
+        prep="QUIC_PY=\$(bash $repo/experiments/nodes/ensure_quic_python.sh) || { echo 'ERROR: could not set up the QUIC interpreter'; exit 1; }"
         shape="QUIC cold, max $conc in flight"
-        loadgen="python3 $repo/experiments/nodes/loadgen_quic.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --concurrency-limit $conc"
+        loadgen="\$QUIC_PY $repo/experiments/nodes/loadgen_quic.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --concurrency-limit $conc"
         if [[ "${QUIC_RESUME:-0}" == 1 ]]; then
             shape="QUIC resumed, max $conc in flight"
             loadgen+=" --resume"
