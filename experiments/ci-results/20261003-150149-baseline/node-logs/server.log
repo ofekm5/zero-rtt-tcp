@@ -1,0 +1,24 @@
+===== /tmp/server.log =====
+[1;33m[15:00:45] Killing any leftover load-generator processes...[0m
+[1;33m[15:00:46] Open-file limit (ulimit -n): 1048576[0m
+[1;33m[15:00:46] Syncing code to origin/experiments/quic-comparison-2026-10-03 (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            experiments/quic-comparison-2026-10-03 -> FETCH_HEAD
+HEAD is now at 9321ea2 ci: experiment dpdk bundle 20261003-145545 [skip ci]
+[1;33m[15:00:47] Server VM IP: 10.1.2.117[0m
+[1;33m[15:00:47] Will listen on 0.0.0.0:8080-8083 (4 port(s))[0m
+
+[1;33m[15:00:47] Starting load-generator server on ports 8080-8083 ? press Ctrl+C to stop.[0m
+
+Generating a 2048 bit EC private key
+writing new private key to '/tmp/quic.key'
+-----
+Listening on ports [8080, 8081, 8082, 8083]
+Received 2049024 bytes across 2001 connections (final)
+===== /tmp/tcpdump_hiprec.log =====
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 128 bytes
+16000 packets captured
+16000 packets received by filter
+0 packets dropped by kernel
+===== pcap inventory =====
+-rw-r--r-- 1 tcpdump tcpdump 1284024 Oct  3 14:49 /tmp/server_side.pcap

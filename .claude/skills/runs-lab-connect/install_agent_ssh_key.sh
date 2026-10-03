@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 #
-# install_claude_ssh_key.sh — bind Claude Code to any university/lab VM over SSH.
+# install_agent_ssh_key.sh — bind Codex to any university/lab VM over SSH.
 #
 # What it does:
-#   1. Generates (once) a dedicated ed25519 keypair for Claude Code, stored in a
+#   1. Generates (once) a dedicated ed25519 keypair for Codex, stored in a
 #      DURABLE location (~/.ssh, not a scratchpad) so it survives across sessions.
 #   2. Installs the PUBLIC key into ~/.ssh/authorized_keys on each target VM.
 #   3. (Optional) Adds a matching ~/.ssh/config block so plain `ssh <host>` — and
-#      every Claude Code tool call — uses the key automatically, no password.
+#      every Codex tool call — uses the key automatically, no password.
 #   4. Verifies non-interactive key auth actually works.
 #
 # All lab hosts are Ubuntu, so ~/.ssh/authorized_keys is the right target.
 #
 # IMPORTANT — run this in a REAL terminal (Git Bash on Windows, or any
-# Linux/macOS shell). It prompts for each host's password ONCE. The Claude Code
-# `!` prefix and Windows PowerShell cannot present an interactive password prompt
+# Linux/macOS shell). It prompts for each host's password ONCE. Agent
+# non-interactive tool calls cannot present an interactive password prompt
 # (and PowerShell's native OpenSSH also can't do ControlMaster), so they won't work.
 #
 # Usage:
-#   ./install_claude_ssh_key.sh [user@]host [[user@]host ...]
+#   ./install_agent_ssh_key.sh [user@]host [[user@]host ...]
 #
 # Examples:
-#   ./install_claude_ssh_key.sh bluefieldadmin@10.13.37.10
-#   ./install_claude_ssh_key.sh 10.13.36.16 10.13.36.46          # uses DEFAULT_USER
-#   DEFAULT_USER=root ./install_claude_ssh_key.sh 10.13.36.233
+#   ./install_agent_ssh_key.sh bluefieldadmin@10.13.37.10
+#   ./install_agent_ssh_key.sh 10.13.36.16 10.13.36.46          # uses DEFAULT_USER
+#   DEFAULT_USER=root ./install_agent_ssh_key.sh 10.13.36.233
 #
 # Env overrides:
 #   KEY_PATH      private key path              (default: ~/.ssh/claude_code_ed25519)
@@ -44,13 +44,13 @@ if [ "$#" -lt 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Ensure the dedicated Claude Code keypair exists (generate once, durably).
+# 1. Ensure the dedicated Codex keypair exists (generate once, durably).
 # ---------------------------------------------------------------------------
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 
 if [ ! -f "$KEY_PATH" ]; then
-  echo "[*] Generating dedicated Claude Code key at $KEY_PATH"
+  echo "[*] Generating dedicated Codex key at $KEY_PATH"
   ssh-keygen -t ed25519 -N "" -C "claude-code@$(hostname)" -f "$KEY_PATH" >/dev/null
   echo "[✓] Key generated"
 else
@@ -129,7 +129,7 @@ done
 
 echo "=============================================================="
 if [ "$rc" -eq 0 ]; then
-  echo "[✓] Done. Claude Code can now reach the host(s) with:"
+  echo "[✓] Done. Codex can now reach the host(s) with:"
   echo "      ssh -i $KEY_PATH <user>@<host>"
   [ "$WRITE_CONFIG" = "1" ] && echo "    or simply:  ssh <host>   (via ~/.ssh/config)"
 else

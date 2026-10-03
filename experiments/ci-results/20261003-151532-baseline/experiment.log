@@ -1,0 +1,101 @@
+[1;33m[15:11:36] Step 0: Discovering baseline nodes over ssm...[0m
+[1;33m[15:11:43]   Server:    i-0400231a687ac5bef  (10.1.2.117)[0m
+[1;33m[15:11:43]   ServerNIC: i-0923500cd8a68534e[0m
+[1;33m[15:11:43]   ClientNIC: i-070215332db8b12a8[0m
+[1;33m[15:11:43]   Client:    i-076a900821682b59d[0m
+[1;33m[15:11:43] Load/port plan: 4 port(s) [8080-8083], LOAD_PARALLEL=2000, LOAD_BYTES=1024, LOAD_RATE=100 conn/s, LOAD_CONCURRENCY=2000[0m
+[0;32m[PASS][0m Port-space check: 4 port(s) x 32256 usable range = 129024 >= 2000 target
+[1;33m[15:11:43] Syncing all VMs to origin/experiments/quic-comparison-2026-10-03...[0m
+[1;33m[WARN][0m REPO_REF=experiments/quic-comparison-2026-10-03 — VMs are running a NON-MAIN ref
+[1;33m[15:12:20]   i-0400231a687ac5bef HEAD: 9e2e583 [0m
+[1;33m[15:12:29]   i-0923500cd8a68534e HEAD: 9e2e583 [0m
+[1;33m[15:12:32]   i-070215332db8b12a8 HEAD: 9e2e583 [0m
+[1;33m[15:12:35]   i-076a900821682b59d HEAD: 9e2e583 [0m
+[1;33m[15:12:35] Pre-flight — verifying IP forwarding and routes on NIC VMs...[0m
+[0;32m[PASS][0m ClientNIC: IP forwarding enabled
+[0;32m[PASS][0m ServerNIC: IP forwarding enabled
+[0;32m[PASS][0m ClientNIC: static route to Server subnet present (10.1.2.0/24 via 10.1.1.1 dev eth1 )
+[0;32m[PASS][0m ServerNIC: static route to Client subnet present (10.1.0.0/24 via 10.1.1.1 dev eth0 )
+[1;33m[15:13:00] Cleaning up any leftover server processes...[0m
+[1;33m[15:13:03] Endpoint tuning: TCP options off, kernel limits raised (Client + Server)...[0m
+[1;33m[15:13:07] Endpoint tuning: pinning MTU 1500 on Client and Server eth0...[0m
+[1;33m[15:13:09] Endpoint tuning: disabling GRO/LRO/TSO/GSO on Client and Server NICs...[0m
+[1;33m[15:13:11] Endpoint tuning: clearing any endpoint qdisc (emulated WAN lives on the middle leg)...[0m
+[0;32m[PASS][0m Endpoint tuning: Client egress clean (no netem)
+[0;32m[PASS][0m Endpoint tuning: Server egress clean (no netem)
+[1;33m[15:13:23] WAN tuning: ensuring iproute-tc is installed on both NIC VMs...[0m
+[1;33m[15:13:29] WAN tuning: netem 50ms on each middle-leg egress (ClientNIC eth1, ServerNIC eth0) = 100ms RTT...[0m
+[0;32m[PASS][0m WAN tuning: ClientNIC eth1 netem = 50ms (half the modelled RTT)
+[0;32m[PASS][0m WAN tuning: ServerNIC eth0 netem = 50ms (half the modelled RTT)
+[1;33m[15:13:45] Step 1: Starting Server via node script (4 load-generator port(s))...[0m
+[0;32m[PASS][0m Server listening on :8080
+[1;33m[15:13:52] Endpoint capture: starting tcpdump on Client host and Server host...[0m
+[1;33m[15:14:02] Step 4: Running client test (1 connection(s))...[0m
+[1;33m[15:14:02] Arrival pacing: 100 conn/s x 2000 conns x 1 round(s) — minimum 20s of spawn time[0m
+--- Baseline output ---
+--- Round 1/1: 4 port(s) starting at 8080 x 2000 total connections, 1024 bytes/conn, 100 conn/s arrival, 0ms think, max 2000 in flight ---
+Arrival: rate=100 conn/s requested, 100 conn/s achieved over 19.991s
+Think: 0 ms between connect() and first write
+Transfer complete: 2000/2000 connections ok, 0 failed, duration=20.101s, ~0.8 Mbits/sec
+Success: 2000/2000
+Success: 1/1
+---
+[0;32m[PASS][0m Baseline: all 1 connection(s) succeeded
+[1;33m[15:14:32] Step 5: Stopping captures and Server...[0m
+[1;33m[15:14:53] Packet analysis: analyzing each endpoint capture on its own host...[0m
+  client_side.pcap: -rw-r--r-- 1 tcpdump tcpdump 1.3M Oct  3 15:14 /tmp/client_side.pcap
+  server_side.pcap: -rw-r--r-- 1 tcpdump tcpdump 1.3M Oct  3 15:14 /tmp/server_side.pcap
+[1;33m[15:14:59] Endpoint analysis: running analyzer on the Client host capture...[0m
+[1;33m[15:15:02] Endpoint analysis: running analyzer on the Server host capture...[0m
+--- Endpoint metric analysis ---
+client (status: Success):
+summary=send_unlock node=client n=2000 min_ms=100.815 p50_ms=101.007 p95_ms=101.193 p99_ms=101.369 max_ms=151.920 mean_ms=101.108
+summary=fct node=client n=2000 min_ms=201.626 p50_ms=201.946 p95_ms=202.242 p99_ms=202.728 max_ms=253.611 mean_ms=202.057
+server (status: Success):
+summary=server_gap node=server n=2000 min_ms=100.788 p50_ms=100.982 p95_ms=101.138 p99_ms=101.322 max_ms=109.775 mean_ms=100.987
+--------------------------------
+[0;32m[PASS][0m Endpoint analysis: all metrics computed
+[1;33m[15:15:05] Step 6: Verifying server received data...[0m
+--- Server log ---
+[1;33m[15:13:46] Killing any leftover load-generator processes...[0m
+[1;33m[15:13:47] Open-file limit (ulimit -n): 1048576[0m
+[1;33m[15:13:47] Syncing code to origin/experiments/quic-comparison-2026-10-03 (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            experiments/quic-comparison-2026-10-03 -> FETCH_HEAD
+HEAD is now at 9e2e583 ci: experiment baseline bundle 20261003-150711 [skip ci]
+[1;33m[15:13:48] Server VM IP: 10.1.2.117[0m
+[1;33m[15:13:48] Will listen on 0.0.0.0:8080-8083 (4 port(s))[0m
+
+[1;33m[15:13:48] Starting load-generator server on ports 8080-8083 ? press Ctrl+C to stop.[0m
+
+Listening on ports [8080, 8081, 8082, 8083]
+Received 68608 bytes across 67 connections (so far)
+Received 273408 bytes across 267 connections (so far)
+Received 478208 bytes across 467 connections (so far)
+Received 684032 bytes across 668 connections (so far)
+Received 888832 bytes across 868 connections (so far)
+Received 1093632 bytes across 1068 connections (so far)
+Received 1298432 bytes across 1268 connections (so far)
+Received 1503232 bytes across 1468 connections (so far)
+Received 1708032 bytes across 1668 connections (so far)
+Received 1912832 bytes across 1868 connections (so far)
+Received 2048000 bytes across 2000 connections (so far)
+Received 2048000 bytes across 2000 connections (final)
+_GatheringFuture exception was never retrieved
+future: <_GatheringFuture finished exception=CancelledError()>
+concurrent.futures._base.CancelledError
+------------------
+[0;32m[PASS][0m Server received data from client
+[1;33m[15:15:08] Latency metrics: aggregating NIC in-app TTFB + endpoint pcap metrics...[0m
+--- Latency summary ---
+  ── Primary: time-to-first-byte the client actually experiences ──
+  Send unlock   : n=2000  min=100.815  mean=101.108  median=101.007  p95=101.193  p99=101.369  max=151.920 ms
+  ── Secondary (throughput-bound; not evidence about the handshake) ──
+  Pcap FCT      : n=2000  min=201.626  mean=202.057  median=201.946  p95=202.242  p99=202.728  max=253.611 ms
+  Server gap    : n=2000  min=100.788  mean=100.987  median=100.982  p95=101.138  p99=101.322  max=109.775 ms
+-----------------------
+
+════════════════════════════════════════
+[0;32m  ALL CHECKS PASSED[0m
+════════════════════════════════════════
+[1;33m[15:15:08] Report saved to /home/runner/work/zero-rtt-tcp/zero-rtt-tcp/experiments/reports/baseline/baseline-report-2026-10-03-151508.md[0m

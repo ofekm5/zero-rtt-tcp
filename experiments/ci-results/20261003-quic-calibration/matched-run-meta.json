@@ -1,0 +1,17 @@
+{
+    "ended_at":  "2026-10-03T14:58:55.421Z",
+    "max_lag_ms":  20,
+    "started_at":  "2026-10-03T14:58:07.421Z",
+    "aioquic":  "1.3.0",
+    "instance_type":  "m5.xlarge",
+    "type":  "quic-rate-calibration",
+    "response_code":  0,
+    "instance_id":  "i-076a900821682b59d",
+    "status":  "Success",
+    "selected_rate":  100,
+    "sustained_rate":  3200,
+    "rate_limit_tested":  3200,
+    "python":  "CPython 3.11",
+    "selection_reason":  "Conservative 100/s rate retained after initial delayed-path underfill; all four arms use this rate.",
+    "command_id":  "307f5ab5-23df-4f33-907e-e1391fd8564e"
+}

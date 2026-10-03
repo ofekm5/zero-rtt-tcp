@@ -1,0 +1,28 @@
+{
+    "remaining_stacks":  [
+                             "CDKToolkit"
+                         ],
+    "verified_at_utc":  "2026-10-03T15:21:57.3541493Z",
+    "region":  "eu-central-1",
+    "destroyed_stacks":  [
+                             "SmartNicsStack",
+                             "PacketTestStack",
+                             "BaselineStack",
+                             "BaselinePacketTestStack"
+                         ],
+    "instance_ids":  [
+                         "i-076a900821682b59d",
+                         "i-0400231a687ac5bef",
+                         "i-070215332db8b12a8",
+                         "i-0923500cd8a68534e",
+                         "i-0ad77d24250108dc2",
+                         "i-053a5c0fc5d3a5fb8",
+                         "i-0a5d0cba12fefa386",
+                         "i-0cd27698c9e9dce11"
+                     ],
+    "destroy_scripts":  [
+                            "infra/dpdk/destroy.ps1 -Force",
+                            "infra/baseline/destroy.ps1 -Force"
+                        ],
+    "all_instance_states":  "terminated"
+}

@@ -16,8 +16,8 @@ an offline checkout, or a machine with no AWS credentials.
 
 ## Step 0 — Locate the bundle
 
-Bundles live under `experiments/ci-results/<STAMP>-<infra>/`. Always `git pull` first
-so the newest committed bundle is present.
+Bundles live under `experiments/ci-results/<STAMP>-<infra>/`. Fetch or download first
+so the newest committed bundle is present. Preserve local changes; pull only when the checkout can safely fast-forward. A downloaded Actions artifact is sufficient.
 
 - **Newest bundle**: read `experiments/ci-results/latest.txt` — its `latest_bundle:`
   line is the path. Use this unless the user names a specific run.
@@ -75,8 +75,8 @@ metric is genuinely unresolvable from the saved data, say so — don't invent nu
 
 Post the same concise summary the live `run-experiment` skill produces (its Step 3),
 sourced entirely from the bundle. Lead with the overall verdict and latency numbers,
-then the per-check table. For **baseline**, omit ClientNIC/ServerNIC logs and packet
-analysis.
+then relevant checks. For **baseline**, omit middleware activity; retain endpoint
+analysis for TCP and `quic_summary` for QUIC.
 
 ---
 **Offline Analysis — `<stamp>` (`<infra>`)** · [CI run](<run_url>)
@@ -118,7 +118,7 @@ For every failed check, work only from the saved data:
    endpoint metric lines together tell the full story of a dropped/mistranslated
    flow. State observed-vs-expected for each failed check, with exact lines/timestamps.
 3. **Map to known patterns** — check the symptom against
-   `.claude/skills/run-experiment/references/troubleshooting.md` (SSM daemon
+   `.agents/skills/run-experiment/references/troubleshooting.md` (SSM daemon
    detachment, kernel-vs-Scapy race, MAC re-capture loop, swapped SEQ/ACK fields,
    GW-MAC resolution, scapy-dir shadowing, `LOAD_TIMEOUT`/`LOAD_PARALLEL` balance).
    Name the matching pattern and its documented fix.

@@ -1,0 +1,417 @@
+===== /tmp/servernic.log =====
+[1;33m[14:53:18] Killing any leftover servernic processes...[0m
+[1;33m[14:53:19] Syncing code to origin/experiments/quic-comparison-2026-10-03 (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            experiments/quic-comparison-2026-10-03 -> FETCH_HEAD
+HEAD is now at e0b28dd ci: experiment baseline bundle 20261003-145040 [skip ci]
+[1;33m[14:53:20] SKIP_BUILD=1 ? skipping meson+ninja build.[0m
+[1;33m[14:53:20] Using existing binary: /home/ec2-user/zero-rtt-tcp/src/servernic/dpdk/builddir/servernic-dpdk[0m
+[1;33m[14:53:20] ClientNIC-side gateway MAC (peer):  02:ff:fb:a3:45:6f[0m
+[1;33m[14:53:20] Server-side peer MAC (peer):        02:ff:e9:53:1b:9b[0m
+[1;33m[14:53:20] Our ClientNIC-facing port MAC (eth1): 02:ff:ff:9c:7f:f7[0m
+[1;33m[14:53:20] Our Server-facing port MAC (eth2):    02:ff:d0:97:36:b9[0m
+[1;33m[14:53:20] IP forwarding: enabled[0m
+[1;33m[14:53:20] Starting servernic-dpdk ? watching for flows. Press Ctrl+C to stop.[0m
+[1;33m[14:53:20]   --port=8080 --port-count=4 --gw-mac=02:ff:fb:a3:45:6f --server-mac=02:ff:e9:53:1b:9b[0m
+[1;33m[14:53:20]   --client-port-mac=02:ff:ff:9c:7f:f7 --server-port-mac=02:ff:d0:97:36:b9[0m
+[1;33m[14:53:20]   --wan-delay-us=50000 (emulated WAN, middle leg ? must match ClientNIC)[0m
+
+EAL: Detected CPU lcores: 2
+EAL: Detected NUMA nodes: 1
+EAL: Detected shared linkage of DPDK
+EAL: Multi-process socket /var/run/dpdk/rte/mp_socket
+EAL: Selected IOVA mode 'PA'
+EAL: VFIO support initialized
+EAL: Using IOMMU type 8 (No-IOMMU)
+EAL: Probe PCI driver: net_ena (1d0f:ec20) device: 0000:00:06.0 (socket -1)
+ena_get_metrics_entries(): 0x6 customer metrics are supported
+EAL: Probe PCI driver: net_ena (1d0f:ec20) device: 0000:00:07.0 (socket -1)
+ena_get_metrics_entries(): 0x6 customer metrics are supported
+TELEMETRY: No legacy callbacks, legacy socket not created
+SERVERNIC: ServerNIC DPDK starting (port=8080..8083)
+SERVERNIC: Port map: ClientNIC-facing=port 0, Server-facing=port 1
+SERVERNIC: wan-delay: holding middle-leg TX for 50000 us (150000000 cycles, ring=8192 packets)
+SERVERNIC: eth1: DPDK port 0 started (MAC=02:ff:ff:9c:7f:f7)
+SERVERNIC: eth2: DPDK port 1 started (MAC=02:ff:d0:97:36:b9)
+SERVERNIC: Entering busy-poll loop...
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: stats ClientNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats Server-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+SERVERNIC: stats mempool: avail=14337/16383 low-water=16383
+SERVERNIC: stats buffered: bytes=0/1073741824 (capacity-model ?7)
+SERVERNIC: stats wan_delay: held=0/8192 released=0
+SERVERNIC: SYN: new flow, V=0x5cbf26c8
+SERVERNIC: SYN-ACK: delta=0x3d2c1e72, V=0x5cbf26c8, real_isn=0x1f930856
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0xaef1e510
+SERVERNIC: SYN-ACK: delta=0x24517a38, V=0xaef1e510, real_isn=0x8aa06ad8
+SERVERNIC: SYN: new flow, V=0x9e618620
+SERVERNIC: SYN-ACK: delta=0xc1805067, V=0x9e618620, real_isn=0xdce135b9
+SERVERNIC: SYN: new flow, V=0x8d17dfcf
+SERVERNIC: SYN-ACK: delta=0x02367ff3, V=0x8d17dfcf, real_isn=0x8ae15fdc
+SERVERNIC: SYN: new flow, V=0x35812766
+SERVERNIC: SYN-ACK: delta=0x6418c65d, V=0x35812766, real_isn=0xd1686109
+SERVERNIC: SYN: new flow, V=0x7c2898f3
+SERVERNIC: SYN-ACK: delta=0x7f441c20, V=0x7c2898f3, real_isn=0xfce47cd3
+SERVERNIC: SYN: new flow, V=0x76dad8f5
+SERVERNIC: SYN-ACK: delta=0x956157df, V=0x76dad8f5, real_isn=0xe1798116
+SERVERNIC: SYN: new flow, V=0xa225d5c4
+SERVERNIC: SYN-ACK: delta=0x3fa82ac7, V=0xa225d5c4, real_isn=0x627daafd
+SERVERNIC: SYN: new flow, V=0x1992d4df
+SERVERNIC: SYN-ACK: delta=0xe5d1c248, V=0x1992d4df, real_isn=0x33c11297
+SERVERNIC: SYN: new flow, V=0x6f0acb76
+SERVERNIC: SYN-ACK: delta=0x52b74a27, V=0x6f0acb76, real_isn=0x1c53814f
+SERVERNIC: SYN: new flow, V=0x877e3a90
+SERVERNIC: SYN-ACK: delta=0xf2d0e890, V=0x877e3a90, real_isn=0x94ad5200
+SERVERNIC: SYN: new flow, V=0x4c37855a
+SERVERNIC: SYN-ACK: delta=0x580220d9, V=0x4c37855a, real_isn=0xf4356481
+SERVERNIC: SYN: new flow, V=0x2d27b480
+SERVERNIC: SYN-ACK: delta=0x1c32bb0f, V=0x2d27b480, real_isn=0x10f4f971
+SERVERNIC: SYN: new flow, V=0x5008af57
+SERVERNIC: SYN-ACK: delta=0x9f806126, V=0x5008af57, real_isn=0xb0884e31
+SERVERNIC: SYN: new flow, V=0x3cb269f0
+SERVERNIC: SYN-ACK: delta=0x944891ea, V=0x3cb269f0, real_isn=0xa869d806
+SERVERNIC: SYN: new flow, V=0x61753c7f
+SERVERNIC: SYN-ACK: delta=0xf12225b0, V=0x61753c7f, real_isn=0x705316cf
+SERVERNIC: SYN: new flow, V=0x9ec76d16
+SERVERNIC: SYN-ACK: delta=0xe56c6ae4, V=0x9ec76d16, real_isn=0xb95b0232
+SERVERNIC: SYN: new flow, V=0x911b8b9e
+SERVERNIC: SYN-ACK: delta=0x46397a41, V=0x911b8b9e, real_isn=0x4ae2115d
+SERVERNIC: SYN: new flow, V=0x945021ca
+SERVERNIC: SYN-ACK: delta=0xa43791f5, V=0x945021ca, real_isn=0xf0188fd5
+SERVERNIC: SYN: new flow, V=0x8f3072e2
+SERVERNIC: SYN-ACK: delta=0x1023e270, V=0x8f3072e2, real_isn=0x7f0c9072
+SERVERNIC: SYN: new flow, V=0x7779c486
+SERVERNIC: SYN-ACK: delta=0x1ae88c92, V=0x7779c486, real_isn=0x5c9137f4
+SERVERNIC: SYN: new flow, V=0x8716cc09
+SERVERNIC: SYN-ACK: delta=0xcab52f7f, V=0x8716cc09, real_isn=0xbc619c8a
+SERVERNIC: SYN: new flow, V=0xd74bdde8
+SERVERNIC: SYN-ACK: delta=0x7dbe9d8e, V=0xd74bdde8, real_isn=0x598d405a
+SERVERNIC: SYN: new flow, V=0x87d4ded1
+SERVERNIC: SYN-ACK: delta=0x5f9b325d, V=0x87d4ded1, real_isn=0x2839ac74
+SERVERNIC: SYN: new flow, V=0xdf398b78
+SERVERNIC: SYN-ACK: delta=0xe4cd4883, V=0xdf398b78, real_isn=0xfa6c42f5
+SERVERNIC: SYN: new flow, V=0xc1c8f1ff
+SERVERNIC: SYN-ACK: delta=0xd1066f0e, V=0xc1c8f1ff, real_isn=0xf0c282f1
+SERVERNIC: SYN: new flow, V=0xe50a212f
+SERVERNIC: SYN-ACK: delta=0xee8048be, V=0xe50a212f, real_isn=0xf689d871
+SERVERNIC: SYN: new flow, V=0x6635eecb
+SERVERNIC: SYN-ACK: delta=0x5507674f, V=0x6635eecb, real_isn=0x112e877c
+SERVERNIC: SYN: new flow, V=0xb9bc8c6b
+SERVERNIC: SYN-ACK: delta=0x5a40a8e2, V=0xb9bc8c6b, real_isn=0x5f7be389
+SERVERNIC: SYN: new flow, V=0xc0832c11
+SERVERNIC: SYN-ACK: delta=0x61ba18ce, V=0xc0832c11, real_isn=0x5ec91343
+SERVERNIC: SYN: new flow, V=0x7ab06a09
+SERVERNIC: SYN-ACK: delta=0xd4c3a8fe, V=0x7ab06a09, real_isn=0xa5ecc10b
+SERVERNIC: SYN: new flow, V=0x43ef45b2
+SERVERNIC: SYN-ACK: delta=0x232b69c6, V=0x43ef45b2, real_isn=0x20c3dbec
+SERVERNIC: SYN: new flow, V=0x68100f87
+SERVERNIC: SYN-ACK: delta=0xde8c4dd4, V=0x68100f87, real_isn=0x8983c1b3
+SERVERNIC: SYN: new flow, V=0xfa342537
+SERVERNIC: SYN-ACK: delta=0x177fe452, V=0xfa342537, real_isn=0xe2b440e5
+SERVERNIC: SYN: new flow, V=0x8f613131
+SERVERNIC: SYN-ACK: delta=0x04d2ac58, V=0x8f613131, real_isn=0x8a8e84d9
+SERVERNIC: SYN: new flow, V=0x822cddbf
+SERVERNIC: SYN-ACK: delta=0x90763824, V=0x822cddbf, real_isn=0xf1b6a59b
+SERVERNIC: SYN: new flow, V=0x3b04da59
+SERVERNIC: SYN-ACK: delta=0x544c60a4, V=0x3b04da59, real_isn=0xe6b879b5
+SERVERNIC: SYN: new flow, V=0x66462637
+SERVERNIC: SYN-ACK: delta=0x3eee3cd3, V=0x66462637, real_isn=0x2757e964
+SERVERNIC: SYN: new flow, V=0x0cea3d03
+SERVERNIC: SYN-ACK: delta=0xf56f1f6f, V=0x0cea3d03, real_isn=0x177b1d94
+SERVERNIC: SYN: new flow, V=0xf16d2096
+SERVERNIC: SYN-ACK: delta=0xfaf3b90a, V=0xf16d2096, real_isn=0xf679678c
+SERVERNIC: SYN: new flow, V=0xc6c89b60
+SERVERNIC: SYN-ACK: delta=0xfd15473f, V=0xc6c89b60, real_isn=0xc9b35421
+SERVERNIC: SYN: new flow, V=0x7f28cc56
+SERVERNIC: SYN-ACK: delta=0x5f0d3f10, V=0x7f28cc56, real_isn=0x201b8d46
+SERVERNIC: SYN: new flow, V=0x16445a90
+SERVERNIC: SYN-ACK: delta=0x4bd83ba7, V=0x16445a90, real_isn=0xca6c1ee9
+SERVERNIC: SYN: new flow, V=0x175b6d13
+SERVERNIC: SYN-ACK: delta=0x5e2f3fdd, V=0x175b6d13, real_isn=0xb92c2d36
+SERVERNIC: SYN: new flow, V=0xf33fe321
+SERVERNIC: SYN-ACK: delta=0x6f089f19, V=0xf33fe321, real_isn=0x84374408
+SERVERNIC: SYN: new flow, V=0x4463767e
+SERVERNIC: SYN-ACK: delta=0x5dcb3950, V=0x4463767e, real_isn=0xe6983d2e
+SERVERNIC: SYN: new flow, V=0xc3d9fd44
+SERVERNIC: SYN-ACK: delta=0x7a4b7017, V=0xc3d9fd44, real_isn=0x498e8d2d
+SERVERNIC: SYN: new flow, V=0x1fcdc82a
+SERVERNIC: SYN-ACK: delta=0xf3e5b6a2, V=0x1fcdc82a, real_isn=0x2be81188
+SERVERNIC: SYN: new flow, V=0xf4f2bedc
+SERVERNIC: SYN-ACK: delta=0xb70c686f, V=0xf4f2bedc, real_isn=0x3de6566d
+SERVERNIC: SYN: new flow, V=0x633f5746
+SERVERNIC: SYN-ACK: delta=0x43075792, V=0x633f5746, real_isn=0x2037ffb4
+SERVERNIC: SYN: new flow, V=0xe73cfd78
+SERVERNIC: SYN-ACK: delta=0xf332b12d, V=0xe73cfd78, real_isn=0xf40a4c4b
+SERVERNIC: SYN: new flow, V=0xb0bde6b7
+SERVERNIC: SYN-ACK: delta=0x6cadb5a1, V=0xb0bde6b7, real_isn=0x44103116
+SERVERNIC: SYN: new flow, V=0xabf1782e
+SERVERNIC: SYN-ACK: delta=0x5cc7f71c, V=0xabf1782e, real_isn=0x4f298112
+SERVERNIC: SYN: new flow, V=0x17bf8312
+SERVERNIC: SYN-ACK: delta=0x5508664b, V=0x17bf8312, real_isn=0xc2b71cc7
+SERVERNIC: SYN: new flow, V=0x61403922
+SERVERNIC: SYN-ACK: delta=0x098afe47, V=0x61403922, real_isn=0x57b53adb
+SERVERNIC: SYN: new flow, V=0x72067d4f
+SERVERNIC: SYN-ACK: delta=0xbbef4db1, V=0x72067d4f, real_isn=0xb6172f9e
+SERVERNIC: SYN: new flow, V=0x87d8a1d1
+SERVERNIC: SYN-ACK: delta=0x15ffb6a8, V=0x87d8a1d1, real_isn=0x71d8eb29
+SERVERNIC: SYN: new flow, V=0xd57f472a
+SERVERNIC: SYN-ACK: delta=0x3aa92ce1, V=0xd57f472a, real_isn=0x9ad61a49
+SERVERNIC: SYN: new flow, V=0xbdc53274
+SERVERNIC: SYN-ACK: delta=0x9322021e, V=0xbdc53274, real_isn=0x2aa33056
+SERVERNIC: SYN: new flow, V=0x1ee24e74
+SERVERNIC: SYN-ACK: delta=0x08620f79, V=0x1ee24e74, real_isn=0x16803efb
+SERVERNIC: SYN: new flow, V=0x30e245a4
+SERVERNIC: SYN-ACK: delta=0x5784aadf, V=0x30e245a4, real_isn=0xd95d9ac5
+SERVERNIC: SYN: new flow, V=0x9091c4ce
+SERVERNIC: SYN-ACK: delta=0x1f56718b, V=0x9091c4ce, real_isn=0x713b5343
+SERVERNIC: SYN: new flow, V=0x5eab7a6a
+SERVERNIC: SYN-ACK: delta=0xf5b9cfad, V=0x5eab7a6a, real_isn=0x68f1aabd
+SERVERNIC: SYN: new flow, V=0x43274ccc
+SERVERNIC: SYN-ACK: delta=0x6fe2143c, V=0x43274ccc, real_isn=0xd3453890
+SERVERNIC: SYN: new flow, V=0x4be0cb49
+SERVERNIC: SYN-ACK: delta=0xbcb030f8, V=0x4be0cb49, real_isn=0x8f309a51
+SERVERNIC: SYN: new flow, V=0x95e55b37
+SERVERNIC: SYN-ACK: delta=0x4947f3e4, V=0x95e55b37, real_isn=0x4c9d6753
+SERVERNIC: SYN: new flow, V=0xe6cbb14e
+SERVERNIC: SYN-ACK: delta=0x84bc6b17, V=0xe6cbb14e, real_isn=0x620f4637
+SERVERNIC: SYN: new flow, V=0xc9ac1d56
+SERVERNIC: SYN-ACK: delta=0xd0735146, V=0xc9ac1d56, real_isn=0xf938cc10
+SERVERNIC: SYN: new flow, V=0xddd196cc
+SERVERNIC: SYN-ACK: delta=0x8e686814, V=0xddd196cc, real_isn=0x4f692eb8
+SERVERNIC: SYN: new flow, V=0x1b2ec38d
+SERVERNIC: SYN-ACK: delta=0x9d38494d, V=0x1b2ec38d, real_isn=0x7df67a40
+SERVERNIC: SYN: new flow, V=0x931de429
+SERVERNIC: SYN-ACK: delta=0x4353cf10, V=0x931de429, real_isn=0x4fca1519
+SERVERNIC: SYN: new flow, V=0x4683e8f4
+SERVERNIC: SYN-ACK: delta=0x83507a8b, V=0x4683e8f4, real_isn=0xc3336e69
+SERVERNIC: SYN: new flow, V=0x4f03029a
+SERVERNIC: SYN-ACK: delta=0x7748addf, V=0x4f03029a, real_isn=0xd7ba54bb
+SERVERNIC: SYN: new flow, V=0xd72a5172
+SERVERNIC: SYN-ACK: delta=0x893cc987, V=0xd72a5172, real_isn=0x4ded87eb
+SERVERNIC: SYN: new flow, V=0x91aa6f10
+SERVERNIC: SYN-ACK: delta=0x77393099, V=0x91aa6f10, real_isn=0x1a713e77
+SERVERNIC: SYN: new flow, V=0x07458009
+SERVERNIC: SYN-ACK: delta=0x34b8df53, V=0x07458009, real_isn=0xd28ca0b6
+SERVERNIC: SYN: new flow, V=0xcb1d5380
+SERVERNIC: SYN-ACK: delta=0xad231147, V=0xcb1d5380, real_isn=0x1dfa4239
+SERVERNIC: SYN: new flow, V=0x28f40bc2
+SERVERNIC: SYN-ACK: delta=0xa3faba4b, V=0x28f40bc2, real_isn=0x84f95177
+SERVERNIC: SYN: new flow, V=0x8a7b9b91
+SERVERNIC: SYN-ACK: delta=0x3791cb4b, V=0x8a7b9b91, real_isn=0x52e9d046
+SERVERNIC: SYN: new flow, V=0x4e3c269f
+SERVERNIC: SYN-ACK: delta=0x922972cb, V=0x4e3c269f, real_isn=0xbc12b3d4
+SERVERNIC: SYN: new flow, V=0xbde3c247
+SERVERNIC: SYN-ACK: delta=0x9f37b8b4, V=0xbde3c247, real_isn=0x1eac0993
+SERVERNIC: SYN: new flow, V=0x64e9d385
+SERVERNIC: SYN-ACK: delta=0xa6afe78a, V=0x64e9d385, real_isn=0xbe39ebfb
+SERVERNIC: SYN: new flow, V=0x8c170633
+SERVERNIC: SYN-ACK: delta=0x7564381d, V=0x8c170633, real_isn=0x16b2ce16
+SERVERNIC: SYN: new flow, V=0x9b4ade14
+SERVERNIC: SYN-ACK: delta=0x7a0c885a, V=0x9b4ade14, real_isn=0x213e55ba
+SERVERNIC: SYN: new flow, V=0xc541faad
+SERVERNIC: SYN-ACK: delta=0x6169d558, V=0xc541faad, real_isn=0x63d82555
+SERVERNIC: SYN: new flow, V=0x5d0e28fd
+SERVERNIC: SYN-ACK: delta=0xadfe5d44, V=0x5d0e28fd, real_isn=0xaf0fcbb9
+SERVERNIC: SYN: new flow, V=0xa70fad50
+SERVERNIC: SYN-ACK: delta=0xa56a29c0, V=0xa70fad50, real_isn=0x01a58390
+SERVERNIC: SYN: new flow, V=0x45d03284
+SERVERNIC: SYN-ACK: delta=0x6d875a85, V=0x45d03284, real_isn=0xd848d7ff
+SERVERNIC: SYN: new flow, V=0xe9e6e5c3
+SERVERNIC: SYN-ACK: delta=0x1f04fa23, V=0xe9e6e5c3, real_isn=0xcae1eba0
+SERVERNIC: SYN: new flow, V=0xaeb1dc01
+SERVERNIC: SYN-ACK: delta=0x3a5b1f9a, V=0xaeb1dc01, real_isn=0x7456bc67
+SERVERNIC: SYN: new flow, V=0x56717478
+SERVERNIC: SYN-ACK: delta=0x12254773, V=0x56717478, real_isn=0x444c2d05
+SERVERNIC: SYN: new flow, V=0xc95464d6
+SERVERNIC: SYN-ACK: delta=0xaec42c9a, V=0xc95464d6, real_isn=0x1a90383c
+SERVERNIC: SYN: new flow, V=0xd74ca4e4
+SERVERNIC: SYN-ACK: delta=0x2b8525d6, V=0xd74ca4e4, real_isn=0xabc77f0e
+SERVERNIC: SYN: new flow, V=0x2a742e47
+SERVERNIC: SYN-ACK: delta=0xfa3889b1, V=0x2a742e47, real_isn=0x303ba496
+SERVERNIC: SYN: new flow, V=0xb510b6e1
+SERVERNIC: SYN-ACK: delta=0xd56881a0, V=0xb510b6e1, real_isn=0xdfa83541
+SERVERNIC: SYN: new flow, V=0xbbd78839
+SERVERNIC: SYN-ACK: delta=0xa88c92a8, V=0xbbd78839, real_isn=0x134af591
+SERVERNIC: SYN: new flow, V=0x345c6a61
+SERVERNIC: SYN-ACK: delta=0x061cb7ff, V=0x345c6a61, real_isn=0x2e3fb262
+SERVERNIC: SYN: new flow, V=0x8a486f48
+SERVERNIC: SYN-ACK: delta=0x87264c63, V=0x8a486f48, real_isn=0x032222e5
+SERVERNIC: SYN-ACK: flushed 3 buffered c2s packets
+SERVERNIC: SYN: new flow, V=0x97399394
+SERVERNIC: SYN-ACK: delta=0x0078e7d6, V=0x97399394, real_isn=0x96c0abbe
+SERVERNIC: SYN: new flow, V=0xcf493dfe
+SERVERNIC: SYN-ACK: delta=0x6dec8f8a, V=0xcf493dfe, real_isn=0x615cae74
+SERVERNIC: SYN: new flow, V=0x75b4a2e1
+SERVERNIC: SYN-ACK: delta=0x42b3b77e, V=0x75b4a2e1, real_isn=0x3300eb63
+SERVERNIC: SYN: new flow, V=0x16c76883
+SERVERNIC: SYN-ACK: delta=0x01e9e502, V=0x16c76883, real_isn=0x14dd8381
+SERVERNIC: SYN: new flow, V=0x4e432546
+SERVERNIC: SYN-ACK: delta=0xe2a49780, V=0x4e432546, real_isn=0x6b9e8dc6
+SERVERNIC: SYN: new flow, V=0x582509b9
+SERVERNIC: SYN-ACK: delta=0xf7a7bcdc, V=0x582509b9, real_isn=0x607d4cdd
+SERVERNIC: SYN: new flow, V=0x445ee9f0
+SERVERNIC: SYN-ACK: delta=0xcaa32b6a, V=0x445ee9f0, real_isn=0x79bbbe86
+SERVERNIC: SYN: new flow, V=0x0dbbffa7
+SERVERNIC: SYN-ACK: delta=0x60b678ad, V=0x0dbbffa7, real_isn=0xad0586fa
+SERVERNIC: SYN: new flow, V=0x6e15e1ef
+SERVERNIC: SYN-ACK: delta=0xa95feedb, V=0x6e15e1ef, real_isn=0xc4b5f314
+SERVERNIC: SYN: new flow, V=0x4e84e55d
+SERVERNIC: SYN-ACK: delta=0x47f0a00a, V=0x4e84e55d, real_isn=0x06944553
+SERVERNIC: SYN: new flow, V=0x82f09f37
+SERVERNIC: SYN-ACK: delta=0xaeae1abe, V=0x82f09f37, real_isn=0xd4428479
+SERVERNIC: SYN: new flow, V=0x3836fe67
+SERVERNIC: SYN-ACK: delta=0xc6157256, V=0x3836fe67, real_isn=0x72218c11
+SERVERNIC: SYN: new flow, V=0xc5357f57
+SERVERNIC: SYN-ACK: delta=0xe8803d07, V=0xc5357f57, real_isn=0xdcb54250
+SERVERNIC: SYN: new flow, V=0xb50c984e
+SERVERNIC: SYN-ACK: delta=0x81f88fba, V=0xb50c984e, real_isn=0x33140894
+SERVERNIC: SYN: new flow, V=0x58f4931f
+SERVERNIC: SYN-ACK: delta=0xb126e3be, V=0x58f4931f, real_isn=0xa7cdaf61
+SERVERNIC: SYN: new flow, V=0x68737907
+SERVERNIC: SYN-ACK: delta=0xd630b7c8, V=0x68737907, real_isn=0x9242c13f
+SERVERNIC: SYN: new flow, V=0x5305b1a1
+SERVERNIC: SYN-ACK: delta=0x671c0a34, V=0x5305b1a1, real_isn=0xebe9a76d
+SERVERNIC: SYN: new flow, V=0xea4b9b21
+SERVERNIC: SYN-ACK: delta=0xf4b7b24a, V=0xea4b9b21, real_isn=0xf593e8d7
+SERVERNIC: SYN: new flow, V=0xff743515
+SERVERNIC: SYN-ACK: delta=0xc8643ca0, V=0xff743515, real_isn=0x370ff875
+SERVERNIC: SYN: new flow, V=0x7bb3e423
+SERVERNIC: SYN-ACK: delta=0x2e17b3ce, V=0x7bb3e423, real_isn=0x4d9c3055
+SERVERNIC: SYN: new flow, V=0xbd4ab0c8
+SERVERNIC: SYN-ACK: delta=0x5e95bb88, V=0xbd4ab0c8, real_isn=0x5eb4f540
+SERVERNIC: SYN: new flow, V=0x6473179d
+SERVERNIC: SYN-ACK: delta=0x75cddecc, V=0x6473179d, real_isn=0xeea538d1
+SERVERNIC: SYN: new flow, V=0xd103c766
+SERVERNIC: SYN-ACK: delta=0x39194222, V=0xd103c766, real_isn=0x97ea8544
+SERVERNIC: SYN: new flow, V=0x7683c462
+SERVERNIC: SYN-ACK: delta=0xa3ce5854, V=0x7683c462, real_isn=0xd2b56c0e
+SERVERNIC: SYN: new flow, V=0xdfa04d94
+SERVERNIC: SYN-ACK: delta=0x8cc246f2, V=0xdfa04d94, real_isn=0x52de06a2
+SERVERNIC: SYN: new flow, V=0x9140a7dd
+SERVERNIC: SYN-ACK: delta=0xf43f5e72, V=0x9140a7dd, real_isn=0x9d01496b
+SERVERNIC: SYN: new flow, V=0xc53da58b
+SERVERNIC: SYN-ACK: delta=0xe516b7a0, V=0xc53da58b, real_isn=0xe026edeb
+SERVERNIC: SYN: new flow, V=0xeed56a24
+SERVERNIC: SYN-ACK: delta=0x99780006, V=0xeed56a24, real_isn=0x555d6a1e
+SERVERNIC: SYN: new flow, V=0x7bd8e9e7
+SERVERNIC: SYN-ACK: delta=0x4d831a73, V=0x7bd8e9e7, real_isn=0x2e55cf74
+SERVERNIC: SYN: new flow, V=0xc2f672d3
+SERVERNIC: SYN-ACK: delta=0x5d23000e, V=0xc2f672d3, real_isn=0x65d372c5
+SERVERNIC: SYN: new flow, V=0x59af1a73
+SERVERNIC: SYN-ACK: delta=0x651b7f4c, V=0x59af1a73, real_isn=0xf4939b27
+SERVERNIC: SYN: new flow, V=0xbb6eb39b
+SERVERNIC: SYN-ACK: delta=0xa6207e74, V=0xbb6eb39b, real_isn=0x154e3527
+SERVERNIC: SYN: new flow, V=0x10f4b476
+SERVERNIC: SYN-ACK: delta=0x50b27997, V=0x10f4b476, real_isn=0xc0423adf
+SERVERNIC: SYN: new flow, V=0x5a8b2ee6
+SERVERNIC: SYN-ACK: delta=0x5061f0f5, V=0x5a8b2ee6, real_isn=0x0a293df1
+SERVERNIC: SYN: new flow, V=0x7a95cd5d
+SERVERNIC: SYN-ACK: delta=0x1d211f12, V=0x7a95cd5d, real_isn=0x5d74ae4b
+SERVERNIC: SYN: new flow, V=0x422e2451
+SERVERNIC: SYN-ACK: delta=0xeb81afbf, V=0x422e2451, real_isn=0x56ac7492
+SERVERNIC: SYN: new flow, V=0x7d4da832
+SERVERNIC: SYN-ACK: delta=0x8ba90467, V=0x7d4da832, real_isn=0xf1a4a3cb
+SERVERNIC: SYN: new flow, V=0x2c9c4963
+SERVERNIC: SYN-ACK: delta=0x70c64d7a, V=0x2c9c4963, real_isn=0xbbd5fbe9
+SERVERNIC: SYN: new flow, V=0xb4bcaf81
+SERVERNIC: SYN-ACK: delta=0x2796dd69, V=0xb4bcaf81, real_isn=0x8d25d218
+SERVERNIC: SYN: new flow, V=0x8bff7f34
+SERVERNIC: SYN-ACK: delta=0x12ffce24, V=0x8bff7f34, real_isn=0x78ffb110
+SERVERNIC: SYN: new flow, V=0x42be305f
+SERVERNIC: SYN-ACK: delta=0xebd494ac, V=0x42be305f, real_isn=0x56e99bb3
+SERVERNIC: SYN: new flow, V=0xdb2ce333
+SERVERNIC: SYN-ACK: delta=0x211425ae, V=0xdb2ce333, real_isn=0xba18bd85
+SERVERNIC: SYN: new flow, V=0xa31b9654
+SERVERNIC: SYN-ACK: delta=0x2644e14b, V=0xa31b9654, real_isn=0x7cd6b509
+SERVERNIC: SYN: new flow, V=0x1762d796
+SERVERNIC: SYN-ACK: delta=0x98807f74, V=0x1762d796, real_isn=0x7ee25822
+SERVERNIC: SYN: new flow, V=0x277ff189
+SERVERNIC: SYN-ACK: delta=0x84a9c428, V=0x277ff189, real_isn=0xa2d62d61
+SERVERNIC: SYN: new flow, V=0xc005d530
+SERVERNIC: SYN-ACK: delta=0xbbe44c97, V=0xc005d530, real_isn=0x04218899
+SERVERNIC: SYN: new flow, V=0xc235ba5d
+SERVERNIC: SYN-ACK: delta=0xe4ca00ea, V=0xc235ba5d, real_isn=0xdd6bb973
+SERVERNIC: SYN: new flow, V=0xecbba9a3
+SERVERNIC: SYN-ACK: delta=0x48a1776b, V=0xecbba9a3, real_isn=0xa41a3238
+SERVERNIC: SYN: new flow, V=0x09941e34
+SERVERNIC: SYN-ACK: delta=0x8d300847, V=0x09941e34, real_isn=0x7c6415ed
+SERVERNIC: SYN: new flow, V=0xf8f953af
+SERVERNIC: SYN-ACK: delta=0xb90880a8, V=0xf8f953af, real_isn=0x3ff0d307
+SERVERNIC: SYN: new flow, V=0x9897c6a9
+SERVERNIC: SYN-ACK: delta=0xe2ad77c3, V=0x9897c6a9, real_isn=0xb5ea4ee6
+SERVERNIC: SYN: new flow, V=0x088fa1ab
+SERVERNIC: SYN-ACK: delta=0xfb493f29, V=0x088fa1ab, real_isn=0x0d466282
+SERVERNIC: SYN: new flow, V=0x6daa1d82
+SERVERNIC: SYN-ACK: delta=0x1c988b3d, V=0x6daa1d82, real_isn=0x51119245
+SERVERNIC: SYN: new flow, V=0xe38c0661
+SERVERNIC: SYN-ACK: delta=0xb4e4f4d7, V=0xe38c0661, real_isn=0x2ea7118a
+SERVERNIC: SYN: new flow, V=0x14045bee
+SERVERNIC: SYN-ACK: delta=0x7f9bb7c3, V=0x14045bee, real_isn=0x9468a42b
+SERVERNIC: SYN: new flow, V=0x1d829666
+SERVERNIC: SYN-ACK: delta=0x315f4262, V=0x1d829666, real_isn=0xec235404
+SERVERNIC: SYN: new flow, V=0x01c0fd33
+SERVERNIC: SYN-ACK: delta=0x33b23d43, V=0x01c0fd33, real_isn=0xce0ebff0
+SERVERNIC: SYN: new flow, V=0x8daef566
+SERVERNIC: SYN-ACK: delta=0xe85d2911, V=0x8daef566, real_isn=0xa551cc55
+SERVERNIC: SYN: new flow, V=0xac90dc26
+SERVERNIC: SYN-ACK: delta=0xb8fcf5bf, V=0xac90dc26, real_isn=0xf393e667
+SERVERNIC: SYN: new flow, V=0x2e428d57
+SERVERNIC: SYN-ACK: delta=0xfd64d254, V=0x2e428d57, real_isn=0x30ddbb03
+SERVERNIC: SYN: new flow, V=0x7244af8e
+SERVERNIC: SYN-ACK: delta=0x31480bca, V=0x7244af8e, real_isn=0x40fca3c4
+SERVERNIC: SYN: new flow, V=0x7269455e
+SERVERNIC: SYN-ACK: delta=0x12f7803e, V=0x7269455e, real_isn=0x5f71c520
+SERVERNIC: SYN: new flow, V=0xeeb18915
+SERVERNIC: SYN-ACK: delta=0x52317e41, V=0xeeb18915, real_isn=0x9c800ad4
+SERVERNIC: SYN: new flow, V=0x3a0f0390
+SERVERNIC: SYN-ACK: delta=0x6c202d02, V=0x3a0f0390, real_isn=0xcdeed68e
+SERVERNIC: SYN: new flow, V=0x9eaa6d65
+SERVERNIC: SYN-ACK: delta=0xf7f4d790, V=0x9eaa6d65, real_isn=0xa6b595d5
+SERVERNIC: SYN: new flow, V=0x879dcad5
+SERVERNIC: SYN-ACK: delta=0x971ede49, V=0x879dcad5, real_isn=0xf07eec8c
+SERVERNIC: SYN: new flow, V=0x2d0d822f
+SERVERNIC: SYN-ACK: delta=0x7c6ceb13, V=0x2d0d822f, real_isn=0xb0a0971c
+SERVERNIC: SYN: new flow, V=0x415542d1
+SERVERNIC: SYN-ACK: delta=0xbfdff6d1, V=0x415542d1, real_isn=0x81754c00
+SERVERNIC: SYN: new flow, V=0x465e701c
+SERVERNIC: SYN-ACK: delta=0x7cddc6da, V=0x465e701c, real_isn=0xc980a942
+SERVERNIC: SYN: new flow, V=0x9e4393be
+SERVERNIC: SYN-ACK: delta=0x467662be, V=0x9e4393be, real_isn=0x57cd3100
+SERVERNIC: SYN: new flow, V=0x1cb90c3a
+SERVERNIC: SYN-ACK: delta=0xf27ce6db, V=0x1cb90c3a, real_isn=0x2a3c255f
+SERVERNIC: SYN: new flow, V=0xf31b230e
+SERVERNIC: SYN-ACK: delta=0x41a12720, V=0xf31b230e, real_isn=0xb179fbee
+SERVERNIC: SYN: new flow, V=0x15a376c3
+SERVERNIC: SYN-ACK: delta=0x271946e7, V=0x15a376c3, real_isn=0xee8a2fdc
+SERVERNIC: SYN: new flow, V=0xb7cb0b32
+SERVERNIC: SYN-ACK: delta=0x47e61138, V=0xb7cb0b32, real_isn=0x6fe4f9fa
+SERVERNIC: SYN: new flow, V=0x1534fc9d
+SERVERNIC: SYN-ACK: delta=0xd781a861, V=0x1534fc9d, real_isn=0x3db3543c
+SERVERNIC: SYN: new flow, V=0x9fcdf0ff
+SERVERNIC: SYN-ACK: delta=0x5e3e8044, V=0x9fcdf0ff, real_isn=0x418f70bb
+SERVERNIC: stats ClientNIC-facing (port 0): rx=860 tx=339 --output truncated--

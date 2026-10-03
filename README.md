@@ -1,5 +1,10 @@
 # zero-rtt-tcp
 
+Agent guidance: [AGENTS.md](AGENTS.md). Codex project skills live in
+[.agents/skills](.agents/skills): `$run-experiment`, `$offline-analysis`, and
+`$runs-lab-connect`. Use the PowerShell `deploy.ps1` / `destroy.ps1` scripts in
+`infra/baseline/` and `infra/dpdk/` for AWS stack lifecycle operations.
+
 Proof-of-concept demonstrating **0-RTT TCP** — eliminating the 3-way handshake latency by using intelligent middleware (ClientNIC) that spoofs server SYN-ACKs, allowing clients to send application data immediately without waiting for the real handshake to complete (~50-200ms saved per connection).
 
 **Educational/demo use only. Not suitable for production.**

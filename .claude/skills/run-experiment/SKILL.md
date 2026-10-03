@@ -1,6 +1,6 @@
 ---
 name: run-experiment
-description: Run 0-RTT TCP experiments end-to-end across the 4-node chain (Client, ClientNIC, ServerNIC, Server) on AWS EC2 or the RUNS Proxmox lab, and interpret the result. INVOKE THIS SKILL — do not hand-run the orchestrator or read this file as documentation — whenever the request involves running, repeating, or sweeping an experiment on the dpdk / baseline / proxmox stacks; measuring TTFB, FCT, send_unlock, or server_gap; comparing 0-RTT against the plain-TCP baseline; updating anything under experiments/*/reports/; or diagnosing the 4-VM chain. Triggers on "run experiment", "run N experiments", "run the sweep", "rerun the benchmark", "run integration tests", "test 0-RTT", "measure latency", "compare dpdk vs baseline", "update the reports", "check the VMs", "verify packet flow", "debug the demo", "validate the setup" — and on a /goal or task whose objective is any of those, even when the request is phrased as raw CDK output or bare instance IDs.
+description: Run or diagnose live 0-RTT TCP, plain TCP, and QUIC experiments on AWS EC2 or the RUNS lab, preserving matched load settings and recording reports and artifacts. Use for live measurements and four-node packet-flow checks, not offline unit tests.
 ---
 
 # Run Experiment — 0-RTT Integration Tester
@@ -12,7 +12,7 @@ result in chat, and investigate any failures.
 
 ## Step 0 — Choose experiment mode
 
-**Always ask the user** which mode they want before doing anything:
+Infer the mode from the request and existing session authorization. Ask only when the target is unspecified:
 
 > "Which experiment should I run?
 > 1. **DPDK** (AWS) — 0-RTT, C/DPDK forwarder + translator (`./experiments/run.sh`)
@@ -36,13 +36,19 @@ as separate dispatches with hand-matched knobs.
 | Node discovery | `smartnics-*` tags | lab IPs (10.13.37.x) | `baseline-*` tags |
 | Default `CONNECTIONS` | 1 | 1 | 1 |
 | Infra stack | `infra/dpdk` | RUNS Proxmox lab | `infra/baseline` |
-| Pcap validator | `analyze_metrics.py` | `analyze_metrics.py` | (none) |
+| Endpoint analyzer | `analyze_metrics.py` | `analyze_metrics.py` | `analyze_metrics.py` (TCP); none (QUIC) |
 
 ## Step 1 — Run it (GitHub Actions is the default path)
 
 **Dispatch `.github/workflows/run-experiment.yml`** unless the mode is Proxmox or
 the user asks for a local run. It drives the same orchestrators over SSM, but also
 archives every artifact and commits a results bundle — which is what Step 6 reads.
+
+The workflow commits bundles to its dispatch ref. If main requires pull requests,
+dispatch with `--ref` set to a writable experiment branch and pass `repo_ref`
+explicitly; do not weaken repository rules to save results. If publication fails,
+download the Actions artifact and analyze its recorded `exit_code` separately
+from the workflow commit-step failure.
 
 > ⛔ **Never dispatch without `load_parallel` and `load_rate`.** Omitting them
 > silently selects 100000 @ 2000 conn/s — a capacity setting that saturates the
@@ -116,6 +122,22 @@ establishment-success and throughput from it. `missing=` events and multi-second
 percentiles are expected there, not a regression — and never quote its latency as
 a 0-RTT saving. Pair it with `-f load_timeout=3600`, since 100k @ 2000/s needs
 ~50 s of spawn plus several minutes of drain per round.
+
+### QUIC four-arm comparison
+
+Use the Task 3 rate spike to choose `min(sustained_rate / 2, 500)` on the client,
+then confirm endpoint CPU headroom. Match all load settings across plain TCP,
+DPDK 0-RTT TCP, QUIC cold, and QUIC resumed; check endpoint VM types as well.
+Run the TCP pair with `infra=both`. QUIC uses `infra=baseline`, with
+`extra_env` containing `PROTO=quic QUIC_RESUME=0` for cold or
+`PROTO=quic QUIC_RESUME=1` for resumed. Pass explicit count and rate to each.
+Wait for each workflow dispatch to finish before submitting the next: GitHub's
+concurrency group allows only one pending run, so a third dispatch can cancel
+an already pending one even with `cancel-in-progress: false`.
+Read the actual reports and `quic_summary` lines; require every resumed flow's
+early data to be accepted. Record handshake timing and evaluate the design's
+A2 triggers. State plaintext-vs-encrypted, one-ticket reuse, and data-plane
+caveats in the comparison. QUIC reports application timing, not pcap timing.
 
 ### Step 1b — Local orchestrator (fallback)
 
@@ -196,23 +218,23 @@ port range. `CONNECTIONS` controls how many sequential rounds run (default 1, si
 one round already opens 100000). Scapy is pinned to single-port/low-parallel (legacy
 Python data plane can't sustain this).
 
-### Endpoint pcap measurement (DPDK + Proxmox)
+### Endpoint pcap measurement (TCP: DPDK, Proxmox, baseline)
 
 The new measurement model captures at the **endpoints**, not on ClientNIC:
 - `tcpdump` runs on the **Client host** (`/tmp/client_side.pcap`) and **Server host** (`/tmp/server_side.pcap`), using nanosecond timestamps where supported.
-- Accuracy knobs applied before the run: GRO/LRO/TSO/GSO **off** + `tc qdisc netem delay 50ms` on Client and Server egress; TCP timestamps/window-scaling/SACK disabled.
-- Both pcaps are base64-shipped to ClientNIC, where `experiments/nodes/analyze_metrics.py` computes endpoint-observed metrics: **FCT**, **send_unlock** (client), **server_gap** (server). A `missing=` line in its output = a metric event was not found → counts as a failure.
+- Accuracy knobs applied before the run: GRO/LRO/TSO/GSO **off** + `tc qdisc netem delay 50ms` on the middle ClientNIC-to-ServerNIC leg; TCP timestamps/window-scaling/SACK disabled.
+- Each pcap is analyzed on its own endpoint host by `experiments/nodes/analyze_metrics.py`, computing endpoint-observed metrics: **FCT**, **send_unlock** (client), **server_gap** (server). A `missing=` line in its output = a metric event was not found → counts as a failure.
 - In-binary `[DIAG]` log lines (formerly `[METRIC]`) on ClientNIC/ServerNIC are diagnostic only — the authoritative latency numbers come from the endpoint pcaps.
 
 **DPDK build note**: the CDK user data builds DPDK 23.11 from source at provision
 time (~15-20 min after deploy). The runner rebuilds both binaries from source each
-run (after `git pull`). If a build fails, wait for user data to finish or check the
+run (after syncing to the requested ref). If a build fails, wait for user data to finish or check the
 meson/ninja output the script prints inline.
 
 **Baseline note**: no DPDK, no Scapy, no build. ClientNIC/ServerNIC are plain kernel
 routers (`ip_forward=1` + static routes from CDK user data). Deploy `infra/baseline`
-first (`cd infra/baseline && .\deploy.ps1`). Measures plain-TCP TTFB/FCT only — no
-spoofing, no pcap validator.
+first with `infra/baseline/deploy.ps1` from PowerShell. Use the matching `destroy.ps1` for teardown. Plain TCP measures endpoint `send_unlock`, FCT and `server_gap`, with no
+spoofing. QUIC measures app-side `send_unlock` and skips pcap analysis.
 
 ## Step 2 — Report is written automatically
 
@@ -226,13 +248,14 @@ Do **not** hand-author a duplicate. A workflow run commits that same report to
 
 The DPDK/Proxmox report contains: Latency Summary (TTFB @ 3 points + FCT), Client
 Output, ClientNIC/ServerNIC/Server logs, and endpoint Packet Analysis. The Scapy
-report adds `validate_0rtt_capture.py` output; the Baseline report is TTFB/FCT only.
+report adds `validate_0rtt_capture.py` output. Baseline TCP includes endpoint
+metrics; baseline QUIC includes `quic_summary`.
 
 ## Step 3 — Report results to the user in chat
 
 After the run, post a concise summary. Lead with the overall result and the latency
-numbers, then the per-check table. For **baseline**, omit ClientNIC/ServerNIC logs
-and packet analysis.
+numbers, then relevant checks. For **baseline**, omit middleware activity;
+retain endpoint analysis for TCP and `quic_summary` for QUIC.
 
 ---
 **Experiment Run — `<timestamp>`** (`<IMPL_NAME>`)
@@ -302,7 +325,7 @@ data but deliberately does no reasoning; `offline-analysis` is that missing half
 and it is the closing step of this skill — not an optional follow-up.
 
 ```bash
-git pull                                   # the bundle is committed by the workflow
+git pull --ff-only                         # only when local changes permit; otherwise download the Actions artifact
 cat experiments/ci-results/latest.txt      # latest_bundle: -> the path
 ```
 
@@ -310,7 +333,8 @@ Then invoke the **`offline-analysis`** skill against the bundle. It performs
 Steps 3–5 (summary, failure diagnosis, candidate insights) from
 `run-meta.json` + the untruncated `experiment.log` + `node-logs/`, which is
 strictly more data than the inline output a local run leaves behind — SSM
-truncates fetched logs at 24 KB, the bundle's copies are not truncated.
+caps fetched node logs at 24 KB; bundle node logs can also contain truncation
+markers. The orchestrator's `experiment.log` remains the full local output.
 
 - **`infra=both`**: analyze **both** bundles — `latest-baseline.txt` and
   `latest-dpdk.txt` — and confirm their `run-meta.json` `knobs` blocks match
@@ -394,11 +418,12 @@ tcpdump --time-stamp-precision=nano -i eth0 -nn -s 128 'tcp port 8080' -w /tmp/s
 
 ### Running the analyzer
 
-**DPDK / Proxmox** — `analyze_metrics.py` on ClientNIC against both endpoint pcaps:
+**TCP: DPDK, Proxmox, baseline** — analyze on each endpoint host:
 ```bash
-python3 experiments/nodes/analyze_metrics.py \
-    --client-pcap /tmp/client_side_endpoint.pcap \
-    --server-pcap /tmp/server_side.pcap
+# On Client
+python3 experiments/nodes/analyze_metrics.py --client-pcap /tmp/client_side.pcap
+# On Server
+python3 experiments/nodes/analyze_metrics.py --server-pcap /tmp/server_side.pcap
 # Output lines: fct=, send_unlock=, server_gap=  (a "missing=" line = failure)
 ```
 

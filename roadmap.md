@@ -1,87 +1,64 @@
 # Roadmap
 
-Open work only. Completed items are recorded in their reports, PRs, and
-`docs/openspec/changes/archive/` — see [Done ledger](#done-ledger) for pointers.
+The urgent Overleaf draft update comes first, then open plans, Phase 1 and
+larger BlueField experiments.
+Reading is listed early so it can inform the lab work. Optional extensions are
+separate from the academic PoC; completed work is in the [Done ledger](#done-ledger).
 
 ## Status snapshot
 
-Ranked easiest win first — least infra, fewest blockers, smallest change.
+Priority follows the sections below. Optional extensions have their own list.
 
-| # | Item | State | Why this rank |
+| # | Item | State | Next step / dependency |
 | --- | --- | --- | --- |
-| 1 | [Human-readable experiment output](#human-readable-experiment-output) | Scoped — needs task-runner to implement | Local only: output + `experiments/` cleanup, no infra |
-| 2 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress — resume: `claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba` | One function in `loadgen.py`, already being specced |
-| 3 | [QUIC comparison](#quic-comparison) | Scoped, validation is in progress — resume: `claude --resume 25d15f2d-0439-4a70-b4db-945b03dbfe9d` | New experiment arm, no data-plane change |
-| 4 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — porting decided, phase not scoped | Needs lab + runs3, but no external blocker |
-| 5 | [DDoS: purge delta rows](#ddos-purge-delta-rows) | Idea — not scoped | ServerNIC flow table only, unit-testable without a stack |
-| 6 | [`verify-eswitch-tcp-seq-offload`](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md) | Preemptive, off the Phase 1 path — in progress, DPU left mutated | 2/5 done; blocked on a sudo password + DPU restore |
-| 7 | [Cross-region split](#cross-region-split) | Idea — not scoped | Two-region CDK + orchestration rework, billed transfer |
-| 8 | [Packet-loss handling](#packet-loss-handling) | Idea — not scoped | Correctness design in the translator |
+| 1 | [Add results to the Overleaf draft](#add-results-to-the-overleaf-draft) | **Urgent — open** | Transfer the current experiment results into the academic draft |
+| 2 | [Human-readable experiment output](#human-readable-experiment-output) | Partially implemented — compact view still open | Shared helpers exist; dual sink, scorecard and full-log bundle are missing |
+| 3 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress | Finish the request/response design |
+| 4 | [QUIC comparison](#quic-comparison) | Implementation and four-arm write-up complete; A2 follow-up open | Check QUIC packet headers after similar handshake medians |
+| 5 | [Read the XFir paper](#read-the-xfir-paper) | Reading — not scoped | Review flow-table setup and eviction details early |
+| 6 | [Research Scallop](#research-scallop) | Research — not scoped | Read the paper and inspect its BlueField-3 prototype |
+| 7 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — porting decided, phase not scoped | Stand up the one-DPU lab topology |
+| 8 | [Scale up experiments on BlueField](#scale-up-experiments-on-bluefield) | Idea — not scoped | After a passing Phase 1 run; repeat after Phase 2 |
 | 9 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped | Needs runs4 permission |
-| 10 | [`bluefield-servernic-hw-offload`](docs/openspec/changes/bluefield-servernic-hw-offload/proposal.md) | Preemptive, off the Phase 1 path — blocked on the spike | Waits on #6 |
-| 11 | [Scale up experiments on BlueField](#scale-up-experiments-on-bluefield) | Idea — not scoped | Needs Phase 1/2; re-opens an out-of-scope limitation |
-| 12 | [CDN comparison](#cdn-comparison) | Idea — not scoped | Undefined — needs framing before effort is knowable |
-| 13 | [Read the XFir paper](#read-the-xfir-paper) | Idea — not scoped | Reading task; brief over it for relevant table-eviction details |
-| 14 | [Claude Code on uni VM](#claude-code-on-uni-vm) | Idea — not scoped | One-host setup; enables autonomous goal loops with direct validation |
-| 15 | [Reconcile the superpowers plans](#reconcile-the-superpowers-plans-before-queuing-for-task-runner) | Scoped (from #39) — plan edits + two small root files | Prerequisite for queuing anything on the nightly task-runner |
-| 16 | [Use Jev to check new flows](#use-jev-to-check-new-flows) | Idea — not scoped (from #40) | Source issue had no body; needs framing first |
 
-## Human-readable experiment output
+## Urgent
 
-**Status:** scoped already — needs task-runner to implement.
+### Add results to the Overleaf draft
 
-**Goal:** `run_experiment.sh` output is tuned for the Claude agent driving
-`/run-experiment` — dense, log-shaped, easy to grep. A human reading the same
-run has to reconstruct what happened. Make the run legible to a person without
-taking the structure the agent relies on away.
+**Status:** urgent — open.
 
-- [ ] Decide the mechanism: a second human-facing view (summary/TUI) alongside
-      today's log, or one format that serves both. Do **not** simply reformat
-      the existing stream — the skill and `analyze_metrics.py` parse it.
-- [ ] Surface the things a human actually looks for: phase progress across the
-      4 nodes, established-vs-target connection count, pass/fail per check, and
-      the handful of counters that explain a failure (`imissed`, `rx_nombuf`,
-      `oerrors`, `truncated_frames`) — not every line of node output.
-- [ ] Keep the final report under `experiments/<mode>/reports/` as the durable
-      artifact; this is about the live run, not the report.
-- [ ] Refine the metric names themselves, not just the output framing —
-      `send_unlock`, `server_gap`, and FCT are internal shorthand from
-      `experiments/measurement-methodology-review.md` with no meaning on
-      sight. Either rename them in the code/output to say what they measure
-      (e.g. "time blocked in connect()", "flow completion time"), or keep the
-      short names but always pair them with a one-line definition wherever
-      they're printed or reported — decide one convention and apply it
-      everywhere (live output, `analyze_metrics.py`, reports, README).
+- [ ] Add the current experiment results from `docs/index.html` and the linked
+      reports to the Overleaf draft, including the measurement setup,
+      comparison results and relevant limitations.
 
-### Refine `experiments/` while doing it
+## Open plans
 
-Six entrypoints, two transports, one 21.7 KB shared core, and a stack nobody
-runs. A human cannot tell which of these is the live path, which is why the
-output is hard to read in the first place — the folder and the run output are
-the same legibility problem.
+### Human-readable experiment output
 
-- [ ] Delete the Scapy stack (`experiments/scapy/`, 36 KB across three
-      scripts). CLAUDE.md already calls it a deprecated feasibility PoC; git
-      history keeps it if it is ever wanted.
-- [ ] Decide what stays an entrypoint. Today: `dpdk/`, `baseline-tcp/`,
-      `proxmox/`, `scapy/` each ship their own `run_experiment.sh` (12.5 /
-      14.3 / 6.9 / 17.0 KB) over the same `lib/core.sh`, plus
-      `run_think_sweep.sh` and `dpdk/run_stress.sh`. Both sweeps earn their
-      keep — they ask different questions; the four near-duplicate runners are
-      the actual duplication.
-- [ ] Fold `proxmox/` into a transport choice, not a stack. It differs from
-      `dpdk/` only in reaching VMs through `lib/transport/ssh_lab.sh` instead of
-      `lib/transport/ssm.sh` — which is a flag, not a fifth orchestrator, and it is
-      also what [Phase 1](#phase-1--bluefield-as-servernic) needs anyway.
-- [ ] Prune report artifacts: 22 files under `dpdk/reports/` of which 9 are raw
-      `run-*.log` dumps from the iperf era, 13 under `baseline-tcp/reports/`,
-      and 6 CI bundles (379 KB) under `ci-results/`. Keep the dated reports
-      cited by `docs/index.html` and the Done ledger; drop the raw logs.
-- [ ] Fix the stale map: CLAUDE.md's module tree still lists
-      `experiments/archive/`, which no longer exists, and `experiments/nodes/`
-      lost `ebpf-trace.sh`.
+**Status:** partially implemented; keep open. The
+[plan](docs/superpowers/plans/2026-09-19-human-readable-experiment-output.md)
+asks for a compact terminal view plus a complete log, not just shared helpers.
 
-## Multi-round send in the load generator
+**Repo evidence:** `experiments/lib/output.sh` defines `log`/`pass`/`fail`/`warn`,
+but has no `output_init`, dual sink or `print_scorecard`. There is no
+`experiments/tests/test_output.py`. The workflow still tees the entire stream
+into `experiment.log`; it neither exports `RUN_LOG` nor bundles `experiment-full.log`.
+
+- [ ] Implement phase lines, every check result and a closing scorecard on the
+      terminal, while retaining all stdout/stderr in the complete log.
+- [ ] Wire this through the current `experiments/run.sh` entrypoint and add the
+      output tests under `experiments/tests/`; the plan's four-runner and
+      `experiments/utils/tests/` paths predate the harness consolidation.
+- [ ] Bundle `experiment-full.log` in `.github/workflows/run-experiment.yml`,
+      retaining `experiment.log` as the compact human summary.
+- [ ] Update the run-experiment and offline-analysis skills to read the full
+      log first once it exists.
+
+The harness consolidation is recorded in [Done ledger](#done-ledger).
+Established-vs-target counts, NIC counters and metric-label improvements are
+[optional presentation work](#experiment-presentation-polish), outside this plan.
+
+### Multi-round send in the load generator
 
 **Status:** spec in progress. Fast way to keep iterating:
 `claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba`
@@ -105,6 +82,66 @@ does `write(nbytes)` → `write_eof()` → close, and never reads a response.
 - [ ] Decide whether 3 rounds becomes the default for the DPDK-vs-baseline
       comparison, or an
       opt-in mode so existing numbers stay comparable.
+
+### QUIC comparison
+
+**Status:** implementation merged in [PR #42](https://github.com/ofekm5/zero-rtt-tcp/pull/42);
+Tasks 6 and 7 are complete: the four-arm AWS measurement and
+[write-up](docs/index.html#quic-comparison) were recorded on 2026-10-03.
+The A2 wire cross-check remains a follow-up.
+[Plan](docs/superpowers/plans/2026-09-19-quic-comparison.md) ·
+[Design](docs/superpowers/specs/2026-09-19-quic-comparison-design.md).
+
+Compare plain TCP, DPDK 0-RTT TCP, QUIC cold and QUIC resumed using client-side
+`send_unlock` only (A1). Run at identical connection counts, payloads and
+`NETEM_RTT_MS`, with a reduced arrival rate selected from the QUIC loopback
+rate spike (about half the sustained rate, capped at 500/s). Confirm client CPU
+headroom on AWS; the loopback rate is an upper bound.
+
+TCP arms are plaintext; QUIC encrypts. All resumed connections reuse one primed
+session ticket. The 0-RTT arm uses the DPDK stack; the other three use the
+kernel-routed baseline stack. Match endpoint VM sizes before comparing.
+
+- [x] Run all four arms at the same settings, write the `send_unlock` table in
+      `docs/index.html`, and evaluate all four A2 triggers against the reports.
+      At 100/s, 2000 connections per arm, 1 KB and 100 ms RTT, with m5.xlarge
+      endpoints: median send_unlock was 101.007 ms TCP, 0.338 ms 0-RTT TCP,
+      104.395 ms QUIC cold, and 1.436 ms QUIC resumed. All checks passed.
+      [Bundles and calibration](experiments/ci-results/20261003-quic-comparison/README.md).
+- [ ] If A1 results look off, add the pcap header cross-check (A2) as a follow-up:
+      cold `send_unlock` not near `NETEM_RTT_MS`; resumed `send_unlock` not clearly
+      below cold; early data accepted on fewer than all resumed connections;
+      or resumed `handshake_ms` equal to cold. A2 inspects QUIC's unencrypted
+      0-RTT long-header type and first short-header packet in the client pcap.
+      The first three triggers did not fire; handshake medians were similar
+      (104.395/104.827 ms), so queue A2 conservatively. All 2000 resumed flows
+      accepted early data; similar full-handshake timing alone does not prove fallback.
+
+## Early reading and research
+
+### Read the XFir paper
+
+Professor-sent SIGCOMM paper. Not directly about 0-RTT — it accelerates flow
+setup via optimized table lookups and custom hardware — but its flow-table
+handling may be relevant: entries are kept until a flow is set up/offloaded,
+with details on how entries are removed. Brief over it and check whether
+anything is worth mimicking, particularly for
+[DDoS: purge delta rows](#ddos-purge-delta-rows). The reading could also add
+value to system design by informing efficient reads and writes to memory,
+particularly in the flow-table lookup and update paths.
+
+### Research Scallop
+
+Read [Scallop](https://github.com/Princeton-Cabernet/Scallop) and its paper,
+*Scalable Video Conferencing Using SDN Principles*. The repo separates a
+hardware data plane from a software control plane and includes a BlueField-3
+P4 prototype under `hardware/bluefield`.
+
+- [ ] Inspect the BlueField prototype's packet-processing and control-plane
+      boundaries for ideas applicable to the ServerNIC design.
+- [ ] Record which ideas transfer to this TCP PoC and which depend on Scallop's
+      WebRTC workload or P4 platform. This is research, not a new implementation
+      dependency for Phase 1.
 
 ## Demo topologies (lab / Proxmox) — the main line
 
@@ -201,15 +238,29 @@ Porting `src/servernic/dpdk/` to the DPU:
 
 What the port does *not* carry, and Phase 1 still owns:
 
-- [ ] `core.sh`'s AWS assumptions — the repo-sync step hardcodes
-      `sudo -u ec2-user` and `aws secretsmanager get-secret-value
-      --region eu-central-1`, and `experiments/proxmox/run_experiment.sh`
-      sources it, so every lab run hits that path today
+- [x] Repo-sync transport split: `experiments/lib/core.sh` now has a
+      `TRANSPORT=ssh` branch that avoids `ec2-user` and Secrets Manager.
+      Validate the remaining lab deployment assumptions during Phase 1.
 - [ ] Endpoint VM provisioning in the RUNS lab (Client, Server, and the x86
       ClientNIC VM Phase 1 keeps)
 - Already done, not a task: the transport half —
-  `experiments/proxmox/run_experiment.sh` + `experiments/lib/transport/ssh_lab.sh`
-  reach the 4-VM chain at `10.13.37.10-13` over the RUNS gateway.
+  `TRANSPORT=ssh ./experiments/run.sh` + `experiments/lib/transport/ssh_lab.sh`
+  provide the lab path; confirm node addresses and gateway configuration
+  against the current lab setup before deploying.
+
+### Scale up experiments on BlueField
+
+Run larger-load experiments on the BF-3 side after Phase 1 is working; repeat
+with both NIC roles on hardware after Phase 2. Prioritise the first scale run
+before expanding the topology to two DPUs.
+
+- [ ] Establish a passing Phase 1 run at the existing measured load first.
+- [ ] Increase load in matched steps, recording established-vs-target flows,
+      loss counters and latency to distinguish capacity limits from path latency.
+- [ ] Address the measurement caveats in
+      [Known Limitations](docs/kb/wiki/Known%20Limitations.md) before interpreting
+      the larger-load results. Scale beyond the measured load remains an
+      extension of the current academic claim, not a prerequisite for it.
 
 ### Phase 2 — BlueField as ClientNIC and ServerNIC
 
@@ -232,7 +283,53 @@ state.
 - [ ] Promote Phase 1 to an OpenSpec change via
       `spec-planning:openspec-propose-change`
 
-## BlueField-3 hardware-offload track (preemptive, not on the Phase 1 path)
+## Optional extensions — not mandatory for the academic PoC
+
+These do not gate the academic PoC or Phase 1. Each needs framing and a proposal
+before implementation. DDoS and scale beyond the measured load re-open
+[acknowledged limitations](docs/kb/wiki/Known%20Limitations.md); BlueField scaling
+stays above because it is a prioritised follow-up once Phase 1 works.
+
+| Item | State | Dependency / scope |
+| --- | --- | --- |
+| [DDoS: purge delta rows](#ddos-purge-delta-rows) | Idea — not scoped | Flow-table eviction and SYN-flood resilience |
+| [Cross-region split](#cross-region-split) | Idea — not scoped | Two-region infrastructure and orchestration |
+| [CDN comparison](#cdn-comparison) | Idea — not scoped | Define the comparison first |
+| [Packet-loss handling](#packet-loss-handling) | Idea — not scoped | Loss-recovery correctness design |
+| [Hardware-offload spike](#verify-eswitch-tcp-seq-offload--in-progress-dpu-left-mutated) | In progress; last recorded state: DPU mutated | Restore the DPU; traffic test needs sudo access |
+| [ServerNIC hardware offload](#bluefield-servernic-hw-offload--blocked-on-the-spike) | Blocked on spike | Follow Phase 1; depends on spike verdict |
+| [Experiment presentation polish](#experiment-presentation-polish) | Idea — not scoped | Extra counters, metric definitions and raw-log cleanup |
+| [Use Jev to check new flows](#use-jev-to-check-new-flows) | Idea — not scoped (#40) | Clarify the original intent |
+
+### DDoS: purge delta rows
+
+Add an eviction/purge mechanism for the per-flow delta table on ServerNIC so
+SYN floods can't exhaust it. Nothing evicts today: every SYN holds an entry in
+`FT_SIZE=262144` plus buffer memory under the 1 GiB `FT_MAX_BUFFERED_BYTES`
+ceiling until the flow closes.
+
+### Cross-region split
+
+Put the client side and server side in different AWS regions — a real WAN
+instead of the emulated middle-leg delay.
+
+- [ ] Extend `infra/dpdk/cdk/` to two regions and pick the inter-region path:
+      VPC peering, Transit Gateway, or public IPs.
+- [ ] Rework orchestration: `ssm.sh` and the node scripts assume one region's
+      `describe-instances`.
+- [ ] Cost check before deploying — cross-region data transfer is billed.
+
+### CDN comparison
+
+Compare against a CDN, or use a CDN as the actual replacement for the
+client/server endpoints.
+
+### Packet-loss handling
+
+Make the system tolerate loss on either side (lost SYN-ACK, data, or ACK around
+the translation point) and test it.
+
+### BlueField-3 hardware-offload track (preemptive, not on the Phase 1 path)
 
 Both changes below predate the [demo-topology
 phases](#demo-topologies-lab--proxmox--the-main-line) and target the same
@@ -249,7 +346,7 @@ there is a working DPU data plane to attach it to.
       to get this far; that's a sign the harness itself is too heavy for
       iterative probing, not only the probe logic.
 
-### `verify-eswitch-tcp-seq-offload` — in progress, DPU left mutated
+#### `verify-eswitch-tcp-seq-offload` — in progress, DPU left mutated
 
 Determines whether the BlueField-3 e-switch can match a TCP flow, rewrite
 seq/ack by a per-flow constant, and hairpin the packet back out `pf0hpf` —
@@ -302,7 +399,7 @@ in `experiments/bluefield/probe/HANDOFF.md` in the worktree (uncommitted).
 Full criteria in the
 [proposal](docs/openspec/changes/verify-eswitch-tcp-seq-offload/proposal.md).
 
-### `bluefield-servernic-hw-offload` — blocked on the spike
+#### `bluefield-servernic-hw-offload` — blocked on the spike
 
 DPU-side ServerNIC that offloads post-handshake seq/ack rewriting to the
 e-switch, keeping the ARM cores out of the data path (handshake only). New
@@ -318,99 +415,16 @@ resolves it. Criteria in the
       rewriting or sheds) rather than failing open or dropping silently —
       pairs with the rule-count-leak mitigation already noted above (SC5)
 
-## Ideas — not scoped
+### Experiment presentation polish
 
-Each needs a proposal before work starts. Ordered as in the status snapshot. Two of them (DDoS, scale on BlueField) re-open limitations
-the project has declared out of scope — see [`docs/kb/wiki/Known Limitations.md`](docs/kb/wiki/Known%20Limitations.md).
+Follow-up work beyond the compact-output plan:
 
-### QUIC comparison
-
-**Status:** scoped, validation is in progress — resume:
-`claude --resume 25d15f2d-0439-4a70-b4db-945b03dbfe9d`
-
-Add QUIC as a third arm in `experiments/` next to the plain-TCP baseline and
-the DPDK 0-RTT stack.
-
-### DDoS: purge delta rows
-
-Add an eviction/purge mechanism for the per-flow delta table on ServerNIC so
-SYN floods can't exhaust it. Nothing evicts today: every SYN holds an entry in
-`FT_SIZE=262144` plus buffer memory under the 1 GiB `FT_MAX_BUFFERED_BYTES`
-ceiling until the flow closes.
-
-### Cross-region split
-
-Put the client side and server side in different AWS regions — a real WAN
-instead of the emulated middle-leg delay.
-
-- [ ] Extend `infra/dpdk/cdk/` to two regions and pick the inter-region path:
-      VPC peering, Transit Gateway, or public IPs.
-- [ ] Rework orchestration: `ssm.sh` and the node scripts assume one region's
-      `describe-instances`.
-- [ ] Cost check before deploying — cross-region data transfer is billed.
-
-### Packet-loss handling
-
-Make the system tolerate loss on either side (lost SYN-ACK, data, or ACK around
-the translation point) and test it.
-
-### Scale up experiments on BlueField
-
-Run the larger-load experiments on the BF-3 side. Depends on Phase 1/2.
-
-### CDN comparison
-
-Compare against a CDN, or use a CDN as the actual replacement for the
-client/server endpoints.
-
-### Read the XFir paper
-
-Professor-sent SIGCOMM paper. Not directly about 0-RTT — it accelerates flow
-setup via optimized table lookups and custom hardware — but its flow-table
-handling may be relevant: entries are kept until a flow is set up/offloaded,
-with details on how entries are removed. Brief over it and check whether
-anything is worth mimicking, particularly for
-[DDoS: purge delta rows](#ddos-purge-delta-rows).
-
-### Claude Code on uni VM
-
-Install Claude Code on the university VM so goal loops (`/task-runner --goal`)
-can run there directly, with the VM itself as the validation mechanism
-(compile/run/test in place) instead of routing through local sessions or lab
-SSH plumbing.
-
-### Reconcile the superpowers plans before queuing for task-runner
-
-Originated as GitHub issue #39. The repo is being onboarded to the nightly
-task-runner (issues labeled `task-runner-todo` build unattended, one at a time),
-but the three plans in `docs/superpowers/plans/` assume different trees and
-cannot be queued in any order as written.
-
-| Plan | Assumes | Conflicts with |
-| --- | --- | --- |
-| `2026-09-08-streamline-experiments-harness` | today's tree | Task 7 **deletes** the four `run_experiment.sh` runners and `experiments/scapy/`; task 3 requires `experiments/utils` to be **gone**; task 4 moves `loadgen.py` to `experiments/nodes/` |
-| `2026-09-19-human-readable-experiment-output` | **pre-streamline** tree | Task 2 edits all four runners (incl. `experiments/scapy/run_experiment.sh`); task 3 adds `experiments/utils/tests/test_output.py` — streamline deletes or moves all of these |
-| `2026-09-19-quic-comparison` | **partly post-streamline** (`experiments/run.sh`, `experiments/nodes/`) | Task 1 writes `experiments/utils/loadgen_quic.py` and diffs `experiments/utils/loadgen.py`, which streamline removes or moves |
-
-- [ ] Keep `streamline-experiments-harness` first — both 09-19 plans partly
-      assume it.
-- [ ] Rewrite `human-readable-experiment-output` against the post-streamline
-      layout (`experiments/lib/`, `experiments/run.sh`), or drop it if
-      streamline's single entrypoint covers it.
-- [ ] Point `quic-comparison` at `experiments/nodes/` instead of
-      `experiments/utils/`, and mark its task 6 ("Run all four arms and write
-      the table up") `manual review` — it needs live AWS runs, and its `verify:`
-      only counts `*quic*` report files and greps `docs/index.html`, so an
-      offline builder could only pass it by fabricating reports.
-- [ ] Queue them one at a time — the runner skips a repo while a task-runner PR
-      in it is still open.
-- [ ] Add a root `pytest.ini` so task-runner's whole-change suite gate has a
-      declared suite to run (today it finds none).
-- [ ] Add `.task-runner/prepare.sh` (`pip install pytest pyyaml aioquic`).
-
-Note: the issue predates the latest `main` — `quic-comparison` has since merged
-(PR #42) and `experiments/utils/` still exists, so re-check each conflict above
-against the current tree before acting on it.
+- [ ] Surface established-vs-target connection counts and diagnostic counters
+      (`imissed`, `rx_nombuf`, `oerrors`, `truncated_frames`) in the human view.
+- [ ] Pair `send_unlock`, `server_gap` and FCT with plain-language definitions
+      consistently in live output, analysis, reports and README.
+- [ ] Review obsolete raw `run-*.log` dumps for removal while preserving dated
+      reports cited by `docs/index.html` and the Done ledger.
 
 ### Use Jev to check new flows
 
@@ -421,6 +435,16 @@ here, what "new flow" means, and what the check outputs) before it can be scoped
 ## Done ledger
 
 Evidence lives in the linked artifacts, not here.
+
+- **Experiment harness entrypoint consolidation** — present in the current repo:
+  [`experiments/run.sh`](experiments/run.sh) dispatches by `STACK` and
+  `TRANSPORT`; shared output helpers and report writing live under
+  [`experiments/lib/`](experiments/lib/), and tests under
+  [`experiments/tests/`](experiments/tests/). The old per-stack
+  `run_experiment.sh` entrypoints and `experiments/scapy/` are gone; historical
+  reports remain. [Plan](docs/superpowers/plans/2026-09-08-streamline-experiments-harness.md).
+  This does **not** complete the compact-output plan: the shared helpers still
+  emit ordinary stdout/stderr without a dual sink or scorecard.
 
 - **#21 — DPDK vs. baseline comparison** — closed 2026-08-17. Both stacks run
   back to back at identical parameters (2000 conns, 500/s, 4 ports, 1 KB, 100 ms

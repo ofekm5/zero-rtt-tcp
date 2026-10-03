@@ -22,9 +22,7 @@ segment so FCT ≈ handshake + 1 RTT. The DPDK data plane covers the same port r
 
 **Endpoint setup is shared**: `experiments/lib/endpoint.sh` applies sysctls, MTU,
 offloads, netem, captures and analysis identically for the DPDK and baseline stacks,
-so the two are comparable. Emulated RTT (`NETEM_RTT_MS`, default 100) sits entirely on
-the **Server** egress — see that file for why splitting it across both endpoints
-halved the measurable 0-RTT saving.
+so the two are comparable. Emulated RTT (`NETEM_RTT_MS`, default 100) sits on the **ClientNIC-to-ServerNIC middle leg**, half in each direction: kernel netem on baseline routers, and `--wan-delay-us` on DPDK forwarders. Endpoints stay free of netem; see `experiments/measurement-methodology-review.md` §E.
 
 Shared building blocks — laptop-side under `experiments/lib/`, VM-side under `experiments/nodes/`:
 - `lib/core.sh` — transport-agnostic `run_experiment()`; the whole DPDK/Proxmox flow.
@@ -63,8 +61,8 @@ TRANSPORT=ssh CONNECTIONS=10 ./experiments/run.sh     # RUNS lab via gateway
 | Step | Action | Pass condition |
 |------|--------|----------------|
 | — | `git pull` on all 4 nodes | (best-effort) |
-| — | Disable TCP timestamps/window-scaling/SACK on Client+Server | (accuracy) |
-| — | Accuracy knobs: `ethtool -K eth0 gro/lro/tso/gso off` + `tc netem delay 50ms` on Client+Server | (accuracy) |
+| — | Disable TCP timestamps/window-scaling/SACK on the ClientNIC-to-ServerNIC middle leg | (accuracy) |
+| — | Accuracy knobs: `ethtool -K eth0 gro/lro/tso/gso off` + `tc netem delay 50ms` on the ClientNIC-to-ServerNIC middle leg | (accuracy) |
 | — | Cleanup: kill prior binaries/tcpdump, flush iptables, clear DPDK lock | (cleanup) |
 | Build | Build `clientnic-dpdk-forwarder` (meson+ninja) | `BUILD_SUCCESS` |
 | Build | Build `servernic-dpdk` (meson+ninja) | `BUILD_SUCCESS` |

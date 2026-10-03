@@ -157,4 +157,13 @@ to the crypto stack. Verdict: rejected for this change.
 
 ## Not yet specified
 
-- The arrival rate value itself: fixed by the Task 3 spike, then recorded here.
+- Arrival rate: **100 connections/s** for the final four-arm comparison.
+  The 2026-10-03 AWS loopback spike (`m5.xlarge`, CPython 3.11, aioquic 1.3.0)
+  sustained the highest tested rate, 3,200/s (p95 lag 11.170 ms, below 20 ms).
+  The earlier t3.micro spike sustained 1,600/s, but its capped 500/s delayed-path
+  cold run achieved only 228/s. After matching all endpoints to m5.xlarge, the
+  conservative 100/s rate was retained for all four arms. Cold achieved 100/s,
+  with client/server active CPU samples averaging 32%/23% of one core
+  (250 ms sample maxima 56%/44%).
+  Evidence: `experiments/ci-results/20261003-quic-calibration/` and the run
+  bundles linked from `docs/index.html`.

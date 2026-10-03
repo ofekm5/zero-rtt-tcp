@@ -739,6 +739,70 @@ tc qdisc add dev $IF root netem delay 50ms limit 1000000</code>
       request, and finishes when plain TCP is halfway.</figcaption>
     </figure>
 
+    <h3 id="quic-comparison" style="margin-top:34px;">Four-arm comparison: QUIC cold and resumed</h3>
+    <p>On <strong>2026-10-03</strong>, all four arms completed <strong>2000 / 2000</strong>
+    connections at the requested <strong>100 connections/s</strong>: one round, 1 KB
+    per connection, four ports, 2000 max in flight, and 100 ms modeled RTT on the
+    middle leg. All client/server endpoints were <strong>m5.xlarge</strong>.
+    This is a separate comparison at a reduced rate, with one run per arm; it is
+    not pooled with the historical 500/s TCP series above.</p>
+
+    <div class="table-wrap">
+      <table aria-label="Four-arm client send unlock comparison">
+        <thead>
+          <tr><th>Arm</th><th>Median send_unlock</th><th>p95 send_unlock</th><th>Evidence</th></tr>
+        </thead>
+        <tbody>
+          <tr data-arm="tcp">
+            <td class="metric">Plain TCP</td><td class="n">101.007 ms</td><td class="n">101.193 ms</td>
+            <td><a href="https://github.com/ofekm5/zero-rtt-tcp/actions/runs/37132329709">TCP run</a></td>
+          </tr>
+          <tr data-arm="0rtt-tcp">
+            <td class="metric">DPDK 0-RTT TCP</td><td class="n">0.338 ms</td><td class="n">0.364 ms</td>
+            <td><a href="https://github.com/ofekm5/zero-rtt-tcp/actions/runs/37130800427">DPDK run</a></td>
+          </tr>
+          <tr data-arm="quic-cold">
+            <td class="metric">QUIC cold</td><td class="n">104.395 ms</td><td class="n">111.857 ms</td>
+            <td><a href="https://github.com/ofekm5/zero-rtt-tcp/actions/runs/37131539950">Cold run</a></td>
+          </tr>
+          <tr data-arm="quic-resumed">
+            <td class="metric">QUIC resumed</td><td class="n">1.436 ms</td><td class="n">2.326 ms</td>
+            <td><a href="https://github.com/ofekm5/zero-rtt-tcp/actions/runs/37131827026">Resumed run</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="fine">The repeated loopback spike sustained the highest tested rate,
+    3200/s (p95 event-loop lag 11.170 ms, below the 20 ms gate). We retained a
+    conservative 100/s after the initial t3.micro cold run underfilled 500/s.
+    During the final cold run, active client/server CPU samples averaged
+    32%/23% of one core, with 250 ms sample maxima 56%/44%.
+    Hardware and CPU evidence: <code>experiments/ci-results/20261003-quic-calibration/</code>.
+    The generated baseline reports' hardcoded &ldquo;4&times; t3.micro&rdquo; label is
+    incorrect for these final runs: AWS confirms m5.xlarge endpoints and t3.micro
+    baseline NICs; DPDK NICs are c5n.large.</p>
+
+    <ul class="plain">
+      <li><strong>Plaintext versus encrypted:</strong> both TCP arms are plaintext;
+      QUIC encrypts and includes TLS processing. All resumed flows reuse one primed
+      session ticket, representing returning clients. TCP measures first SYN to
+      first payload in a client pcap; QUIC measures connect start to first write
+      permitted on the client's monotonic clock.</li>
+      <li><strong>Different data planes:</strong> plain TCP and both QUIC arms use
+      kernel routing; 0-RTT TCP uses DPDK on different NIC VM types. These differences
+      confound comparisons of small processing costs. QUIC FCT and server gap are
+      not measured, and this single-run comparison makes no throughput claim.</li>
+      <li><strong>A2 evaluation:</strong> cold median 104.395 ms is near the modeled
+      100 ms RTT; resumed median 1.436 ms is clearly below cold; early data was
+      accepted on all 2000 resumed flows. Handshake medians remain similar
+      (104.395 ms cold, 104.827 ms resumed), so the plan's fourth trigger conservatively
+      queues the QUIC header cross-check as a follow-up. Similar handshake timing
+      alone does not establish fallback: early sending precedes completion of the
+      full handshake (<a href="https://www.rfc-editor.org/rfc/rfc9001.html#section-2.1">RFC 9001</a>).
+      A2 is pending; these QUIC runs have no fresh packet captures.</li>
+    </ul>
+
     <h3 style="margin-top:34px;">Control: the server-side gap</h3>
     <ul class="plain" style="margin-top:16px;">
       <li><strong>Plain TCP: 101.5 ms.</strong> The server sends its SYN-ACK then waits a

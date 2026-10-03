@@ -1,19 +1,13 @@
 ---
 name: runs-lab-connect
-description: >
-  Knowledge base for connecting to the RUNS lab infrastructure (Proxmox cluster, gateway, internal VMs).
-  Use this skill whenever the user mentions connecting to the lab, accessing Proxmox, SSHing into the gateway,
-  reaching internal lab IPs, asking about lab credentials, or troubleshooting lab connectivity — even if they
-  don't say "RUNS lab" explicitly. Also use when the user asks how to reach dev/production/management network
-  segments or how to connect the lab OpenVPN profile, or when the user wants to give Claude Code its own
-  key-based SSH access to a lab VM ("bind Claude to", "install the SSH key on", "let Claude reach" a host).
+description: Connect to RUNS lab VMs and Proxmox through the lab OpenVPN profile, diagnose reachability, or install an SSH public key for authorized agent access. Use for lab connectivity and SSH setup.
 ---
 
 # RUNS Lab — Connection Reference
 
 ## Prerequisites
 - **OpenVPN** client with the lab profile imported. The profile is `runs.ovpn` (in this skill folder,
-  `.claude/skills/runs-lab-connect/runs.ovpn`) and is already loaded into the local OpenVPN program — just
+  `.agents/skills/runs-lab-connect/runs.ovpn`) and is already loaded into the local OpenVPN program — just
   connect through it.
 - OpenSSH installed on your machine.
 - No F5 VPN, no SSH gateway jump host, no port-forward workarounds needed — the OpenVPN tunnel routes directly
@@ -55,14 +49,14 @@ Reachable directly once the VPN is connected:
 
 ---
 
-## Step 4 — Bind Claude Code to a VM (key auth, for automation)
+## Step 4 — Bind Codex to a VM (key auth, for automation)
 
-To let **Claude Code** drive a lab VM non-interactively (no password per command), install its durable SSH
+To let **Codex** drive a lab VM non-interactively (no password per command), install its durable SSH
 key with the bundled helper:
 
 ```bash
 # in a REAL Git Bash window (see the gotcha below):
-./install_claude_ssh_key.sh [user@]<ip> [[user@]<ip> ...]
+./install_agent_ssh_key.sh [user@]<ip> [[user@]<ip> ...]
 # or via lab-connect.sh:
 ./lab-connect.sh bind ubuntu@10.13.36.16
 ```
@@ -71,20 +65,22 @@ What it does: generates a durable key once at `~/.ssh/claude_code_ed25519`, inst
 VM's `~/.ssh/authorized_keys`, adds an `~/.ssh/config` entry, and verifies key auth. Default user is `ubuntu`
 (override with `DEFAULT_USER=root` or a `user@` prefix). All lab hosts are Ubuntu.
 
-Afterwards Claude connects with:
+Afterwards Codex connects with:
 ```bash
 ssh -i ~/.ssh/claude_code_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes <user>@<ip>
 ```
 
-> **Gotcha — must run in a real Git Bash window.** Not the Claude `!` prefix (no TTY → ssh can't prompt for
+> **Gotcha — must run in a real Git Bash window.** Not a non-interactive tool call (no TTY → ssh can't prompt for
 > the password, fails instantly as `Permission denied` with no prompt) and not PowerShell (Windows-native
 > OpenSSH can't do the interactive prompt or ControlMaster multiplexing → `getsockname failed: Not a socket`).
-> Only MSYS/Git Bash `ssh` works, and it shares `$HOME` (`/c/Users/shir`) + `/tmp` with Claude's tools.
+> Only MSYS/Git Bash `ssh` works, and it shares `$HOME` (`/c/Users/shir`) + `/tmp` with the terminal environment.
 
 > **After a VM is re-imaged** (e.g. a BlueField BFB flash) its host key changes. Clear the stale entry first:
 > `ssh-keygen -R <ip> -f ~/.ssh/known_hosts`, then reconnect (and re-run `bind` — the fresh OS has no key).
 
 ---
+
+The helper retains the existing `~/.ssh/claude_code_ed25519` identity and SSH-config markers for compatibility; override `KEY_PATH` explicitly to use a different key. Do not install a key unless the user requested or authorized SSH access.
 
 ## Credentials Reference
 
@@ -123,6 +119,6 @@ External credentials (Gmail, GitLab, etc.) → Bitwarden inside the network.
 | Can't reach `10.13.x.x` at all | Check the OpenVPN client shows "Connected" for the `runs` profile. Reconnect if it dropped. |
 | SSH `Permission denied` to an internal VM | Verify username/password from the Logins wiki. |
 | Proxmox HTTPS unreachable | Confirm OpenVPN is connected — Proxmox no longer requires F5. |
-| OpenVPN profile missing from client | Re-import `.claude/skills/runs-lab-connect/runs.ovpn`. |
-| `bind` gives `Permission denied` with no password prompt | You're in the `!` prefix or PowerShell — re-run in a real Git Bash window. |
+| OpenVPN profile missing from client | Re-import `.agents/skills/runs-lab-connect/runs.ovpn`. |
+| `bind` gives `Permission denied` with no password prompt | You're in a non-interactive tool call or PowerShell — re-run in a real Git Bash window. |
 | Host key changed / `REMOTE HOST IDENTIFICATION HAS CHANGED` after a re-image | `ssh-keygen -R <ip> -f ~/.ssh/known_hosts`, then reconnect and re-run `bind`. |

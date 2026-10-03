@@ -4,7 +4,7 @@
 #   ./lab-connect.sh status             # Check whether the lab OpenVPN tunnel is up
 #   ./lab-connect.sh ssh 10.13.37.5     # SSH directly into an internal VM (root by default)
 #   ./lab-connect.sh ssh 10.13.37.5 alice
-#   ./lab-connect.sh bind ubuntu@10.13.36.16   # install Claude's SSH key on a VM (key auth)
+#   ./lab-connect.sh bind ubuntu@10.13.36.16   # install the agent's SSH key on a VM (key auth)
 #   ./lab-connect.sh help               # full reference
 #
 # Prerequisite: connect the `runs` OpenVPN profile (imported from runs.ovpn in this folder)
@@ -19,7 +19,7 @@ cmd_status() {
         echo "VPN appears connected — $PROBE_IP is reachable."
     else
         echo "Cannot reach $PROBE_IP. Open your OpenVPN client and connect the 'runs' profile"
-        echo "(imported from .claude/skills/runs-lab-connect/runs.ovpn), then retry."
+        echo "(imported from .agents/skills/runs-lab-connect/runs.ovpn), then retry."
         exit 1
     fi
 }
@@ -41,9 +41,9 @@ cmd_ssh() {
 }
 
 # bind [user@]<internal-ip> [more hosts...]
-# Installs Claude Code's durable SSH key so Claude can reach the VM non-interactively.
+# Installs Codex's durable SSH key so Codex can reach the VM non-interactively.
 # MUST be run in a real Git Bash window (needs an interactive password prompt) — NOT the
-# Claude `!` prefix and NOT PowerShell.
+# non-interactive tool calls and NOT PowerShell.
 cmd_bind() {
     if [[ -z "$1" ]]; then
         echo "Usage: $0 bind [user@]<internal-ip> [[user@]<internal-ip> ...]"
@@ -51,7 +51,7 @@ cmd_bind() {
         exit 1
     fi
     local here; here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    bash "$here/install_claude_ssh_key.sh" "$@"
+    bash "$here/install_agent_ssh_key.sh" "$@"
 }
 
 cmd_help() {
@@ -61,8 +61,8 @@ RUNS Lab connection helper
 Commands:
   status                    Check whether the lab OpenVPN tunnel is up
   ssh <internal-ip> [user]  SSH directly into an internal VM (default user: root)
-  bind [user@]<ip> [...]    Install Claude Code's SSH key on a VM for key auth
-                            (run in a real Git Bash window, not the '!' prefix / PowerShell)
+  bind [user@]<ip> [...]    Install Codex's SSH key on a VM for key auth
+                            (run in a real Git Bash window, not non-interactive tool calls / PowerShell)
 
 Prerequisite:
   Connect the 'runs' OpenVPN profile (imported from runs.ovpn in this skill folder)
