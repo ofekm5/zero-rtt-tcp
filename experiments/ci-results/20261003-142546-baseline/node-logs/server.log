@@ -1,0 +1,26 @@
+===== /tmp/server.log =====
+[1;33m[14:24:39] Killing any leftover load-generator processes...[0m
+[1;33m[14:24:40] Open-file limit (ulimit -n): 1048576[0m
+[1;33m[14:24:40] Syncing code to origin/main (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            main       -> FETCH_HEAD
+HEAD is now at d9327f5 graphify and roadmap update
+[1;33m[14:24:41] Server VM IP: 10.1.2.117[0m
+[1;33m[14:24:41] Will listen on 0.0.0.0:8080-8083 (4 port(s))[0m
+
+[1;33m[14:24:41] Starting load-generator server on ports 8080-8083 ? press Ctrl+C to stop.[0m
+
+Installing uv 0.12.22...
+downloading uv 0.12.22 x86_64-unknown-linux-gnu
+installing to /opt/uv/bin
+  uv
+  uvx
+everything's installed!
+Creating /opt/loadgen-quic (CPython 3.11, aioquic 1.3.0)...
+Generating a 2048 bit EC private key
+writing new private key to '/tmp/quic.key'
+-----
+Listening on ports [8080, 8081, 8082, 8083]
+Received 2049024 bytes across 2001 connections (final)
+===== pcap inventory =====
+(no pcaps)

@@ -1,0 +1,23 @@
+{
+  "infra": "baseline",
+  "report_dir": "experiments/reports/baseline",
+  "stamp_utc": "20261003-142546",
+  "exit_code": 0,
+  "checks_failed": 0,
+  "git_sha": "d9327f503a050b2b74e994428ff3001914a2f459",
+  "git_ref": "main",
+  "repo_ref_on_vms": "main",
+  "run_url": "https://github.com/ofekm5/zero-rtt-tcp/actions/runs/37129328838",
+  "requested_infra": "baseline",
+  "knobs": {
+    "CONNECTIONS": "1",
+    "LOAD_PARALLEL": "2000",
+    "LOAD_PORTS": "4",
+    "LOAD_RATE": "500",
+    "LOAD_BYTES": "1024",
+    "LOAD_CONCURRENCY": "2000",
+    "LOAD_TIMEOUT": "300",
+    "NETEM_RTT_MS": "100",
+    "REPO_REF": "main"
+  }
+}
