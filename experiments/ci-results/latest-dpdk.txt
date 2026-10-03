@@ -1,5 +1,5 @@
-latest_bundle: experiments/ci-results/20260811-090202-dpdk
+latest_bundle: experiments/ci-results/20261003-145545-dpdk
 infra: dpdk
-stamp_utc: 20260811-090202
+stamp_utc: 20261003-145545
 exit_code: 0
-run_url: https://github.com/ofekm5/zero-rtt-tcp/actions/runs/31475131041
+run_url: https://github.com/ofekm5/zero-rtt-tcp/actions/runs/37130800427

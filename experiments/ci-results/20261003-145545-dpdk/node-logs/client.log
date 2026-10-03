@@ -1,0 +1,7 @@
+===== /tmp/tcpdump_hiprec.log =====
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), capture size 128 bytes
+16001 packets captured
+16001 packets received by filter
+0 packets dropped by kernel
+===== pcap inventory =====
+-rw-r--r-- 1 tcpdump tcpdump 1284094 Oct  3 14:54 /tmp/client_side.pcap

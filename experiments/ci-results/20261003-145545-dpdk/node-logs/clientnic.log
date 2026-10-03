@@ -1,0 +1,304 @@
+===== /tmp/clientnic.log =====
+[1;33m[14:53:32] Killing any leftover clientnic-dpdk-forwarder/tcpdump processes...[0m
+[1;33m[14:53:33] Syncing code to origin/experiments/quic-comparison-2026-10-03 (hard reset ? discards VM-local drift)...[0m
+From https://github.com/ofekm5/zero-rtt-tcp
+ * branch            experiments/quic-comparison-2026-10-03 -> FETCH_HEAD
+HEAD is now at e0b28dd ci: experiment baseline bundle 20261003-145040 [skip ci]
+[1;33m[14:53:33] SKIP_BUILD=1 ? skipping meson+ninja build.[0m
+[1;33m[14:53:33] Using existing binary: /home/ec2-user/zero-rtt-tcp/src/clientnic/dpdk-forwarder/builddir/clientnic-dpdk-forwarder[0m
+[1;33m[14:53:33] Gateway MAC (ServerNIC eth1, Middle subnet DPDK port): 02:ff:ff:9c:7f:f7[0m
+[1;33m[14:53:33] Our client-facing port MAC (eth2):     02:ff:de:37:ca:91[0m
+[1;33m[14:53:33] Our ServerNIC-facing port MAC (eth1):  02:ff:fb:a3:45:6f[0m
+[1;33m[14:53:33] IP forwarding: enabled[0m
+[1;33m[14:53:33] Starting clientnic-dpdk-forwarder ? transparent forwarding with V-stamp. Press Ctrl+C to stop.[0m
+[1;33m[14:53:33]   --port=8080 --port-count=4 --gw-mac=02:ff:ff:9c:7f:f7[0m
+[1;33m[14:53:33]   --client-port-mac=02:ff:de:37:ca:91 --server-port-mac=02:ff:fb:a3:45:6f[0m
+[1;33m[14:53:33]   --wan-delay-us=50000 (emulated WAN, middle leg ? must match ServerNIC)[0m
+
+EAL: Detected CPU lcores: 2
+EAL: Detected NUMA nodes: 1
+EAL: Detected shared linkage of DPDK
+EAL: Multi-process socket /var/run/dpdk/rte/mp_socket
+EAL: Selected IOVA mode 'PA'
+EAL: VFIO support initialized
+EAL: Using IOMMU type 8 (No-IOMMU)
+EAL: Probe PCI driver: net_ena (1d0f:ec20) device: 0000:00:06.0 (socket -1)
+ena_get_metrics_entries(): 0x6 customer metrics are supported
+EAL: Probe PCI driver: net_ena (1d0f:ec20) device: 0000:00:07.0 (socket -1)
+ena_get_metrics_entries(): 0x6 customer metrics are supported
+TELEMETRY: No legacy callbacks, legacy socket not created
+FORWARDER: ClientNIC DPDK Forwarder starting (port=8080..8083)
+FORWARDER: Gateway MAC: 02:ff:ff:9c:7f:f7
+FORWARDER: Port map: client-facing=port 1, ServerNIC-facing=port 0
+FORWARDER: eth0: DPDK port 1 started, client-facing (MAC=02:ff:de:37:ca:91)
+FORWARDER: wan-delay: holding middle-leg TX for 50000 us (150000000 cycles, ring=8192 packets)
+FORWARDER: eth1: DPDK port 0 started, ServerNIC-facing (MAC=02:ff:fb:a3:45:6f, gw=02:ff:ff:9c:7f:f7)
+FORWARDER: Entering busy-poll loop...
+FORWARDER: stats client-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+FORWARDER: stats ServerNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+FORWARDER: stats mempool: avail=14337/16383 low-water=16383
+FORWARDER: stats wan_delay: held=0/8192 released=0
+FORWARDER: stats client-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+FORWARDER: stats ServerNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+FORWARDER: stats mempool: avail=14337/16383 low-water=16383
+FORWARDER: stats wan_delay: held=0/8192 released=0
+FORWARDER: stats client-facing (port 1): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+FORWARDER: stats ServerNIC-facing (port 0): rx=0 tx=0 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+FORWARDER: stats mempool: avail=14337/16383 low-water=16383
+FORWARDER: stats wan_delay: held=0/8192 released=0
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x5cbf26c8 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xaef1e510 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9e618620 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8d17dfcf in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x35812766 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7c2898f3 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x76dad8f5 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xa225d5c4 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1992d4df in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6f0acb76 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x877e3a90 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4c37855a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x2d27b480 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x5008af57 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x3cb269f0 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x61753c7f in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9ec76d16 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x911b8b9e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x945021ca in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8f3072e2 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7779c486 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8716cc09 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd74bdde8 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x87d4ded1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xdf398b78 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc1c8f1ff in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe50a212f in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6635eecb in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb9bc8c6b in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc0832c11 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7ab06a09 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x43ef45b2 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x68100f87 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xfa342537 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8f613131 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x822cddbf in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x3b04da59 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x66462637 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x0cea3d03 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf16d2096 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc6c89b60 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7f28cc56 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x16445a90 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x175b6d13 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf33fe321 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4463767e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc3d9fd44 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1fcdc82a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf4f2bedc in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x633f5746 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe73cfd78 in ack-num
+FORWARDER: stats client-facing (port 1): rx=245 tx=134 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+FORWARDER: stats ServerNIC-facing (port 0): rx=83 tx=220 imissed=0 rx_nombuf=0 ierrors=0 oerrors=0
+FORWARDER: stats mempool: avail=14158/16383 low-water=14158
+FORWARDER: stats cycles_per_packet: 16807.7 (tsc_hz=3000000000, packets=328, capacity-model ?9/?12)
+FORWARDER: stats wan_delay: held=25/8192 released=220
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb0bde6b7 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xabf1782e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x17bf8312 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x61403922 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x72067d4f in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x87d8a1d1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd57f472a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xbdc53274 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1ee24e74 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x30e245a4 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9091c4ce in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x5eab7a6a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x43274ccc in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4be0cb49 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x95e55b37 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe6cbb14e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc9ac1d56 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xddd196cc in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1b2ec38d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x931de429 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4683e8f4 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4f03029a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd72a5172 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x91aa6f10 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x07458009 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xcb1d5380 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x28f40bc2 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8a7b9b91 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4e3c269f in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xbde3c247 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x64e9d385 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8c170633 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9b4ade14 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc541faad in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x5d0e28fd in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xa70fad50 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x45d03284 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe9e6e5c3 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xaeb1dc01 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x56717478 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc95464d6 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd74ca4e4 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x2a742e47 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb510b6e1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xbbd78839 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x345c6a61 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8a486f48 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x97399394 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xcf493dfe in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x75b4a2e1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x16c76883 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4e432546 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x582509b9 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x445ee9f0 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x0dbbffa7 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6e15e1ef in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4e84e55d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x82f09f37 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x3836fe67 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc5357f57 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb50c984e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x58f4931f in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x68737907 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x5305b1a1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xea4b9b21 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xff743515 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7bb3e423 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xbd4ab0c8 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6473179d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd103c766 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7683c462 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xdfa04d94 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9140a7dd in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc53da58b in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xeed56a24 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7bd8e9e7 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc2f672d3 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x59af1a73 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xbb6eb39b in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x10f4b476 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x5a8b2ee6 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7a95cd5d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x422e2451 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7d4da832 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x2c9c4963 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb4bcaf81 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8bff7f34 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x42be305f in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xdb2ce333 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xa31b9654 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1762d796 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x277ff189 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc005d530 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc235ba5d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xecbba9a3 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x09941e34 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf8f953af in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9897c6a9 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x088fa1ab in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6daa1d82 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe38c0661 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x14045bee in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1d829666 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x01c0fd33 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8daef566 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xac90dc26 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x2e428d57 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7244af8e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7269455e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xeeb18915 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x3a0f0390 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9eaa6d65 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x879dcad5 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x2d0d822f in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x415542d1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x465e701c in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9e4393be in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1cb90c3a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf31b230e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x15a376c3 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb7cb0b32 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1534fc9d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9fcdf0ff in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe2f2b8da in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x0992abd5 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1bd2e84c in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8ee28469 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x3ebabbd1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x62d7d821 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x9f2c98d6 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb499ae53 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4e21e340 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xcb7c3f31 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb1efe077 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x86907618 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xef5b40ac in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xa10f6774 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x458d260c in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xee179043 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x96725b39 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc46647f9 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf9c4acf2 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xdd688159 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x2867a3c8 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf10476a9 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb40b8596 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf0b1fb79 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x80db7f16 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x890d32a8 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x62517e90 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xad2e1cb2 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xfcd26f37 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe5d939b5 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x192a409e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6754a2d9 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xccdcd16e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc6f36288 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xfef0a67d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x717969a5 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x0dbd10c0 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc0e2f9c1 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x89fcf4ed in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe60c246d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x4fa0543b in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x941709d8 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xcbaa808d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x54c20519 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x5c7f0e28 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x69769e6e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6f55b668 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x2209e7b2 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xba1ffaec in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x29b70661 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x12424d49 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x232d1a03 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x21ddd782 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xdf874965 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x51e5a5ca in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6e17eca4 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x7dfca4eb in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xabbaf7b9 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1f8105f4 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xe502426a in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x296f362e in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xb903bebf in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8e49eccb in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x54e4e990 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x01ce8d22 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xcaf06db4 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x6b04389d in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x033ec469 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x98610545 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xd6d47f43 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xc3da9322 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0xf5f11148 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x1b603923 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x8ef593bb in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x755c1134 in ack-num
+FORWARDER: SYN: spoofed SYN-ACK sent, SYN forwarded with V=0x693bb4f4 in ack-num
+FORWARDER: SYN: spoofed--output truncated--
