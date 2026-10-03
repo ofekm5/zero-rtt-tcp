@@ -78,6 +78,11 @@ run_experiment() {
         0rtt|baseline) ;;
         *) fail "STACK=$stack — expected 0rtt or baseline"; return 1 ;;
     esac
+    # PROTO=quic (baseline only — run.sh enforces it): the endpoints run
+    # loadgen_quic.py over UDP, and pcap capture + analyze_metrics.py are
+    # skipped because QUIC payloads are encrypted.
+    local proto="${PROTO:-tcp}" loadgen_proc=loadgen.py
+    [[ "$proto" == quic ]] && loadgen_proc=loadgen_quic.py
 
     # Port range the load is spread across (see measure.sh LOAD_PORTS). The data
     # plane (clientnic-dpdk-forwarder + servernic-dpdk) is told to cover the same
@@ -211,7 +216,7 @@ run_experiment() {
         sleep 2
 
         log "Cleaning up any leftover server processes..."
-        remote_bg "$SERVER_ID" "pkill -f loadgen.py 2>/dev/null; rm -f /tmp/server.log"
+        remote_bg "$SERVER_ID" "pkill -f $loadgen_proc 2>/dev/null; rm -f /tmp/server.log"
         sleep 2
     fi
 
@@ -310,13 +315,23 @@ run_experiment() {
 
     # ─── Step 1: Start Server ─────────────────────────────────────────────────
     log "Step 1: Starting Server via node script ($NPORTS load-generator port(s))..."
+    local server_env="LOAD_PORTS=$NPORTS REPO_REF=$ref"
+    [[ "$proto" == quic ]] && server_env="PROTO=quic $server_env"
     remote_bg "$SERVER_ID" \
-        "LOAD_PORTS=$NPORTS REPO_REF=$ref setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
+        "$server_env setsid bash $REPO_PATH/experiments/nodes/server.sh < /dev/null >> /tmp/server.log 2>&1 &"
     sleep 3
 
     local LISTEN_CHECK
-    LISTEN_CHECK=$(remote_stdout "$SERVER_ID" \
-        "ss -tlnp | grep -q :$SERVER_PORT && echo LISTEN_OK || echo LISTEN_NONE" 30)
+    if [[ "$proto" == quic ]]; then
+        # UDP socket, and server.sh may first pip-install aioquic and generate
+        # a cert — poll on the node instead of trusting the fixed sleep.
+        LISTEN_CHECK=$(remote_stdout "$SERVER_ID" \
+            "for i in \$(seq 1 90); do ss -ulnp | grep -q :$SERVER_PORT && break; sleep 1; done; \
+             ss -ulnp | grep -q :$SERVER_PORT && echo LISTEN_OK || echo LISTEN_NONE" 120)
+    else
+        LISTEN_CHECK=$(remote_stdout "$SERVER_ID" \
+            "ss -tlnp | grep -q :$SERVER_PORT && echo LISTEN_OK || echo LISTEN_NONE" 30)
+    fi
     if echo "$LISTEN_CHECK" | grep -q "LISTEN_OK"; then
         pass "Server listening on :$SERVER_PORT"
     else
@@ -403,7 +418,7 @@ run_experiment() {
     fi
 
     # ─── Step 3b: Start endpoint captures ────────────────────────────────────
-    endpoint_capture_start "$CLIENT_ID" "$SERVER_ID" "$BPF_PORTS"
+    [[ "$proto" == quic ]] || endpoint_capture_start "$CLIENT_ID" "$SERVER_ID" "$BPF_PORTS"
 
     # ─── Step 4: Run client test ──────────────────────────────────────────────
     log "Step 4: Running client test ($CONNECTIONS connection(s))..."
@@ -428,11 +443,13 @@ run_experiment() {
         # Baseline stops the Server and analyzes before reading the server log —
         # the order the former baseline-tcp runner used.
         log "Step 5: Stopping captures and Server..."
-        endpoint_capture_stop "$CLIENT_ID" "$SERVER_ID"
-        remote_bg "$SERVER_ID" "pkill -f loadgen.py 2>/dev/null || true"
+        [[ "$proto" == quic ]] || endpoint_capture_stop "$CLIENT_ID" "$SERVER_ID"
+        remote_bg "$SERVER_ID" "pkill -f $loadgen_proc 2>/dev/null || true"
         sleep 2
-        log "Packet analysis: analyzing each endpoint capture on its own host..."
-        endpoint_analyze "$CLIENT_ID" "$SERVER_ID" "$REPO_PATH"
+        if [[ "$proto" != quic ]]; then
+            log "Packet analysis: analyzing each endpoint capture on its own host..."
+            endpoint_analyze "$CLIENT_ID" "$SERVER_ID" "$REPO_PATH"
+        fi
     fi
 
     # ─── Step 6: Verify server received data ──────────────────────────────────
@@ -498,7 +515,11 @@ run_experiment() {
     log "Latency metrics: aggregating NIC in-app TTFB + endpoint pcap metrics..."
     local METRICS_SUMMARY
     METRICS_SUMMARY=$(
-        endpoint_latency_summary "${ENDPOINT_METRICS:-}"
+        if [[ "$proto" == quic ]]; then
+            quic_latency_summary "${CLIENT_STDOUT:-}"
+        else
+            endpoint_latency_summary "${ENDPOINT_METRICS:-}"
+        fi
         # No data plane on baseline, so no in-app NIC TTFB block.
         if [[ "$stack" == 0rtt ]]; then
             echo "  ── Data-plane internal (in-app rdtsc, not client-observed) ──"
@@ -517,6 +538,33 @@ run_experiment() {
         warn "CAPACITY RUN (LOAD_RATE=0): the latency block above includes SYN queueing behind the whole burst. Valid readings from this run: establishment success rate and data-plane throughput. NOT valid: any 0-RTT latency claim."
     fi
 
+    if [[ "$proto" == quic ]]; then
+        # One quic_summary line per round. A round with n=0 measured nothing, and
+        # on a resumed run send_unlock is only true for flows whose 0-RTT data the
+        # server accepted, so anything short of early_data_accepted=n/n is a fail.
+        local quic_lines quic_bad
+        quic_lines=$(echo "$METRICS_SUMMARY" | grep -o 'quic_summary .*')
+        quic_bad=$(echo "$quic_lines" | awk -v resume="${QUIC_RESUME:-0}" 'NF {
+            n = ""; e = ""
+            for (i = 1; i <= NF; i++) {
+                split($i, kv, "=")
+                if (kv[1] == "n") n = kv[2]
+                if (kv[1] == "early_data_accepted") e = kv[2]
+            }
+            split(e, acc, "/")
+            if (n < 1 || (resume == 1 && acc[1] != n)) print
+        }')
+        if [[ -z "$quic_lines" ]]; then
+            fail "Metrics: client printed no quic_summary line — no QUIC send_unlock to report"
+        elif (( $(echo "$quic_lines" | wc -l) < CONNECTIONS )); then
+            fail "Metrics: $(echo "$quic_lines" | wc -l) quic_summary line(s) for $CONNECTIONS round(s) — a round printed no summary"
+        elif [[ -n "$quic_bad" ]]; then
+            fail "Metrics: QUIC round(s) with no samples or, resumed, not every flow's 0-RTT accepted: $quic_bad"
+        else
+            pass "Metrics: QUIC client send_unlock summary collected"
+        fi
+    fi
+
     if [[ "$stack" == 0rtt ]]; then
         if echo "$METRICS_SUMMARY" | grep -q "clientnic TTFB.*n=[1-9]"; then
             pass "Metrics: ClientNIC in-app TTFB samples collected"
@@ -532,7 +580,7 @@ run_experiment() {
 
     # Export for caller to use in reports
     CORE_METRICS_SUMMARY="$METRICS_SUMMARY"
-    CORE_ENDPOINT_METRICS="$ENDPOINT_METRICS"
+    CORE_ENDPOINT_METRICS="${ENDPOINT_METRICS:-}"
     CORE_SERVER_LOG="$SERVER_LOG"
     CORE_SERVERNIC_LOG="$SERVERNIC_LOG"
     CORE_CLIENTNIC_LOG="$CLIENTNIC_LOG"

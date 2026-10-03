@@ -60,7 +60,14 @@ write_run_report() {
     case "$stack/$transport" in
         0rtt/ssm) file="$dir/integration-test-report-$(date +%Y-%m-%d).md"; _report_0rtt_ssm > "$file" ;;
         0rtt/ssh) file="$dir/proxmox-test-report-$(date +%Y-%m-%d).md";     _report_0rtt_ssh > "$file" ;;
-        baseline/*) file="$dir/baseline-report-$(date +%Y-%m-%d-%H%M%S).md"; _report_baseline > "$file" ;;
+        baseline/*)
+            if [[ "${PROTO:-tcp}" == quic ]]; then
+                local arm=cold
+                [[ "${QUIC_RESUME:-0}" == 1 ]] && arm=resumed
+                file="$dir/baseline-quic-$arm-report-$(date +%Y-%m-%d-%H%M%S).md"; _report_quic "$arm" > "$file"
+            else
+                file="$dir/baseline-report-$(date +%Y-%m-%d-%H%M%S).md"; _report_baseline > "$file"
+            fi ;;
     esac
     log "Report saved to $file"
 }
@@ -189,4 +196,61 @@ _report_baseline() {
     echo "- **Compare \`Send unlock\` against \`experiments/reports/0rtt/\`** — that is"
     echo "  the metric the 0-RTT mechanism acts on. FCT and server gap are"
     echo "  throughput-bound and move with payload size and loss."
+}
+
+# _report_quic <cold|resumed> — the QUIC arm on the baseline stack (PROTO=quic).
+# No packet-analysis section: QUIC is encrypted, so no capture is taken.
+_report_quic() {
+    local arm="$1" overall_result impl_info
+    if [[ $FAILURES -eq 0 ]]; then overall_result="ALL PASSED ✅"; else overall_result="$FAILURES FAILURE(S) ❌"; fi
+
+    impl_info=$(
+        echo "**Mode**: QUIC $arm (\`PROTO=quic QUIC_RESUME=${QUIC_RESUME:-0}\`, \`experiments/nodes/loadgen_quic.py\`, aioquic)"
+        echo "**Infra**: \`infra/baseline\` CDK stack (BaselineStack) — 4× t3.micro, kernel forwarding"
+    )
+
+    report_header "QUIC $arm Report" "$impl_info" "$overall_result" "%Y-%m-%d-%H%M%S"
+    echo "## Load Parameters"
+    echo ""
+    echo "These must match the TCP baseline, 0-RTT TCP and the other QUIC run being"
+    echo "compared against, or the four-arm comparison is confounded."
+    echo ""
+    echo "| Parameter | Value |"
+    echo "|---|---|"
+    echo "| \`PROTO\` | quic |"
+    echo "| \`QUIC_RESUME\` | ${QUIC_RESUME:-0} ($arm) |"
+    echo "| Rounds | $CONNECTIONS |"
+    echo "| \`LOAD_PARALLEL\` | $LOAD_PARALLEL |"
+    echo "| \`LOAD_PORTS\` | $LOAD_PORTS |"
+    echo "| \`LOAD_BYTES\` | $LOAD_BYTES |"
+    echo "| \`LOAD_RATE\` | $LOAD_RATE conn/s |"
+    echo "| \`LOAD_CONCURRENCY\` | $LOAD_CONCURRENCY |"
+    echo "| \`NETEM_RTT_MS\` | $NETEM_RTT_MS (ClientNIC↔ServerNIC leg, half per direction) |"
+    echo ""
+    echo "\`LOAD_THINK_MS\` does not apply: \`loadgen_quic.py\` has no think-time knob."
+    echo ""
+    report_section "Latency Summary" "${CORE_METRICS_SUMMARY:-}"
+    report_section "Client Output" "${CLIENT_STDOUT:-}"
+    report_section "Server Log" "${CORE_SERVER_LOG:-}" 20
+    echo "## Notes"
+    echo ""
+    echo "- **Plaintext vs encrypted.** The TCP baseline and 0-RTT TCP arms are plaintext;"
+    echo "  QUIC always encrypts. \`send_unlock\` here includes the TLS 1.3 handshake work"
+    echo "  the TCP arms never do."
+    echo "- **One ticket, reused.** Each client process makes one priming connection and"
+    echo "  every resumed flow reuses its session ticket, so all resumed flows are"
+    echo "  \"returning users\"."
+    echo "- **Different data plane for the 0-RTT TCP arm.** TCP baseline, QUIC cold and QUIC"
+    echo "  resumed run on this kernel-routed baseline stack; 0-RTT TCP runs on the DPDK"
+    echo "  stack, so NIC-side processing differences land inside that arm's number."
+    echo "- **Metric.** \`send_unlock\` is app-side (connect start → first write permitted),"
+    echo "  taken on the client's own clock by \`loadgen_quic.py\`. No pcap capture and no"
+    echo "  \`analyze_metrics.py\` run for QUIC; \`fct\` and \`server_gap\` are not measured."
+    echo "- **A2 escalation triggers** — read off the \`quic_summary\` line above; if any"
+    echo "  holds, add the pcap header cross-check:"
+    echo "  - cold \`send_unlock_p50_ms\` is not near \`NETEM_RTT_MS\` ($NETEM_RTT_MS);"
+    echo "  - resumed \`send_unlock_p50_ms\` is not clearly below cold;"
+    echo "  - \`early_data_accepted\` is below n/n on a resumed run (expected 0/n cold);"
+    echo "  - resumed \`handshake_p50_ms\` equals cold (resumption silently fell back)."
+    echo "- Traffic path: Client → ClientNIC (kernel forward) → ServerNIC (kernel forward) → Server, UDP."
 }

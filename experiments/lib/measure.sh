@@ -133,6 +133,23 @@ run_ttfb_measurement() {
     # send-immediately, the workload 0-RTT targets. Sweep with experiments/sweeps/think.sh.
     local think="${LOAD_THINK_MS:-0}"
 
+    # PROTO=quic swaps the load generator; everything around it is shared.
+    # loadgen_quic.py has no --think-ms. The orchestrator runs the generator
+    # directly (not via nodes/client.sh), so the QUIC interpreter is ensured here.
+    local prep=""
+    local shape="${think}ms think, max $conc in flight"
+    local loadgen="python3 $repo/experiments/nodes/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --think-ms $think --concurrency-limit $conc"
+    if [[ "${PROTO:-tcp}" == quic ]]; then
+        # \$QUIC_PY is expanded on the client VM, from the path the helper prints.
+        prep="QUIC_PY=\$(bash $repo/experiments/nodes/ensure_quic_python.sh) || { echo 'ERROR: could not set up the QUIC interpreter'; exit 1; }"
+        shape="QUIC cold, max $conc in flight"
+        loadgen="\$QUIC_PY $repo/experiments/nodes/loadgen_quic.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --concurrency-limit $conc"
+        if [[ "${QUIC_RESUME:-0}" == 1 ]]; then
+            shape="QUIC resumed, max $conc in flight"
+            loadgen+=" --resume"
+        fi
+    fi
+
     # Pacing sets a wall-clock FLOOR the transport timeout must clear: at
     # LOAD_RATE conn/s a round cannot finish sooner than parallel/rate seconds,
     # before any transfer or teardown. A timeout tuned for the old burst shape
@@ -155,10 +172,11 @@ run_ttfb_measurement() {
     result=$(remote_run "$client_iid" \
         "command -v python3 >/dev/null || { echo 'ERROR: python3 not installed'; exit 1; }
          ulimit -n 1048576 2>/dev/null || true
+         $prep
          success=0
          for i in \$(seq 1 $count); do
-             echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections, $nbytes bytes/conn, ${rate} conn/s arrival, ${think}ms think, max $conc in flight ---\"
-             python3 $repo/experiments/nodes/loadgen.py --mode client --host $server_ip --port $port --port-count $nports --parallel $parallel --bytes $nbytes --rate $rate --think-ms $think --concurrency-limit $conc && success=\$((success + 1))
+             echo \"--- Round \$i/$count: $nports port(s) starting at $port x $parallel total connections, $nbytes bytes/conn, ${rate} conn/s arrival, $shape ---\"
+             $loadgen && success=\$((success + 1))
          done
          echo \"Success: \${success}/$count\"" \
         "$timeout")

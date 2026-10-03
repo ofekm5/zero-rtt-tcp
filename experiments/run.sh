@@ -5,6 +5,10 @@
 #              kernel-forwarded TCP (infra/baseline) to compare it against
 #   TRANSPORT  ssm  (default) | ssh      — AWS SSM, or the RUNS Proxmox lab over
 #              the SSH gateway (see experiments/lib/transport/ssh_lab.sh)
+#   PROTO      tcp  (default) | quic     — quic runs loadgen_quic.py on the
+#              endpoints instead of loadgen.py. STACK=baseline only.
+#   QUIC_RESUME  0 (default, cold 1-RTT) | 1 (every flow resumes one ticket,
+#              0-RTT). Cold and resumed are separate runs.
 #
 # Load knobs (CONNECTIONS, LOAD_*, NETEM_RTT_MS, REPO_REF) are read as before —
 # see experiments/lib/measure.sh and experiments/lib/endpoint.sh.
@@ -13,6 +17,7 @@
 #   ./experiments/run.sh
 #   STACK=baseline ./experiments/run.sh
 #   TRANSPORT=ssh CONNECTIONS=10 ./experiments/run.sh
+#   STACK=baseline PROTO=quic QUIC_RESUME=1 ./experiments/run.sh
 #
 # Exit code: 0 = all checks passed, non-zero = number of failures
 
@@ -25,6 +30,8 @@ export PYTHONIOENCODING=utf-8
 
 STACK="${STACK:-0rtt}"
 TRANSPORT="${TRANSPORT:-ssm}"
+PROTO="${PROTO:-tcp}"
+QUIC_RESUME="${QUIC_RESUME:-0}"
 
 # Validate both before sourcing anything: a transport shim is the first thing
 # that can reach a remote, so a typo must stop here.
@@ -42,6 +49,26 @@ esac
 if [[ "$STACK" == baseline && "$TRANSPORT" == ssh ]]; then
     echo "ERROR: STACK=baseline is AWS-only (TRANSPORT=ssm) — the lab has no baseline stack" >&2
     exit 2
+fi
+
+# QUIC is UDP: the DPDK data plane only speaks TCP, so the QUIC arm exists on
+# the kernel-routed baseline stack alone.
+case "$PROTO" in
+    tcp|quic) ;;
+    *) echo "ERROR: unrecognised PROTO='$PROTO' — accepted values: tcp, quic" >&2; exit 2 ;;
+esac
+if [[ "$PROTO" == quic && "$STACK" != baseline ]]; then
+    echo "ERROR: PROTO=quic needs STACK=baseline — the 0rtt data plane is TCP-only" >&2
+    exit 2
+fi
+case "$QUIC_RESUME" in
+    0|1) ;;
+    *) echo "ERROR: unrecognised QUIC_RESUME='$QUIC_RESUME' — accepted values: 0, 1" >&2; exit 2 ;;
+esac
+if [[ "$PROTO" == quic && -z "${LOAD_RATE:-}" ]]; then
+    echo "WARNING: PROTO=quic with LOAD_RATE unset runs at the TCP defaults (2000 conn/s," \
+         "LOAD_PARALLEL 100000) — pure-Python aioquic will not sustain that. Set LOAD_RATE to" \
+         "the rate chosen from 'loadgen_quic.py --mode rate-spike'." >&2
 fi
 
 SERVER_PORT=8080

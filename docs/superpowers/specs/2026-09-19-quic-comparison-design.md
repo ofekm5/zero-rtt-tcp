@@ -54,7 +54,7 @@ comparable number per arm — client-side `send_unlock` — so the write-up can 
       smaller than the cold one's and early data is reported accepted — measured by:
       the same pytest command
 - [ ] `loadgen.py` is byte-identical to `main` — measured by:
-      `git diff --exit-code main -- experiments/utils/loadgen.py`
+      `git diff --exit-code main -- experiments/nodes/loadgen.py`
 - [ ] Four reports exist at identical `NETEM_RTT_MS`, connection count and arrival rate
       (the rate chosen by the loopback spike): TCP baseline, 0-RTT TCP, QUIC cold, QUIC
       resumed — measured by: the four files under `experiments/baseline-tcp/reports/`
@@ -69,9 +69,9 @@ Client VM ── ClientNIC VM ═(netem RTT)═ ServerNIC VM ── Server VM   
 ```
 
 ```diff
- experiments/utils/loadgen.py
+ experiments/nodes/loadgen.py
    (unchanged)
-+experiments/utils/loadgen_quic.py     # new: aioquic client/server, per-conn send_unlock
++experiments/nodes/loadgen_quic.py     # new: aioquic client/server, per-conn send_unlock
  experiments/nodes/{client,server}.sh
 +  PROTO=quic runs loadgen_quic.py; openssl cert, pip aioquic          # modified
  experiments/run.sh  (STACK=baseline)
@@ -80,7 +80,7 @@ Client VM ── ClientNIC VM ═(netem RTT)═ ServerNIC VM ── Server VM   
 
 | Component | Path | Change | Responsibility after |
 | --- | --- | --- | --- |
-| QUIC load generator | `experiments/utils/loadgen_quic.py` | new | QUIC client/server with the same paced-arrival shape as `loadgen.py`; prints `send_unlock` percentiles and early-data acceptance |
+| QUIC load generator | `experiments/nodes/loadgen_quic.py` | new | QUIC client/server with the same paced-arrival shape as `loadgen.py`; prints `send_unlock` percentiles and early-data acceptance |
 | QUIC test | `experiments/tests/test_loadgen_quic.py` | new | Loopback cold-vs-resumed check |
 | Node scripts | `experiments/nodes/client.sh`, `server.sh` | modified | Install `aioquic`, make a self-signed cert, pass the flags |
 | Orchestrator | `experiments/run.sh` | modified | Runs the QUIC arm on the baseline stack, adds report rows |

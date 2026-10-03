@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-tcp"
+REPO_PATH="${REPO_PATH:-/home/ec2-user/zero-rtt-tcp}"
 SERVER_PORT=8080
 REGION="eu-central-1"
 
@@ -73,6 +73,20 @@ sudo -u ec2-user git -C "$REPO_PATH" fetch origin "$REPO_REF" 2>&1 \
     && sudo -u ec2-user git -C "$REPO_PATH" reset --hard "origin/$REPO_REF" 2>&1 \
     || log "WARNING: git sync failed — using current checkout"
 
+# ─── QUIC arm (PROTO=quic) ────────────────────────────────────────────────────
+# PROTO unset (or tcp) runs loadgen.py exactly as before. PROTO=quic runs
+# loadgen_quic.py; QUIC_RESUME=1 makes every measured connection reuse the
+# priming connection's session ticket (0-RTT). It runs on its own Python 3.11 +
+# aioquic 1.3.0 interpreter (see ensure_quic_python.sh); loadgen.py keeps python3.
+PROTO="${PROTO:-tcp}"
+if [ "$PROTO" = "quic" ]; then
+    log "Ensuring the QUIC interpreter (Python 3.11 + aioquic 1.3.0)..."
+    QUIC_PY=$(bash "$REPO_PATH/experiments/nodes/ensure_quic_python.sh") || {
+        log "ERROR: could not set up the QUIC interpreter"
+        exit 1
+    }
+fi
+
 # ─── Interactive loop ─────────────────────────────────────────────────────────
 CONN=0
 
@@ -96,11 +110,20 @@ echo ""
 while IFS= read -r _input; do
     CONN=$((CONN + 1))
     echo -e "${GREEN}─── Flow #${CONN} (${LOAD_PORTS} ports, $LOAD_PARALLEL total) ──────────${NC}"
-    python3 "$REPO_PATH/experiments/nodes/loadgen.py" --mode client \
-        --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
-        --parallel "$LOAD_PARALLEL" --bytes "$LOAD_BYTES" \
-        --rate "$LOAD_RATE" --think-ms "$LOAD_THINK_MS" \
-        --concurrency-limit "$LOAD_CONCURRENCY"
+    if [ "$PROTO" = "quic" ]; then
+        # loadgen_quic.py has no --think-ms.
+        "$QUIC_PY" "$REPO_PATH/experiments/nodes/loadgen_quic.py" --mode client \
+            --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
+            --parallel "$LOAD_PARALLEL" --bytes "$LOAD_BYTES" \
+            --rate "$LOAD_RATE" --concurrency-limit "$LOAD_CONCURRENCY" \
+            $([ "${QUIC_RESUME:-0}" = "1" ] && echo --resume)
+    else
+        python3 "$REPO_PATH/experiments/nodes/loadgen.py" --mode client \
+            --host "$SERVER_IP" --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
+            --parallel "$LOAD_PARALLEL" --bytes "$LOAD_BYTES" \
+            --rate "$LOAD_RATE" --think-ms "$LOAD_THINK_MS" \
+            --concurrency-limit "$LOAD_CONCURRENCY"
+    fi
     echo ""
     echo "Press Enter for flow #$((CONN + 1)), or Ctrl+C to quit."
     echo ""

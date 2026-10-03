@@ -13,7 +13,7 @@
 
 set -uo pipefail
 
-REPO_PATH="/home/ec2-user/zero-rtt-tcp"
+REPO_PATH="${REPO_PATH:-/home/ec2-user/zero-rtt-tcp}"
 SERVER_PORT=8080
 # Number of contiguous ports to listen on (SERVER_PORT .. SERVER_PORT+LOAD_PORTS-1).
 # The client spreads its parallel connections across these to clear the per-port
@@ -57,5 +57,28 @@ echo ""
 # thread-per-port either (see experiments/nodes/loadgen.py).
 log "Starting load-generator server on ports ${SERVER_PORT}-${SERVER_PORT_HI} — press Ctrl+C to stop."
 echo ""
+
+# ─── QUIC arm (PROTO=quic) ────────────────────────────────────────────────────
+# PROTO unset (or tcp) falls through to loadgen.py exactly as before.
+if [ "${PROTO:-tcp}" = "quic" ]; then
+    pkill -f 'loadgen_quic.py' 2>/dev/null || true
+    # Python 3.11 + aioquic 1.3.0, separate from the system python3: see
+    # ensure_quic_python.sh.
+    QUIC_PY=$(bash "$REPO_PATH/experiments/nodes/ensure_quic_python.sh") || {
+        log "ERROR: could not set up the QUIC interpreter"
+        exit 1
+    }
+    # Throwaway self-signed cert: the client does not verify it. EC P-256, the
+    # same key type the rate-spike calibration uses (loadgen_quic._write_cert).
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 \
+        -subj "/CN=loadgen" -keyout /tmp/quic.key -out /tmp/quic.crt || {
+        log "ERROR: openssl could not generate the QUIC cert"
+        exit 1
+    }
+    exec "$QUIC_PY" "$REPO_PATH/experiments/nodes/loadgen_quic.py" --mode server \
+        --port "$SERVER_PORT" --port-count "$LOAD_PORTS" \
+        --cert /tmp/quic.crt --key /tmp/quic.key
+fi
+
 exec python3 "$REPO_PATH/experiments/nodes/loadgen.py" --mode server \
     --port "$SERVER_PORT" --port-count "$LOAD_PORTS"
