@@ -23,6 +23,8 @@ Ranked easiest win first — least infra, fewest blockers, smallest change.
 | 12 | [CDN comparison](#cdn-comparison) | Idea — not scoped | Undefined — needs framing before effort is knowable |
 | 13 | [Read the XFir paper](#read-the-xfir-paper) | Idea — not scoped | Reading task; brief over it for relevant table-eviction details |
 | 14 | [Claude Code on uni VM](#claude-code-on-uni-vm) | Idea — not scoped | One-host setup; enables autonomous goal loops with direct validation |
+| 15 | [Reconcile the superpowers plans](#reconcile-the-superpowers-plans-before-queuing-for-task-runner) | Scoped (from #39) — plan edits + two small root files | Prerequisite for queuing anything on the nightly task-runner |
+| 16 | [Use Jev to check new flows](#use-jev-to-check-new-flows) | Idea — not scoped (from #40) | Source issue had no body; needs framing first |
 
 ## Human-readable experiment output
 
@@ -376,6 +378,45 @@ Install Claude Code on the university VM so goal loops (`/task-runner --goal`)
 can run there directly, with the VM itself as the validation mechanism
 (compile/run/test in place) instead of routing through local sessions or lab
 SSH plumbing.
+
+### Reconcile the superpowers plans before queuing for task-runner
+
+Originated as GitHub issue #39. The repo is being onboarded to the nightly
+task-runner (issues labeled `task-runner-todo` build unattended, one at a time),
+but the three plans in `docs/superpowers/plans/` assume different trees and
+cannot be queued in any order as written.
+
+| Plan | Assumes | Conflicts with |
+| --- | --- | --- |
+| `2026-09-08-streamline-experiments-harness` | today's tree | Task 7 **deletes** the four `run_experiment.sh` runners and `experiments/scapy/`; task 3 requires `experiments/utils` to be **gone**; task 4 moves `loadgen.py` to `experiments/nodes/` |
+| `2026-09-19-human-readable-experiment-output` | **pre-streamline** tree | Task 2 edits all four runners (incl. `experiments/scapy/run_experiment.sh`); task 3 adds `experiments/utils/tests/test_output.py` — streamline deletes or moves all of these |
+| `2026-09-19-quic-comparison` | **partly post-streamline** (`experiments/run.sh`, `experiments/nodes/`) | Task 1 writes `experiments/utils/loadgen_quic.py` and diffs `experiments/utils/loadgen.py`, which streamline removes or moves |
+
+- [ ] Keep `streamline-experiments-harness` first — both 09-19 plans partly
+      assume it.
+- [ ] Rewrite `human-readable-experiment-output` against the post-streamline
+      layout (`experiments/lib/`, `experiments/run.sh`), or drop it if
+      streamline's single entrypoint covers it.
+- [ ] Point `quic-comparison` at `experiments/nodes/` instead of
+      `experiments/utils/`, and mark its task 6 ("Run all four arms and write
+      the table up") `manual review` — it needs live AWS runs, and its `verify:`
+      only counts `*quic*` report files and greps `docs/index.html`, so an
+      offline builder could only pass it by fabricating reports.
+- [ ] Queue them one at a time — the runner skips a repo while a task-runner PR
+      in it is still open.
+- [ ] Add a root `pytest.ini` so task-runner's whole-change suite gate has a
+      declared suite to run (today it finds none).
+- [ ] Add `.task-runner/prepare.sh` (`pip install pytest pyyaml aioquic`).
+
+Note: the issue predates the latest `main` — `quic-comparison` has since merged
+(PR #42) and `experiments/utils/` still exists, so re-check each conflict above
+against the current tree before acting on it.
+
+### Use Jev to check new flows
+
+Originated as GitHub issue #40 (title only, no body): use Jev to make sure a new
+flow won't need our solution. Intent is unrecorded — needs framing (what Jev is
+here, what "new flow" means, and what the check outputs) before it can be scoped.
 
 ## Done ledger
 
