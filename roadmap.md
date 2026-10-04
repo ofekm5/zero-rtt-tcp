@@ -11,17 +11,17 @@ Priority follows the sections below. Optional extensions have their own list.
 
 | # | Item | State | Next step / dependency |
 | --- | --- | --- | --- |
-| 1 | [Add results to the Overleaf draft](#add-results-to-the-overleaf-draft) | **Urgent — open** | Transfer the current experiment results into the academic draft |
-| 2 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — porting decided, phase not scoped | Stand up the one-DPU lab topology |
+| 1 | **[Add results to the Overleaf draft](#add-results-to-the-overleaf-draft)** | **Urgent — open** | Transfer the current experiment results into the academic draft |
+| 2 | **[Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic)** | **Urgent — porting decided, phase not scoped** | Stand up the one-DPU lab topology |
 | 3 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped | Needs runs4 permission |
 | 4 | [Scale up experiments on BlueField](#scale-up-experiments-on-bluefield) | Conditional — not scoped | University lab only; after Phases 1 and 2 finish |
 | 5 | [Human-readable experiment output](#human-readable-experiment-output) | Partially implemented — compact view still open | Shared helpers exist; dual sink, scorecard and full-log bundle are missing |
-| 6 | [QUIC comparison](#quic-comparison) | Implementation and four-arm write-up complete; A2 follow-up open | Check TLS comparability and QUIC packet headers |
-| 7 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress | Finish the request/response design |
+| 6 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress | Finish the request/response design |
+| 7 | [QUIC comparison](#quic-comparison) | Original comparison complete; TLS extension open (lowest priority) | Add endpoint TLS and compare cold secure connections |
 
 ## Urgent
 
-### Add results to the Overleaf draft
+### **Add results to the Overleaf draft**
 
 **Status:** urgent — open.
 
@@ -58,7 +58,7 @@ change is the build target and the port names, not the data plane.
   (`pf0hpf`), which changes the topology from `p0`↔`p1` to `p0`↔`pf0hpf` and
   drags the host's OVS bridge back into the path.
 
-### Phase 1 — BlueField as ServerNIC
+### **Phase 1 — BlueField as ServerNIC**
 
 Client VM → ClientNIC VM → **BlueField running the ServerNIC app** → Server VM.
 The x86 ClientNIC DPDK forwarder is unchanged; only the ServerNIC role moves
@@ -197,46 +197,6 @@ The harness consolidation is recorded in [Done ledger](#done-ledger).
 Established-vs-target counts, NIC counters and metric-label improvements are
 [optional presentation work](#experiment-presentation-polish), outside this plan.
 
-### QUIC comparison
-
-**Status:** implementation merged in [PR #42](https://github.com/ofekm5/zero-rtt-tcp/pull/42);
-Tasks 6 and 7 are complete: the four-arm AWS measurement and
-[write-up](docs/index.html#quic-comparison) were recorded on 2026-10-03.
-The A2 wire cross-check remains a follow-up.
-[Plan](docs/superpowers/plans/2026-09-19-quic-comparison.md) ·
-[Design](docs/superpowers/specs/2026-09-19-quic-comparison-design.md).
-
-Compare plain TCP, DPDK 0-RTT TCP, QUIC cold and QUIC resumed using client-side
-`send_unlock` only (A1). Run at identical connection counts, payloads and
-`NETEM_RTT_MS`, with a reduced arrival rate selected from the QUIC loopback
-rate spike (about half the sustained rate, capped at 500/s). Confirm client CPU
-headroom on AWS; the loopback rate is an upper bound.
-
-TCP arms are plaintext; QUIC has TLS built in and encrypts. All resumed
-connections reuse one primed session ticket. The 0-RTT arm uses the DPDK stack;
-the other three use the kernel-routed baseline stack. Match endpoint VM sizes
-before comparing.
-
-**Comparability note:** before claiming a like-for-like 0-RTT TCP versus QUIC
-result, account for QUIC's built-in TLS and the absence of TLS in this 0-RTT
-solution. Define a matched security setup or explicitly limit the comparison
-to send timing under different security properties.
-
-- [x] Run all four arms at the same settings, write the `send_unlock` table in
-      `docs/index.html`, and evaluate all four A2 triggers against the reports.
-      At 100/s, 2000 connections per arm, 1 KB and 100 ms RTT, with m5.xlarge
-      endpoints: median send_unlock was 101.007 ms TCP, 0.338 ms 0-RTT TCP,
-      104.395 ms QUIC cold, and 1.436 ms QUIC resumed. All checks passed.
-      [Bundles and calibration](experiments/ci-results/20261003-quic-comparison/README.md).
-- [ ] If A1 results look off, add the pcap header cross-check (A2) as a follow-up:
-      cold `send_unlock` not near `NETEM_RTT_MS`; resumed `send_unlock` not clearly
-      below cold; early data accepted on fewer than all resumed connections;
-      or resumed `handshake_ms` equal to cold. A2 inspects QUIC's unencrypted
-      0-RTT long-header type and first short-header packet in the client pcap.
-      The first three triggers did not fire; handshake medians were similar
-      (104.395/104.827 ms), so queue A2 conservatively. All 2000 resumed flows
-      accepted early data; similar full-handshake timing alone does not prove fallback.
-
 ### Multi-round send in the load generator
 
 **Status:** spec in progress. Fast way to keep iterating:
@@ -261,6 +221,50 @@ does `write(nbytes)` → `write_eof()` → close, and never reads a response.
 - [ ] Decide whether 3 rounds becomes the default for the DPDK-vs-baseline
       comparison, or an
       opt-in mode so existing numbers stay comparable.
+
+### QUIC comparison
+
+**Status:** original implementation merged in [PR #42](https://github.com/ofekm5/zero-rtt-tcp/pull/42);
+the four-arm AWS measurement and [write-up](docs/index.html#quic-comparison)
+were completed on 2026-10-03. The TLS comparison below is a new, lower-priority
+extension, scheduled after the other open plans.
+[Original plan](docs/superpowers/plans/2026-09-19-quic-comparison.md) ·
+[Original design](docs/superpowers/specs/2026-09-19-quic-comparison-design.md).
+The original design excluded TCP+TLS; revise that scope before implementation.
+
+Keep plain TCP versus DPDK 0-RTT TCP as the primary evidence for the middleware's
+benefit. Retain the existing QUIC results as context: TCP was plaintext while
+QUIC encrypted, so those numbers do not establish an advantage for equivalent
+secure applications. All resumed QUIC flows reused one primed ticket.
+
+- [x] Run all four original arms at the same settings, write the `send_unlock`
+      table in `docs/index.html`, and validate the reported results.
+      At 100/s, 2000 connections per arm, 1 KB and 100 ms RTT, with m5.xlarge
+      endpoints: median send_unlock was 101.007 ms TCP, 0.338 ms 0-RTT TCP,
+      104.395 ms QUIC cold, and 1.436 ms QUIC resumed. All checks passed.
+      [Bundles and calibration](experiments/ci-results/20261003-quic-comparison/README.md).
+- [ ] Add a standard TLS 1.3 client/server workload at the application endpoints
+      for both ordinary TCP and accelerated TCP. Use explicit request framing
+      and a server acknowledgment suitable for TLS streams; TLS stays at the
+      endpoints, with no custom packet sender or TLS termination in the NICs.
+- [ ] Run a cold-connection comparison: ordinary TCP + TLS 1.3, accelerated
+      TCP + TLS 1.3, and QUIC. Disable resumption in all three, verify server
+      certificates (the current QUIC harness disables verification), and match
+      security settings, connection counts, payloads, arrival rate, endpoint
+      sizes and `NETEM_RTT_MS`. Calibrate the rate and confirm CPU headroom;
+      retain the kernel-routing versus DPDK and NIC-hardware caveats.
+- [ ] Measure from a common application-level start point to the first encrypted
+      application write and to receipt of the server acknowledgment. Existing
+      TCP pcap first-payload timing would count the TLS ClientHello, so it cannot
+      stand in for secure-application timing. Validate TLS traffic through the
+      middleware on live infrastructure and retain complete run evidence.
+      Hypothesis, not a measured result: about 2 RTTs to permit application
+      sending for ordinary TCP+TLS versus 1 RTT for accelerated TCP+TLS and
+      cold QUIC, without loss or handshake retries.
+- [ ] Publish the matched TLS results in `docs/index.html` with their limits.
+      Defer a resumed comparison until explicit TLS early-data support and
+      acceptance checks exist; session resumption alone does not provide
+      0-RTT application sending.
 
 ## Optional extensions — not mandatory for the academic PoC
 
