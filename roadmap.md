@@ -11,17 +11,17 @@ Priority follows the sections below. Optional extensions have their own list.
 
 | # | Item | State | Next step / dependency |
 | --- | --- | --- | --- |
-| 1 | [Add results to the Overleaf draft](#add-results-to-the-overleaf-draft) | **Urgent — open** | Transfer the current experiment results into the academic draft |
-| 2 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — porting decided, phase not scoped | Stand up the one-DPU lab topology |
-| 3 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped | Needs runs4 permission |
+| 1 | **[Add results to the Overleaf draft](#add-results-to-the-overleaf-draft)** | **Urgent — open** | Transfer the current experiment results into the academic draft |
+| 2 | **[Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic)** | **Urgent — topology decided, phase not scoped** | Confirm both `p0` ports are in Ethernet mode; **BF3 + BF4 access ends 2026-10-13** |
+| 3 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped | After Phase 1; same 2026-10-13 access deadline |
 | 4 | [Scale up experiments on BlueField](#scale-up-experiments-on-bluefield) | Conditional — not scoped | University lab only; after Phases 1 and 2 finish |
 | 5 | [Human-readable experiment output](#human-readable-experiment-output) | Partially implemented — compact view still open | Shared helpers exist; dual sink, scorecard and full-log bundle are missing |
-| 6 | [QUIC comparison](#quic-comparison) | Implementation and four-arm write-up complete; A2 follow-up open | Check TLS comparability and QUIC packet headers |
-| 7 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress | Finish the request/response design |
+| 6 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress | Finish the request/response design |
+| 7 | [QUIC comparison](#quic-comparison) | Original comparison complete; TLS extension open (lowest priority) | Add endpoint TLS and compare cold secure connections |
 
 ## Urgent
 
-### Add results to the Overleaf draft
+### **Add results to the Overleaf draft**
 
 **Status:** urgent — open.
 
@@ -45,37 +45,55 @@ track](#bluefield-3-hardware-offload-track-preemptive-not-on-the-phase-1-path).
 
 ### The port model both phases use
 
-The app binds the DPU's **physical ports directly** as DPDK ports — `p0` and
-`p1` on the ARM side, the two PF uplinks — and nothing else. No scalable
-functions, no VFs, no OVS representor bridging, no e-switch rules. The DPU is a
-physical bump in the wire and the seq/ack rewrite stays in software on ARM,
-which makes the port model identical to what `src/servernic/dpdk/io.c` already
-does with two ENIs: two ports, poll one, rewrite, transmit on the other. The
-change is the build target and the port names, not the data plane.
+The lab has two Proxmox hosts, each with a BlueField-3, cabled `p0`↔`p0`.
+**runs3 + BF3 are the server side; runs4 + BF4 are the client side.** Each
+card's PF is passed through to one VM on its host, and that VM sees the DPU as
+its NIC.
 
-- Open: whether both uplinks on the runs3 card are cabled and usable. If only
-  one is, the second leg has to come back through the host PF representor
-  (`pf0hpf`), which changes the topology from `p0`↔`p1` to `p0`↔`pf0hpf` and
-  drags the host's OVS bridge back into the path.
+```text
+ runs4 (client side)                         runs3 (server side)
+ Client VM                                   Server VM
+   │ virtio                                    ▲ BF3 host PF (passthrough)
+ ClientNIC VM (x86 DPDK)                       │
+   │ BF4 host PF (passthrough)               BF3 ARM: servernic-dpdk
+ BF4 ARM: pf0hpf ⇄ p0                          pf0hpf ⇄ p0
+              └──────────── cable p0 ⇄ p0 ────────┘
+```
 
-### Phase 1 — BlueField as ServerNIC
+Each card has a single uplink (`p0`; there is no `p1`), so an app binds
+**`p0` and `pf0hpf`** (the host PF representor, DPDK selector `pf0vf65535`) as
+its two DPDK ports, and nothing else. No scalable functions, no VFs, no e-switch
+rules of our own; both ports are detached from the DPU's default `ovsbr1` while
+the app runs. The seq/ack rewrite stays in software on ARM, which keeps the port
+model identical to what `src/servernic/dpdk/io.c` already does with two ENIs:
+two ports, poll one, rewrite, transmit on the other. The change is the build
+target and the port names, not the data plane.
 
-Client VM → ClientNIC VM → **BlueField running the ServerNIC app** → Server VM.
-The x86 ClientNIC DPDK forwarder is unchanged; only the ServerNIC role moves
-onto the DPU, reusing the same C code rebuilt for the ARM cores with `p0`/`p1`
-bound into the app. One DPU (runs3).
+- Open: `p0` showed no carrier during the e-switch spike. Check
+  `mlxconfig -d <dev> q LINK_TYPE_P1` on both cards; both must be `ETH(2)`
+  (the cable is InfiniBand-rated, which says nothing about the port mode).
+- Access to both cards ends **2026-10-13**. Phase 1 needs BF4 too, as the
+  client side's transit NIC.
+
+### **Phase 1 — BlueField as ServerNIC**
+
+Client VM → ClientNIC VM → BF4 (transit) → **BF3 running the ServerNIC app** →
+Server VM. The x86 ClientNIC DPDK forwarder is unchanged; only the ServerNIC
+role moves onto BF3, reusing the same C code rebuilt for the ARM cores with
+`p0`/`pf0hpf` bound into the app.
 
 - Smallest step off the current all-VM stack: one role changes host, the other
-  three nodes stay as they are.
-- No e-switch involvement at all, so Phase 1 does **not** wait on the
+  three nodes stay VMs.
+- BF4 runs no app in Phase 1: its default `ovsbr1` (`pf0hpf`↔`p0`,
+  hw-offloaded) forwards like a plain NIC, ARP included.
+- No e-switch rules of our own, so Phase 1 does **not** wait on the
   `verify-eswitch-tcp-seq-offload` verdict. It does exercise
   `bluefield-servernic-hw-offload`'s deployment shape, so that change's offload
   backend can land later behind its existing boundary.
-- Open: does the virtual switching on the *endpoint VMs'* hosts perturb the
-  latency being measured (OVS vs. Linux bridge vs. SR-IOV passthrough)? The DPU
-  side is direct-bound and out of that question.
-- Open: DPDK on the lab's virtual NICs for the x86 ClientNIC VM — `virtio`/
-  vhost-user vs. SR-IOV VFs, or an AF_XDP/AF_PACKET fallback.
+- The ClientNIC VM's wire-facing port is BF4's host PF (mlx5 PMD). Open: its
+  Client-facing port — DPDK `virtio` PMD vs. an AF_XDP/AF_PACKET fallback.
+- Open: does the virtual switching between Client VM and ClientNIC VM on runs4
+  perturb the latency being measured?
 
 #### Porting guidelines (decided — Phase 2 inherits them)
 
@@ -84,7 +102,7 @@ re-litigates it. The [port model](#the-port-model-both-phases-use) states *what*
 is bound; this states *how the app is packaged and what changes in the code*.
 
 **Stay a vanilla executable.** No containers on either platform. A DPU-native
-DPDK binary bound to `p0`/`p1` has no AMI, no vfio-pci-on-ENI and no CDK stack
+DPDK binary bound to `p0`/`pf0hpf` has no AMI, no vfio-pci-on-ENI and no CDK stack
 behind it, so the ServerNIC node deploys by building on the DPU. DPDK there
 needs hugepages, vfio and version-matched DOCA/DPDK from the host regardless,
 so a container keeps every constraint and adds an image build to the loop.
@@ -107,11 +125,19 @@ Porting `src/servernic/dpdk/` to the DPU:
 - [ ] **PMD: ENA → mlx5.** Port setup differs (devargs, and `dv_flow_en=1` only
       if e-switch rules are ever used); the parse/rewrite/transmit path in
       `pipeline.c`, `translator.c`, `checksum.c` does not.
-- [ ] **Peer MACs.** `--client-mac` / `--server-mac` / `--gw-mac` still work as
-      explicit peering. If the second uplink turns out uncabled and the topology
-      falls back to `p0`↔`pf0hpf`, the host side becomes a representor and the
-      peer MAC is the server host's — see the open cabling question under the
-      port model.
+- [ ] **Link mode first.** Both `p0` ports in Ethernet mode with carrier
+      (`LINK_TYPE_P1=ETH(2)` on BF3 and BF4) before anything else.
+- [ ] **Ports: `p0` + `pf0hpf`.** One allow-list entry should bring up both —
+      `-a <pci>,representor=pf0vf65535` — with `io_find_port_by_mac` still
+      deciding eth1 (`p0`) vs. eth2 (`pf0hpf`). `--server-mac` is the Server
+      VM's passthrough PF MAC.
+- [ ] **Detach BF3's OVS, and restore it.** Remove `p0` and `pf0hpf` from
+      `ovsbr1` before the app starts, or OVS hw-offload forwards around the
+      ARM. Capture a baseline first and diff after restore (the spike's
+      `restore.sh` pattern); the spike already left BF3 mutated.
+- [ ] **Static neighbors on the endpoints.** Both apps drop non-IPv4 frames, so
+      ARP never crosses the middleware; on EC2 the VPC answered it. Client and
+      Server need `ip neigh … permanent` entries for each other.
 - [ ] **Inline by placement, not by routing.** DPU mode puts the ARM on the path
       by construction; there is no CDK route-table equivalent to build. Confirm
       the card is in DPU/embedded mode first —
@@ -127,22 +153,23 @@ What the port does *not* carry, and Phase 1 still owns:
 - [x] Repo-sync transport split: `experiments/lib/core.sh` now has a
       `TRANSPORT=ssh` branch that avoids `ec2-user` and Secrets Manager.
       Validate the remaining lab deployment assumptions during Phase 1.
-- [ ] Endpoint VM provisioning in the RUNS lab (Client, Server, and the x86
-      ClientNIC VM Phase 1 keeps)
-- Already done, not a task: the transport half —
-  `TRANSPORT=ssh ./experiments/run.sh` + `experiments/lib/transport/ssh_lab.sh`
-  provide the lab path; confirm node addresses and gateway configuration
-  against the current lab setup before deploying.
+- [ ] Endpoint VM provisioning: Client VM and ClientNIC VM on runs4 (BF4 PF
+      passed to ClientNIC), Server VM on runs3 (BF3 PF passed through).
+      Server needs root for endpoint `tcpdump`.
+- [ ] Lab address map in `experiments/lib/transport/ssh_lab.sh`: per-node
+      user (the DPU is `ubuntu@10.13.36.16`, not `root` via the gateway), and
+      a Server data-plane IP separate from its management IP — `SERVER_IP` is
+      the load target.
 
 ### Phase 2 — BlueField as ClientNIC and ServerNIC
 
-Client VM → **BlueField #1 (ClientNIC app)** → **BlueField #2 (ServerNIC app)**
-→ Server VM. Both 0-RTT roles run on hardware, each app direct-bound to its
-DPU's `p0`/`p1`; no ClientNIC/ServerNIC VMs. This is the hardware-only end
-state.
+Client VM → **BF4 (ClientNIC app)** → **BF3 (ServerNIC app)** → Server VM.
+Both 0-RTT roles run on hardware, each app bound to its DPU's `p0`/`pf0hpf`;
+no ClientNIC/ServerNIC VMs. This is the hardware-only end state, and the mirror
+of Phase 1: the ClientNIC VM goes away and its app moves onto BF4's ARM, with
+the Client VM taking BF4's host PF.
 
-- Needs a second DPU — the runs4 card, which requires another student's
-  permission. Secure it before scoping this phase.
+- Same cable, same VMs, same 2026-10-13 access deadline as Phase 1.
 - ClientNIC's job (spoof the SYN-ACK, stamp V in the SYN ack-num) is
   per-handshake and should suit the ARM cores; ServerNIC's per-packet rewriting
   is the part the e-switch offload exists to avoid, so if ARM-only throughput
@@ -197,46 +224,6 @@ The harness consolidation is recorded in [Done ledger](#done-ledger).
 Established-vs-target counts, NIC counters and metric-label improvements are
 [optional presentation work](#experiment-presentation-polish), outside this plan.
 
-### QUIC comparison
-
-**Status:** implementation merged in [PR #42](https://github.com/ofekm5/zero-rtt-tcp/pull/42);
-Tasks 6 and 7 are complete: the four-arm AWS measurement and
-[write-up](docs/index.html#quic-comparison) were recorded on 2026-10-03.
-The A2 wire cross-check remains a follow-up.
-[Plan](docs/superpowers/plans/2026-09-19-quic-comparison.md) ·
-[Design](docs/superpowers/specs/2026-09-19-quic-comparison-design.md).
-
-Compare plain TCP, DPDK 0-RTT TCP, QUIC cold and QUIC resumed using client-side
-`send_unlock` only (A1). Run at identical connection counts, payloads and
-`NETEM_RTT_MS`, with a reduced arrival rate selected from the QUIC loopback
-rate spike (about half the sustained rate, capped at 500/s). Confirm client CPU
-headroom on AWS; the loopback rate is an upper bound.
-
-TCP arms are plaintext; QUIC has TLS built in and encrypts. All resumed
-connections reuse one primed session ticket. The 0-RTT arm uses the DPDK stack;
-the other three use the kernel-routed baseline stack. Match endpoint VM sizes
-before comparing.
-
-**Comparability note:** before claiming a like-for-like 0-RTT TCP versus QUIC
-result, account for QUIC's built-in TLS and the absence of TLS in this 0-RTT
-solution. Define a matched security setup or explicitly limit the comparison
-to send timing under different security properties.
-
-- [x] Run all four arms at the same settings, write the `send_unlock` table in
-      `docs/index.html`, and evaluate all four A2 triggers against the reports.
-      At 100/s, 2000 connections per arm, 1 KB and 100 ms RTT, with m5.xlarge
-      endpoints: median send_unlock was 101.007 ms TCP, 0.338 ms 0-RTT TCP,
-      104.395 ms QUIC cold, and 1.436 ms QUIC resumed. All checks passed.
-      [Bundles and calibration](experiments/ci-results/20261003-quic-comparison/README.md).
-- [ ] If A1 results look off, add the pcap header cross-check (A2) as a follow-up:
-      cold `send_unlock` not near `NETEM_RTT_MS`; resumed `send_unlock` not clearly
-      below cold; early data accepted on fewer than all resumed connections;
-      or resumed `handshake_ms` equal to cold. A2 inspects QUIC's unencrypted
-      0-RTT long-header type and first short-header packet in the client pcap.
-      The first three triggers did not fire; handshake medians were similar
-      (104.395/104.827 ms), so queue A2 conservatively. All 2000 resumed flows
-      accepted early data; similar full-handshake timing alone does not prove fallback.
-
 ### Multi-round send in the load generator
 
 **Status:** spec in progress. Fast way to keep iterating:
@@ -261,6 +248,50 @@ does `write(nbytes)` → `write_eof()` → close, and never reads a response.
 - [ ] Decide whether 3 rounds becomes the default for the DPDK-vs-baseline
       comparison, or an
       opt-in mode so existing numbers stay comparable.
+
+### QUIC comparison
+
+**Status:** original implementation merged in [PR #42](https://github.com/ofekm5/zero-rtt-tcp/pull/42);
+the four-arm AWS measurement and [write-up](docs/index.html#quic-comparison)
+were completed on 2026-10-03. The TLS comparison below is a new, lower-priority
+extension, scheduled after the other open plans.
+[Original plan](docs/superpowers/plans/2026-09-19-quic-comparison.md) ·
+[Original design](docs/superpowers/specs/2026-09-19-quic-comparison-design.md).
+The original design excluded TCP+TLS; revise that scope before implementation.
+
+Keep plain TCP versus DPDK 0-RTT TCP as the primary evidence for the middleware's
+benefit. Retain the existing QUIC results as context: TCP was plaintext while
+QUIC encrypted, so those numbers do not establish an advantage for equivalent
+secure applications. All resumed QUIC flows reused one primed ticket.
+
+- [x] Run all four original arms at the same settings, write the `send_unlock`
+      table in `docs/index.html`, and validate the reported results.
+      At 100/s, 2000 connections per arm, 1 KB and 100 ms RTT, with m5.xlarge
+      endpoints: median send_unlock was 101.007 ms TCP, 0.338 ms 0-RTT TCP,
+      104.395 ms QUIC cold, and 1.436 ms QUIC resumed. All checks passed.
+      [Bundles and calibration](experiments/ci-results/20261003-quic-comparison/README.md).
+- [ ] Add a standard TLS 1.3 client/server workload at the application endpoints
+      for both ordinary TCP and accelerated TCP. Use explicit request framing
+      and a server acknowledgment suitable for TLS streams; TLS stays at the
+      endpoints, with no custom packet sender or TLS termination in the NICs.
+- [ ] Run a cold-connection comparison: ordinary TCP + TLS 1.3, accelerated
+      TCP + TLS 1.3, and QUIC. Disable resumption in all three, verify server
+      certificates (the current QUIC harness disables verification), and match
+      security settings, connection counts, payloads, arrival rate, endpoint
+      sizes and `NETEM_RTT_MS`. Calibrate the rate and confirm CPU headroom;
+      retain the kernel-routing versus DPDK and NIC-hardware caveats.
+- [ ] Measure from a common application-level start point to the first encrypted
+      application write and to receipt of the server acknowledgment. Existing
+      TCP pcap first-payload timing would count the TLS ClientHello, so it cannot
+      stand in for secure-application timing. Validate TLS traffic through the
+      middleware on live infrastructure and retain complete run evidence.
+      Hypothesis, not a measured result: about 2 RTTs to permit application
+      sending for ordinary TCP+TLS versus 1 RTT for accelerated TCP+TLS and
+      cold QUIC, without loss or handshake retries.
+- [ ] Publish the matched TLS results in `docs/index.html` with their limits.
+      Defer a resumed comparison until explicit TLS early-data support and
+      acceptance checks exist; session resumption alone does not provide
+      0-RTT application sending.
 
 ## Optional extensions — not mandatory for the academic PoC
 
@@ -341,7 +372,7 @@ Both changes below predate the [demo-topology
 phases](#demo-topologies-lab--proxmox--the-main-line) and target the same
 optimisation: moving ServerNIC's per-packet seq/ack rewrite off the ARM cores
 and into the e-switch. **Phases 1 and 2 do the rewrite in software on ARM
-with `p0`/`p1` bound straight into the app, so neither waits on this track.**
+with `p0`/`pf0hpf` bound straight into the app, so neither waits on this track.**
 Order of work:
 Phase 1 first, then this — it lands behind its existing backend boundary once
 there is a working DPU data plane to attach it to.
