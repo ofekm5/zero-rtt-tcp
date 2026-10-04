@@ -12,8 +12,8 @@ Priority follows the sections below. Optional extensions have their own list.
 | # | Item | State | Next step / dependency |
 | --- | --- | --- | --- |
 | 1 | **[Add results to the Overleaf draft](#add-results-to-the-overleaf-draft)** | **Urgent — open** | Transfer the current experiment results into the academic draft |
-| 2 | **[Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic)** | **Urgent — porting decided, phase not scoped** | Stand up the one-DPU lab topology |
-| 3 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped | Needs runs4 permission |
+| 2 | **[Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic)** | **Urgent — topology decided, phase not scoped** | Confirm both `p0` ports are in Ethernet mode; **BF3 + BF4 access ends 2026-10-13** |
+| 3 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped | After Phase 1; same 2026-10-13 access deadline |
 | 4 | [Scale up experiments on BlueField](#scale-up-experiments-on-bluefield) | Conditional — not scoped | University lab only; after Phases 1 and 2 finish |
 | 5 | [Human-readable experiment output](#human-readable-experiment-output) | Partially implemented — compact view still open | Shared helpers exist; dual sink, scorecard and full-log bundle are missing |
 | 6 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress | Finish the request/response design |
@@ -45,37 +45,55 @@ track](#bluefield-3-hardware-offload-track-preemptive-not-on-the-phase-1-path).
 
 ### The port model both phases use
 
-The app binds the DPU's **physical ports directly** as DPDK ports — `p0` and
-`p1` on the ARM side, the two PF uplinks — and nothing else. No scalable
-functions, no VFs, no OVS representor bridging, no e-switch rules. The DPU is a
-physical bump in the wire and the seq/ack rewrite stays in software on ARM,
-which makes the port model identical to what `src/servernic/dpdk/io.c` already
-does with two ENIs: two ports, poll one, rewrite, transmit on the other. The
-change is the build target and the port names, not the data plane.
+The lab has two Proxmox hosts, each with a BlueField-3, cabled `p0`↔`p0`.
+**runs3 + BF3 are the server side; runs4 + BF4 are the client side.** Each
+card's PF is passed through to one VM on its host, and that VM sees the DPU as
+its NIC.
 
-- Open: whether both uplinks on the runs3 card are cabled and usable. If only
-  one is, the second leg has to come back through the host PF representor
-  (`pf0hpf`), which changes the topology from `p0`↔`p1` to `p0`↔`pf0hpf` and
-  drags the host's OVS bridge back into the path.
+```text
+ runs4 (client side)                         runs3 (server side)
+ Client VM                                   Server VM
+   │ virtio                                    ▲ BF3 host PF (passthrough)
+ ClientNIC VM (x86 DPDK)                       │
+   │ BF4 host PF (passthrough)               BF3 ARM: servernic-dpdk
+ BF4 ARM: pf0hpf ⇄ p0                          pf0hpf ⇄ p0
+              └──────────── cable p0 ⇄ p0 ────────┘
+```
+
+Each card has a single uplink (`p0`; there is no `p1`), so an app binds
+**`p0` and `pf0hpf`** (the host PF representor, DPDK selector `pf0vf65535`) as
+its two DPDK ports, and nothing else. No scalable functions, no VFs, no e-switch
+rules of our own; both ports are detached from the DPU's default `ovsbr1` while
+the app runs. The seq/ack rewrite stays in software on ARM, which keeps the port
+model identical to what `src/servernic/dpdk/io.c` already does with two ENIs:
+two ports, poll one, rewrite, transmit on the other. The change is the build
+target and the port names, not the data plane.
+
+- Open: `p0` showed no carrier during the e-switch spike. Check
+  `mlxconfig -d <dev> q LINK_TYPE_P1` on both cards; both must be `ETH(2)`
+  (the cable is InfiniBand-rated, which says nothing about the port mode).
+- Access to both cards ends **2026-10-13**. Phase 1 needs BF4 too, as the
+  client side's transit NIC.
 
 ### **Phase 1 — BlueField as ServerNIC**
 
-Client VM → ClientNIC VM → **BlueField running the ServerNIC app** → Server VM.
-The x86 ClientNIC DPDK forwarder is unchanged; only the ServerNIC role moves
-onto the DPU, reusing the same C code rebuilt for the ARM cores with `p0`/`p1`
-bound into the app. One DPU (runs3).
+Client VM → ClientNIC VM → BF4 (transit) → **BF3 running the ServerNIC app** →
+Server VM. The x86 ClientNIC DPDK forwarder is unchanged; only the ServerNIC
+role moves onto BF3, reusing the same C code rebuilt for the ARM cores with
+`p0`/`pf0hpf` bound into the app.
 
 - Smallest step off the current all-VM stack: one role changes host, the other
-  three nodes stay as they are.
-- No e-switch involvement at all, so Phase 1 does **not** wait on the
+  three nodes stay VMs.
+- BF4 runs no app in Phase 1: its default `ovsbr1` (`pf0hpf`↔`p0`,
+  hw-offloaded) forwards like a plain NIC, ARP included.
+- No e-switch rules of our own, so Phase 1 does **not** wait on the
   `verify-eswitch-tcp-seq-offload` verdict. It does exercise
   `bluefield-servernic-hw-offload`'s deployment shape, so that change's offload
   backend can land later behind its existing boundary.
-- Open: does the virtual switching on the *endpoint VMs'* hosts perturb the
-  latency being measured (OVS vs. Linux bridge vs. SR-IOV passthrough)? The DPU
-  side is direct-bound and out of that question.
-- Open: DPDK on the lab's virtual NICs for the x86 ClientNIC VM — `virtio`/
-  vhost-user vs. SR-IOV VFs, or an AF_XDP/AF_PACKET fallback.
+- The ClientNIC VM's wire-facing port is BF4's host PF (mlx5 PMD). Open: its
+  Client-facing port — DPDK `virtio` PMD vs. an AF_XDP/AF_PACKET fallback.
+- Open: does the virtual switching between Client VM and ClientNIC VM on runs4
+  perturb the latency being measured?
 
 #### Porting guidelines (decided — Phase 2 inherits them)
 
@@ -84,7 +102,7 @@ re-litigates it. The [port model](#the-port-model-both-phases-use) states *what*
 is bound; this states *how the app is packaged and what changes in the code*.
 
 **Stay a vanilla executable.** No containers on either platform. A DPU-native
-DPDK binary bound to `p0`/`p1` has no AMI, no vfio-pci-on-ENI and no CDK stack
+DPDK binary bound to `p0`/`pf0hpf` has no AMI, no vfio-pci-on-ENI and no CDK stack
 behind it, so the ServerNIC node deploys by building on the DPU. DPDK there
 needs hugepages, vfio and version-matched DOCA/DPDK from the host regardless,
 so a container keeps every constraint and adds an image build to the loop.
@@ -107,11 +125,19 @@ Porting `src/servernic/dpdk/` to the DPU:
 - [ ] **PMD: ENA → mlx5.** Port setup differs (devargs, and `dv_flow_en=1` only
       if e-switch rules are ever used); the parse/rewrite/transmit path in
       `pipeline.c`, `translator.c`, `checksum.c` does not.
-- [ ] **Peer MACs.** `--client-mac` / `--server-mac` / `--gw-mac` still work as
-      explicit peering. If the second uplink turns out uncabled and the topology
-      falls back to `p0`↔`pf0hpf`, the host side becomes a representor and the
-      peer MAC is the server host's — see the open cabling question under the
-      port model.
+- [ ] **Link mode first.** Both `p0` ports in Ethernet mode with carrier
+      (`LINK_TYPE_P1=ETH(2)` on BF3 and BF4) before anything else.
+- [ ] **Ports: `p0` + `pf0hpf`.** One allow-list entry should bring up both —
+      `-a <pci>,representor=pf0vf65535` — with `io_find_port_by_mac` still
+      deciding eth1 (`p0`) vs. eth2 (`pf0hpf`). `--server-mac` is the Server
+      VM's passthrough PF MAC.
+- [ ] **Detach BF3's OVS, and restore it.** Remove `p0` and `pf0hpf` from
+      `ovsbr1` before the app starts, or OVS hw-offload forwards around the
+      ARM. Capture a baseline first and diff after restore (the spike's
+      `restore.sh` pattern); the spike already left BF3 mutated.
+- [ ] **Static neighbors on the endpoints.** Both apps drop non-IPv4 frames, so
+      ARP never crosses the middleware; on EC2 the VPC answered it. Client and
+      Server need `ip neigh … permanent` entries for each other.
 - [ ] **Inline by placement, not by routing.** DPU mode puts the ARM on the path
       by construction; there is no CDK route-table equivalent to build. Confirm
       the card is in DPU/embedded mode first —
@@ -127,22 +153,23 @@ What the port does *not* carry, and Phase 1 still owns:
 - [x] Repo-sync transport split: `experiments/lib/core.sh` now has a
       `TRANSPORT=ssh` branch that avoids `ec2-user` and Secrets Manager.
       Validate the remaining lab deployment assumptions during Phase 1.
-- [ ] Endpoint VM provisioning in the RUNS lab (Client, Server, and the x86
-      ClientNIC VM Phase 1 keeps)
-- Already done, not a task: the transport half —
-  `TRANSPORT=ssh ./experiments/run.sh` + `experiments/lib/transport/ssh_lab.sh`
-  provide the lab path; confirm node addresses and gateway configuration
-  against the current lab setup before deploying.
+- [ ] Endpoint VM provisioning: Client VM and ClientNIC VM on runs4 (BF4 PF
+      passed to ClientNIC), Server VM on runs3 (BF3 PF passed through).
+      Server needs root for endpoint `tcpdump`.
+- [ ] Lab address map in `experiments/lib/transport/ssh_lab.sh`: per-node
+      user (the DPU is `ubuntu@10.13.36.16`, not `root` via the gateway), and
+      a Server data-plane IP separate from its management IP — `SERVER_IP` is
+      the load target.
 
 ### Phase 2 — BlueField as ClientNIC and ServerNIC
 
-Client VM → **BlueField #1 (ClientNIC app)** → **BlueField #2 (ServerNIC app)**
-→ Server VM. Both 0-RTT roles run on hardware, each app direct-bound to its
-DPU's `p0`/`p1`; no ClientNIC/ServerNIC VMs. This is the hardware-only end
-state.
+Client VM → **BF4 (ClientNIC app)** → **BF3 (ServerNIC app)** → Server VM.
+Both 0-RTT roles run on hardware, each app bound to its DPU's `p0`/`pf0hpf`;
+no ClientNIC/ServerNIC VMs. This is the hardware-only end state, and the mirror
+of Phase 1: the ClientNIC VM goes away and its app moves onto BF4's ARM, with
+the Client VM taking BF4's host PF.
 
-- Needs a second DPU — the runs4 card, which requires another student's
-  permission. Secure it before scoping this phase.
+- Same cable, same VMs, same 2026-10-13 access deadline as Phase 1.
 - ClientNIC's job (spoof the SYN-ACK, stamp V in the SYN ack-num) is
   per-handshake and should suit the ARM cores; ServerNIC's per-packet rewriting
   is the part the e-switch offload exists to avoid, so if ARM-only throughput
@@ -345,7 +372,7 @@ Both changes below predate the [demo-topology
 phases](#demo-topologies-lab--proxmox--the-main-line) and target the same
 optimisation: moving ServerNIC's per-packet seq/ack rewrite off the ARM cores
 and into the e-switch. **Phases 1 and 2 do the rewrite in software on ARM
-with `p0`/`p1` bound straight into the app, so neither waits on this track.**
+with `p0`/`pf0hpf` bound straight into the app, so neither waits on this track.**
 Order of work:
 Phase 1 first, then this — it lands behind its existing backend boundary once
 there is a working DPU data plane to attach it to.
