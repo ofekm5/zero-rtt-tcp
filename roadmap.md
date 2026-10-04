@@ -1,9 +1,9 @@
 # Roadmap
 
-The urgent Overleaf draft update comes first, then open plans, Phase 1 and
-larger BlueField experiments.
-Reading is listed early so it can inform the lab work. Optional extensions are
-separate from the academic PoC; completed work is in the [Done ledger](#done-ledger).
+The urgent Overleaf draft update comes first, followed by the two BlueField
+phases and the open plans. Larger BlueField experiments require both phases and
+access to the university lab. Optional extensions are separate from the
+academic PoC; completed work is in the [Done ledger](#done-ledger).
 
 ## Status snapshot
 
@@ -12,14 +12,12 @@ Priority follows the sections below. Optional extensions have their own list.
 | # | Item | State | Next step / dependency |
 | --- | --- | --- | --- |
 | 1 | [Add results to the Overleaf draft](#add-results-to-the-overleaf-draft) | **Urgent — open** | Transfer the current experiment results into the academic draft |
-| 2 | [Human-readable experiment output](#human-readable-experiment-output) | Partially implemented — compact view still open | Shared helpers exist; dual sink, scorecard and full-log bundle are missing |
-| 3 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress | Finish the request/response design |
-| 4 | [QUIC comparison](#quic-comparison) | Implementation and four-arm write-up complete; A2 follow-up open | Check QUIC packet headers after similar handshake medians |
-| 5 | [Read the XFir paper](#read-the-xfir-paper) | Reading — not scoped | Review flow-table setup and eviction details early |
-| 6 | [Research Scallop](#research-scallop) | Research — not scoped | Read the paper and inspect its BlueField-3 prototype |
-| 7 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — porting decided, phase not scoped | Stand up the one-DPU lab topology |
-| 8 | [Scale up experiments on BlueField](#scale-up-experiments-on-bluefield) | Idea — not scoped | After a passing Phase 1 run; repeat after Phase 2 |
-| 9 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped | Needs runs4 permission |
+| 2 | [Phase 1 — BlueField as ServerNIC](#phase-1--bluefield-as-servernic) | Main line — porting decided, phase not scoped | Stand up the one-DPU lab topology |
+| 3 | [Phase 2 — BlueField as ClientNIC and ServerNIC](#phase-2--bluefield-as-clientnic-and-servernic) | Main line — sketch, not scoped | Needs runs4 permission |
+| 4 | [Scale up experiments on BlueField](#scale-up-experiments-on-bluefield) | Conditional — not scoped | University lab only; after Phases 1 and 2 finish |
+| 5 | [Human-readable experiment output](#human-readable-experiment-output) | Partially implemented — compact view still open | Shared helpers exist; dual sink, scorecard and full-log bundle are missing |
+| 6 | [QUIC comparison](#quic-comparison) | Implementation and four-arm write-up complete; A2 follow-up open | Check TLS comparability and QUIC packet headers |
+| 7 | [Multi-round send in the load generator](#multi-round-send-in-the-load-generator) | Spec in progress | Finish the request/response design |
 
 ## Urgent
 
@@ -30,118 +28,6 @@ Priority follows the sections below. Optional extensions have their own list.
 - [ ] Add the current experiment results from `docs/index.html` and the linked
       reports to the Overleaf draft, including the measurement setup,
       comparison results and relevant limitations.
-
-## Open plans
-
-### Human-readable experiment output
-
-**Status:** partially implemented; keep open. The
-[plan](docs/superpowers/plans/2026-09-19-human-readable-experiment-output.md)
-asks for a compact terminal view plus a complete log, not just shared helpers.
-
-**Repo evidence:** `experiments/lib/output.sh` defines `log`/`pass`/`fail`/`warn`,
-but has no `output_init`, dual sink or `print_scorecard`. There is no
-`experiments/tests/test_output.py`. The workflow still tees the entire stream
-into `experiment.log`; it neither exports `RUN_LOG` nor bundles `experiment-full.log`.
-
-- [ ] Implement phase lines, every check result and a closing scorecard on the
-      terminal, while retaining all stdout/stderr in the complete log.
-- [ ] Wire this through the current `experiments/run.sh` entrypoint and add the
-      output tests under `experiments/tests/`; the plan's four-runner and
-      `experiments/utils/tests/` paths predate the harness consolidation.
-- [ ] Bundle `experiment-full.log` in `.github/workflows/run-experiment.yml`,
-      retaining `experiment.log` as the compact human summary.
-- [ ] Update the run-experiment and offline-analysis skills to read the full
-      log first once it exists.
-
-The harness consolidation is recorded in [Done ledger](#done-ledger).
-Established-vs-target counts, NIC counters and metric-label improvements are
-[optional presentation work](#experiment-presentation-polish), outside this plan.
-
-### Multi-round send in the load generator
-
-**Status:** spec in progress. Fast way to keep iterating:
-`claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba`
-
-**Goal:** each connection currently does one write and closes. Extend it to
-**three sequential sends** so the run exercises steady-state translation, not
-just the handshake and one segment.
-
-Note: the load generator is `experiments/nodes/loadgen.py` (asyncio), not iperf
-— iperf's thread-per-connection model was replaced in PR #27. `_client_conn()`
-does `write(nbytes)` → `write_eof()` → close, and never reads a response.
-
-- [ ] Add a request/response loop: N rounds (default 3) of client send → server
-      echo/ack → client waits, before close. Knob alongside `--bytes`.
-- [ ] Confirm what this actually tests that one send does not — post-handshake
-      ServerNIC seq/ack rewriting across multiple client→server segments *and*
-      the server→client direction, which a write-only connection never drives.
-- [ ] Check the metric definitions still hold: `send_unlock` and `server_gap`
-      key off the *first* payload segment, so they should be unaffected, but
-      FCT now covers 3 round trips and is not comparable to prior runs.
-- [ ] Decide whether 3 rounds becomes the default for the DPDK-vs-baseline
-      comparison, or an
-      opt-in mode so existing numbers stay comparable.
-
-### QUIC comparison
-
-**Status:** implementation merged in [PR #42](https://github.com/ofekm5/zero-rtt-tcp/pull/42);
-Tasks 6 and 7 are complete: the four-arm AWS measurement and
-[write-up](docs/index.html#quic-comparison) were recorded on 2026-10-03.
-The A2 wire cross-check remains a follow-up.
-[Plan](docs/superpowers/plans/2026-09-19-quic-comparison.md) ·
-[Design](docs/superpowers/specs/2026-09-19-quic-comparison-design.md).
-
-Compare plain TCP, DPDK 0-RTT TCP, QUIC cold and QUIC resumed using client-side
-`send_unlock` only (A1). Run at identical connection counts, payloads and
-`NETEM_RTT_MS`, with a reduced arrival rate selected from the QUIC loopback
-rate spike (about half the sustained rate, capped at 500/s). Confirm client CPU
-headroom on AWS; the loopback rate is an upper bound.
-
-TCP arms are plaintext; QUIC encrypts. All resumed connections reuse one primed
-session ticket. The 0-RTT arm uses the DPDK stack; the other three use the
-kernel-routed baseline stack. Match endpoint VM sizes before comparing.
-
-- [x] Run all four arms at the same settings, write the `send_unlock` table in
-      `docs/index.html`, and evaluate all four A2 triggers against the reports.
-      At 100/s, 2000 connections per arm, 1 KB and 100 ms RTT, with m5.xlarge
-      endpoints: median send_unlock was 101.007 ms TCP, 0.338 ms 0-RTT TCP,
-      104.395 ms QUIC cold, and 1.436 ms QUIC resumed. All checks passed.
-      [Bundles and calibration](experiments/ci-results/20261003-quic-comparison/README.md).
-- [ ] If A1 results look off, add the pcap header cross-check (A2) as a follow-up:
-      cold `send_unlock` not near `NETEM_RTT_MS`; resumed `send_unlock` not clearly
-      below cold; early data accepted on fewer than all resumed connections;
-      or resumed `handshake_ms` equal to cold. A2 inspects QUIC's unencrypted
-      0-RTT long-header type and first short-header packet in the client pcap.
-      The first three triggers did not fire; handshake medians were similar
-      (104.395/104.827 ms), so queue A2 conservatively. All 2000 resumed flows
-      accepted early data; similar full-handshake timing alone does not prove fallback.
-
-## Early reading and research
-
-### Read the XFir paper
-
-Professor-sent SIGCOMM paper. Not directly about 0-RTT — it accelerates flow
-setup via optimized table lookups and custom hardware — but its flow-table
-handling may be relevant: entries are kept until a flow is set up/offloaded,
-with details on how entries are removed. Brief over it and check whether
-anything is worth mimicking, particularly for
-[DDoS: purge delta rows](#ddos-purge-delta-rows). The reading could also add
-value to system design by informing efficient reads and writes to memory,
-particularly in the flow-table lookup and update paths.
-
-### Research Scallop
-
-Read [Scallop](https://github.com/Princeton-Cabernet/Scallop) and its paper,
-*Scalable Video Conferencing Using SDN Principles*. The repo separates a
-hardware data plane from a software control plane and includes a BlueField-3
-P4 prototype under `hardware/bluefield`.
-
-- [ ] Inspect the BlueField prototype's packet-processing and control-plane
-      boundaries for ideas applicable to the ServerNIC design.
-- [ ] Record which ideas transfer to this TCP PoC and which depend on Scallop's
-      WebRTC workload or P4 platform. This is research, not a new implementation
-      dependency for Phase 1.
 
 ## Demo topologies (lab / Proxmox) — the main line
 
@@ -248,20 +134,6 @@ What the port does *not* carry, and Phase 1 still owns:
   provide the lab path; confirm node addresses and gateway configuration
   against the current lab setup before deploying.
 
-### Scale up experiments on BlueField
-
-Run larger-load experiments on the BF-3 side after Phase 1 is working; repeat
-with both NIC roles on hardware after Phase 2. Prioritise the first scale run
-before expanding the topology to two DPUs.
-
-- [ ] Establish a passing Phase 1 run at the existing measured load first.
-- [ ] Increase load in matched steps, recording established-vs-target flows,
-      loss counters and latency to distinguish capacity limits from path latency.
-- [ ] Address the measurement caveats in
-      [Known Limitations](docs/kb/wiki/Known%20Limitations.md) before interpreting
-      the larger-load results. Scale beyond the measured load remains an
-      extension of the current academic claim, not a prerequisite for it.
-
 ### Phase 2 — BlueField as ClientNIC and ServerNIC
 
 Client VM → **BlueField #1 (ClientNIC app)** → **BlueField #2 (ServerNIC app)**
@@ -277,21 +149,131 @@ state.
   is going to bind anywhere it binds here — that is what makes the offload
   track worth having later, not a reason to block on it now.
 
+### Scale up experiments on BlueField
+
+**Conditional:** these experiments can run only in the university lab, after
+both Phase 1 and Phase 2 are finished and have passing runs at the existing
+measured load. Do not schedule the larger-load work before those prerequisites.
+
+- [ ] Confirm university lab access and passing Phase 1 and Phase 2 runs at the
+      existing measured load.
+- [ ] Increase load in matched steps, recording established-vs-target flows,
+      loss counters and latency to distinguish capacity limits from path latency.
+- [ ] Address the measurement caveats in
+      [Known Limitations](docs/kb/wiki/Known%20Limitations.md) before interpreting
+      the larger-load results. Scale beyond the measured load remains an
+      extension of the current academic claim, not a prerequisite for it.
+
 ### Next actions
 - [ ] Commit the topology sketch under `docs/` so this section has a stable reference
 - [ ] Stand up Phase 1, lab-portability tasks included
 - [ ] Promote Phase 1 to an OpenSpec change via
       `spec-planning:openspec-propose-change`
 
+## Open plans
+
+### Human-readable experiment output
+
+**Status:** partially implemented; keep open. The
+[plan](docs/superpowers/plans/2026-09-19-human-readable-experiment-output.md)
+asks for a compact terminal view plus a complete log, not just shared helpers.
+
+**Repo evidence:** `experiments/lib/output.sh` defines `log`/`pass`/`fail`/`warn`,
+but has no `output_init`, dual sink or `print_scorecard`. There is no
+`experiments/tests/test_output.py`. The workflow still tees the entire stream
+into `experiment.log`; it neither exports `RUN_LOG` nor bundles `experiment-full.log`.
+
+- [ ] Implement phase lines, every check result and a closing scorecard on the
+      terminal, while retaining all stdout/stderr in the complete log.
+- [ ] Wire this through the current `experiments/run.sh` entrypoint and add the
+      output tests under `experiments/tests/`; the plan's four-runner and
+      `experiments/utils/tests/` paths predate the harness consolidation.
+- [ ] Bundle `experiment-full.log` in `.github/workflows/run-experiment.yml`,
+      retaining `experiment.log` as the compact human summary.
+- [ ] Update the run-experiment and offline-analysis skills to read the full
+      log first once it exists.
+
+The harness consolidation is recorded in [Done ledger](#done-ledger).
+Established-vs-target counts, NIC counters and metric-label improvements are
+[optional presentation work](#experiment-presentation-polish), outside this plan.
+
+### QUIC comparison
+
+**Status:** implementation merged in [PR #42](https://github.com/ofekm5/zero-rtt-tcp/pull/42);
+Tasks 6 and 7 are complete: the four-arm AWS measurement and
+[write-up](docs/index.html#quic-comparison) were recorded on 2026-10-03.
+The A2 wire cross-check remains a follow-up.
+[Plan](docs/superpowers/plans/2026-09-19-quic-comparison.md) ·
+[Design](docs/superpowers/specs/2026-09-19-quic-comparison-design.md).
+
+Compare plain TCP, DPDK 0-RTT TCP, QUIC cold and QUIC resumed using client-side
+`send_unlock` only (A1). Run at identical connection counts, payloads and
+`NETEM_RTT_MS`, with a reduced arrival rate selected from the QUIC loopback
+rate spike (about half the sustained rate, capped at 500/s). Confirm client CPU
+headroom on AWS; the loopback rate is an upper bound.
+
+TCP arms are plaintext; QUIC has TLS built in and encrypts. All resumed
+connections reuse one primed session ticket. The 0-RTT arm uses the DPDK stack;
+the other three use the kernel-routed baseline stack. Match endpoint VM sizes
+before comparing.
+
+**Comparability note:** before claiming a like-for-like 0-RTT TCP versus QUIC
+result, account for QUIC's built-in TLS and the absence of TLS in this 0-RTT
+solution. Define a matched security setup or explicitly limit the comparison
+to send timing under different security properties.
+
+- [x] Run all four arms at the same settings, write the `send_unlock` table in
+      `docs/index.html`, and evaluate all four A2 triggers against the reports.
+      At 100/s, 2000 connections per arm, 1 KB and 100 ms RTT, with m5.xlarge
+      endpoints: median send_unlock was 101.007 ms TCP, 0.338 ms 0-RTT TCP,
+      104.395 ms QUIC cold, and 1.436 ms QUIC resumed. All checks passed.
+      [Bundles and calibration](experiments/ci-results/20261003-quic-comparison/README.md).
+- [ ] If A1 results look off, add the pcap header cross-check (A2) as a follow-up:
+      cold `send_unlock` not near `NETEM_RTT_MS`; resumed `send_unlock` not clearly
+      below cold; early data accepted on fewer than all resumed connections;
+      or resumed `handshake_ms` equal to cold. A2 inspects QUIC's unencrypted
+      0-RTT long-header type and first short-header packet in the client pcap.
+      The first three triggers did not fire; handshake medians were similar
+      (104.395/104.827 ms), so queue A2 conservatively. All 2000 resumed flows
+      accepted early data; similar full-handshake timing alone does not prove fallback.
+
+### Multi-round send in the load generator
+
+**Status:** spec in progress. Fast way to keep iterating:
+`claude --resume eb195814-eae8-41d0-98cc-198bf41f38ba`
+
+**Goal:** each connection currently does one write and closes. Extend it to
+**three sequential sends** so the run exercises steady-state translation, not
+just the handshake and one segment.
+
+Note: the load generator is `experiments/nodes/loadgen.py` (asyncio), not iperf
+— iperf's thread-per-connection model was replaced in PR #27. `_client_conn()`
+does `write(nbytes)` → `write_eof()` → close, and never reads a response.
+
+- [ ] Add a request/response loop: N rounds (default 3) of client send → server
+      echo/ack → client waits, before close. Knob alongside `--bytes`.
+- [ ] Confirm what this actually tests that one send does not — post-handshake
+      ServerNIC seq/ack rewriting across multiple client→server segments *and*
+      the server→client direction, which a write-only connection never drives.
+- [ ] Check the metric definitions still hold: `send_unlock` and `server_gap`
+      key off the *first* payload segment, so they should be unaffected, but
+      FCT now covers 3 round trips and is not comparable to prior runs.
+- [ ] Decide whether 3 rounds becomes the default for the DPDK-vs-baseline
+      comparison, or an
+      opt-in mode so existing numbers stay comparable.
+
 ## Optional extensions — not mandatory for the academic PoC
 
-These do not gate the academic PoC or Phase 1. Each needs framing and a proposal
-before implementation. DDoS and scale beyond the measured load re-open
-[acknowledged limitations](docs/kb/wiki/Known%20Limitations.md); BlueField scaling
-stays above because it is a prioritised follow-up once Phase 1 works.
+These nice-to-have items do not gate the academic PoC or Phase 1.
+Implementation items need framing and a proposal before work begins. DDoS and
+scale beyond the measured load re-open
+[acknowledged limitations](docs/kb/wiki/Known%20Limitations.md);
+BlueField scaling remains conditional on both lab phases.
 
 | Item | State | Dependency / scope |
 | --- | --- | --- |
+| [Read the XFir paper](#read-the-xfir-paper) | Reading — not scoped | Review flow-table setup and eviction details |
+| [Research Scallop](#research-scallop) | Research — not scoped | Read the paper and inspect its BlueField-3 prototype |
 | [DDoS: purge delta rows](#ddos-purge-delta-rows) | Idea — not scoped | Flow-table eviction and SYN-flood resilience |
 | [Cross-region split](#cross-region-split) | Idea — not scoped | Two-region infrastructure and orchestration |
 | [CDN comparison](#cdn-comparison) | Idea — not scoped | Define the comparison first |
@@ -300,6 +282,30 @@ stays above because it is a prioritised follow-up once Phase 1 works.
 | [ServerNIC hardware offload](#bluefield-servernic-hw-offload--blocked-on-the-spike) | Blocked on spike | Follow Phase 1; depends on spike verdict |
 | [Experiment presentation polish](#experiment-presentation-polish) | Idea — not scoped | Extra counters, metric definitions and raw-log cleanup |
 | [Use Jev to check new flows](#use-jev-to-check-new-flows) | Idea — not scoped (#40) | Clarify the original intent |
+
+### Read the XFir paper
+
+Professor-sent SIGCOMM paper. Not directly about 0-RTT — it accelerates flow
+setup via optimized table lookups and custom hardware — but its flow-table
+handling may be relevant: entries are kept until a flow is set up/offloaded,
+with details on how entries are removed. Brief over it and check whether
+anything is worth mimicking, particularly for
+[DDoS: purge delta rows](#ddos-purge-delta-rows). The reading could also add
+value to system design by informing efficient reads and writes to memory,
+particularly in the flow-table lookup and update paths.
+
+### Research Scallop
+
+Read [Scallop](https://github.com/Princeton-Cabernet/Scallop) and its paper,
+*Scalable Video Conferencing Using SDN Principles*. The repo separates a
+hardware data plane from a software control plane and includes a BlueField-3
+P4 prototype under `hardware/bluefield`.
+
+- [ ] Inspect the BlueField prototype's packet-processing and control-plane
+      boundaries for ideas applicable to the ServerNIC design.
+- [ ] Record which ideas transfer to this TCP PoC and which depend on Scallop's
+      WebRTC workload or P4 platform. This is research, not a new implementation
+      dependency for Phase 1.
 
 ### DDoS: purge delta rows
 
