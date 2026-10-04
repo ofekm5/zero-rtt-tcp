@@ -1,5 +1,7 @@
 # zero-rtt-tcp
 
+<img src="docs/project-icon.png" alt="zero-rtt-tcp project icon: a packet arrow passing through a zero-shaped network ring" width="128" height="128">
+
 Agent guidance: [AGENTS.md](AGENTS.md). Codex project skills live in
 [.agents/skills](.agents/skills): `$run-experiment`, `$offline-analysis`, and
 `$runs-lab-connect`. Use the PowerShell `deploy.ps1` / `destroy.ps1` scripts in
@@ -53,7 +55,7 @@ Client VM → ClientNIC VM → ServerNIC VM → Server VM
 
 **ClientNIC has two implementations** — Scapy (Python, `src/clientnic/scapy/`, deprecated — feasibility PoC only) and DPDK (C, `src/clientnic/dpdk-forwarder/`, paired with the `src/servernic/dpdk/` translator, the live implementation) — both producing identical 0-RTT behavior.
 
-![Packet Flow](architecture-packetflow.png)
+![Packet Flow](docs/architecture-packetflow.png)
 
 **Key**: ClientNIC sends the spoofed SYN-ACK (④) before the real one (⑤) even arrives, so the client can send data (⑥) a full RTT earlier than normal TCP. The real SYN-ACK is dropped; sequence numbers are transparently rewritten (⑦, ⑩) so the server never knows.
 
